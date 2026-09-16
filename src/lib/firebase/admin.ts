@@ -10,6 +10,44 @@ interface GlobalFirebaseAdmin {
 
 const globalFirebase = globalThis as unknown as GlobalFirebaseAdmin;
 
+function formatPrivateKey(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  let key = raw.trim();
+
+  // Strip any surrounding quotes (double, single, backtick, escaped)
+  while (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'")) ||
+    (key.startsWith('`') && key.endsWith('`')) ||
+    (key.startsWith('\\"') && key.endsWith('\\"'))
+  ) {
+    if (key.startsWith('\\"')) {
+      key = key.slice(2, -2).trim();
+    } else {
+      key = key.slice(1, -1).trim();
+    }
+  }
+
+  // Replace escaped newlines (both \\n and \n)
+  key = key.replace(/\\n/g, '\n');
+
+  // Strip carriage returns from Windows CRLF
+  key = key.replace(/\r/g, '');
+
+  // Extract clean PEM block if extra text or prefix/suffix was copied
+  const headerMatch = key.match(/-----BEGIN [A-Z ]+-----/);
+  const footerMatch = key.match(/-----END [A-Z ]+-----/);
+  if (headerMatch && footerMatch) {
+    const header = headerMatch[0];
+    const footer = footerMatch[0];
+    const headerIndex = key.indexOf(header);
+    const footerIndex = key.indexOf(footer) + footer.length;
+    key = key.substring(headerIndex, footerIndex);
+  }
+
+  return key;
+}
+
 export function getAdminApp(): admin.app.App {
   if (globalFirebase.adminApp) return globalFirebase.adminApp;
 
@@ -24,19 +62,7 @@ export function getAdminApp(): admin.app.App {
     process.env.GCP_PROJECT ||
     process.env.GOOGLE_CLOUD_PROJECT;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-
-  if (privateKey) {
-    privateKey = privateKey.trim();
-    if (
-      (privateKey.startsWith('"') && privateKey.endsWith('"')) ||
-      (privateKey.startsWith("'") && privateKey.endsWith("'"))
-    ) {
-      privateKey = privateKey.slice(1, -1);
-    }
-    // Replace escaped newlines if passed in environment variable
-    privateKey = privateKey.replace(/\\n/g, '\n');
-  }
+  const privateKey = formatPrivateKey(process.env.FIREBASE_PRIVATE_KEY);
 
   const bucket = process.env.FIREBASE_STORAGE_BUCKET;
 
