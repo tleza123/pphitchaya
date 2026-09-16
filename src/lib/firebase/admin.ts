@@ -14,38 +14,27 @@ function formatPrivateKey(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   let key = raw.trim();
 
-  // Strip any surrounding quotes (double, single, backtick, escaped)
-  while (
-    (key.startsWith('"') && key.endsWith('"')) ||
-    (key.startsWith("'") && key.endsWith("'")) ||
-    (key.startsWith('`') && key.endsWith('`')) ||
-    (key.startsWith('\\"') && key.endsWith('\\"'))
-  ) {
-    if (key.startsWith('\\"')) {
-      key = key.slice(2, -2).trim();
-    } else {
-      key = key.slice(1, -1).trim();
-    }
-  }
+  const headerMatch = key.match(/-----BEGIN ([A-Z ]+)-----/);
+  const footerMatch = key.match(/-----END ([A-Z ]+)-----/);
+  if (!headerMatch || !footerMatch) return key;
 
-  // Replace escaped newlines (both \\n and \n)
-  key = key.replace(/\\n/g, '\n');
+  const type = headerMatch[1];
+  const headerIndex = key.indexOf(headerMatch[0]);
+  const footerIndex = key.indexOf(footerMatch[0]);
+  if (headerIndex === -1 || footerIndex === -1 || headerIndex >= footerIndex) return key;
 
-  // Strip carriage returns from Windows CRLF
-  key = key.replace(/\r/g, '');
+  // Extract strictly the base64 payload between header and footer
+  const rawBody = key.substring(headerIndex + headerMatch[0].length, footerIndex);
 
-  // Extract clean PEM block if extra text or prefix/suffix was copied
-  const headerMatch = key.match(/-----BEGIN [A-Z ]+-----/);
-  const footerMatch = key.match(/-----END [A-Z ]+-----/);
-  if (headerMatch && footerMatch) {
-    const header = headerMatch[0];
-    const footer = footerMatch[0];
-    const headerIndex = key.indexOf(header);
-    const footerIndex = key.indexOf(footer) + footer.length;
-    key = key.substring(headerIndex, footerIndex);
-  }
+  // Strip all whitespace, literal \n, \r, quotes, slashes, leaving pure base64
+  const body = rawBody
+    .replace(/\\+n/g, '')
+    .replace(/\\+r/g, '')
+    .replace(/[^A-Za-z0-9+/=]/g, '');
 
-  return key;
+  // Re-chunk into standard 64-character PEM lines
+  const chunks = body.match(/.{1,64}/g) || [body];
+  return `-----BEGIN ${type}-----\n${chunks.join('\n')}\n-----END ${type}-----`;
 }
 
 export function getAdminApp(): admin.app.App {
