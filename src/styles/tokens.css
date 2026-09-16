@@ -1,0 +1,41 @@
+:root {
+  --team-primary: #003566;
+  --team-primary-dark: #001d3d;
+  --team-accent: #ffc300;
+  --team-bg: #f3f6fa;
+  --team-surface: #ffffff;
+  --team-text: #172b43;
+  --team-muted: #526277;
+  --team-border: #d7e0ea;
+  --team-border-strong: #bdcada;
+  --team-input-border: #a7b7ca;
+
+  /* Status Colors */
+  --team-full: #166534;
+  --team-full-bg: #f0fdf4;
+  --team-half: #854d0e;
+  --team-half-bg: #fffbeb;
+  --team-absent: #991b1b;
+  --team-absent-bg: #fef2f2;
+  --team-notice-bg: #fff9e6;
+  --team-notice-border: #dac576;
+  --team-notice-text: #63480c;
+
+  /* Sizing and Typography */
+  --font-brand: 'Ekkamai New', 'Prompt', 'Sarabun', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sarabun: var(--font-brand);
+  --team-copy: 1.2rem;
+  --team-name: 1.33rem;
+  --team-heading: 1.67rem;
+  --team-money: 2rem;
+  --team-secondary: 1.067rem;
+
+  /* Radii */
+  --team-radius-card: 1.067rem;
+  --team-radius-button: 0.8rem;
+  --team-radius-small: 0.65rem;
+
+  /* Heights */
+  --team-btn-height: 3.467rem;
+  --team-btn-height-secondary: 3rem;
+}

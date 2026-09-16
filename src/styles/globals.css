@@ -1,0 +1,169 @@
+@import './tokens.css';
+
+/* Thai & Latin Ekkamai New Web Fonts */
+@font-face {
+  font-family: 'Ekkamai New';
+  src: url('/fonts/EkkamaiNew-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Ekkamai New';
+  src: url('/fonts/EkkamaiNew-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Thai & Latin Sarabun Web Fonts */
+@font-face {
+  font-family: 'Sarabun';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/Sarabun-Regular-Thai.woff2') format('woff2');
+  unicode-range: U+02D7, U+0303, U+0331, U+0E01-0E5B, U+200C-200D, U+25CC;
+}
+@font-face {
+  font-family: 'Sarabun';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/Sarabun-Regular-Latin.woff2') format('woff2'),
+       url('/fonts/Sarabun-Regular.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Sarabun';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/Sarabun-Bold-Thai.woff2') format('woff2');
+  unicode-range: U+02D7, U+0303, U+0331, U+0E01-0E5B, U+200C-200D, U+25CC;
+}
+@font-face {
+  font-family: 'Sarabun';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/Sarabun-Bold-Latin.woff2') format('woff2'),
+       url('/fonts/Sarabun-Bold.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Base Responsive Root Scaling */
+html {
+  font-size: 15px;
+  letter-spacing: normal;
+  scrollbar-gutter: stable;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  box-sizing: border-box;
+}
+
+@media (min-width: 640px) {
+  html {
+    font-size: 15.5px;
+  }
+}
+@media (min-width: 1024px) {
+  html {
+    font-size: 16px;
+  }
+}
+@media (min-width: 1440px) {
+  html {
+    font-size: 16.5px;
+  }
+}
+@media (min-width: 1920px) {
+  html {
+    font-size: 17.5px;
+  }
+}
+
+*, *::before, *::after {
+  box-sizing: inherit;
+  font-family: var(--font-brand);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--team-bg);
+  color: var(--team-text);
+  font-family: var(--font-brand);
+  font-size: var(--team-copy);
+  line-height: 1.65;
+  letter-spacing: normal;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Input elements styling */
+input, select, textarea, button {
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: normal;
+}
+
+/* Touch input minimum size & prevent iOS auto-zoom */
+@media (max-width: 639px), (pointer: coarse) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+button {
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 3px solid #004e98;
+  outline-offset: 2px;
+}
+
+/* Images: preserve natural aspect ratio, no crop */
+img {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+/* Print CSS */
+@media print {
+  nav, .no-print, button, input, select {
+    display: none !important;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+  }
+  .team-shell {
+    border: none !important;
+    box-shadow: none !important;
+    max-width: 100% !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}
+
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}

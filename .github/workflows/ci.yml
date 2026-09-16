@@ -1,0 +1,50 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    name: Lint, Test & Build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./employee-attendance
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: ./employee-attendance/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Typecheck TypeScript
+        run: npm run typecheck
+
+      - name: Run Unit Tests
+        run: npm test
+
+      - name: Build Next.js Production Bundle
+        run: npm run build
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: "mock_api_key"
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "mock-dev.firebaseapp.com"
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: "mock-dev"
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "mock-dev.appspot.com"
+          NEXT_PUBLIC_FIREBASE_APP_ID: "1:123456789:web:abcdef"
+          FIREBASE_PROJECT_ID: "mock-dev"
+          FIREBASE_CLIENT_EMAIL: "mock@mock-dev.iam.gserviceaccount.com"
+          FIREBASE_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC3\n-----END PRIVATE KEY-----"
+          FIREBASE_STORAGE_BUCKET: "mock-dev.appspot.com"
+          OWNER_UID: "test_owner_uid_ci"
