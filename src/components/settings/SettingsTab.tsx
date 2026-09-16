@@ -107,8 +107,34 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
       });
       if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลพนักงานได้');
       const data = await res.json();
-      const empData = data.data || data;
-      setEmployees(empData.employees || []);
+      const rawList = Array.isArray(data.data)
+        ? data.data
+        : Array.isArray(data.employees)
+        ? data.employees
+        : Array.isArray(data.data?.employees)
+        ? data.data.employees
+        : Array.isArray(data)
+        ? data
+        : [];
+
+      const mappedList: Employee[] = rawList.map((emp: any) => ({
+        id: emp.id || emp.employeeId,
+        name: emp.name || '',
+        nickname: emp.nickname || '',
+        position: emp.position || '',
+        notes: emp.notes || '',
+        startDate: emp.startDate || '',
+        endDate: emp.endDate || null,
+        dailyRateSatang: typeof emp.dailyRateSatang === 'number' ? emp.dailyRateSatang : (emp.currentRate?.dailySatang || 0),
+        photoPath: emp.photoPath || (emp.photo ? `/api/employees/${emp.id || emp.employeeId}/photo` : null),
+        photoVersion: emp.photoVersion || emp.photo?.version || 1,
+        revision: emp.revision || 1,
+        extraTemplates: (emp.extraTemplates || []).map((t: any) => ({
+          name: t.name || t.label || '',
+          amountSatang: typeof t.amountSatang === 'number' ? t.amountSatang : 0
+        }))
+      }));
+      setEmployees(mappedList);
 
       // Fetch bootstrap/settings
       const bootRes = await fetch('/api/bootstrap', {
@@ -279,9 +305,10 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
     setSubmitting(true);
     try {
       const extraTemplatesFormatted = formExtraTemplates
-        .filter((t) => t.name.trim() && parseFloat(t.amount) > 0)
+        .filter((t) => (t.name || '').trim() && parseFloat(t.amount) > 0)
         .map((t) => ({
           name: t.name.trim(),
+          label: t.name.trim(),
           amountSatang: Math.round(parseFloat(t.amount) * 100)
         }));
 
@@ -299,24 +326,33 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
             position: formPosition.trim(),
             notes: formNotes.trim(),
             startDate: formStartDate,
+            dailyRate: rateNum.toString(),
             dailyRateSatang: Math.round(rateNum * 100),
+            rateSatang: Math.round(rateNum * 100),
             extraTemplates: extraTemplatesFormatted,
             requestId: `add_emp_${Date.now()}`
           })
         });
 
         if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.message || 'ไม่สามารถบันทึกพนักงานใหม่ได้');
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error?.message || errData.message || 'ไม่สามารถบันทึกพนักงานใหม่ได้');
         }
 
         const newEmpData = await res.json();
-        const createdEmpId = newEmpData.employee?.id || newEmpData.id;
+        const createdEmpId =
+          newEmpData.data?.employeeId ||
+          newEmpData.data?.id ||
+          newEmpData.employee?.id ||
+          newEmpData.id ||
+          newEmpData.employeeId;
 
         // Upload photo if selected
         if (formPhotoFile && createdEmpId) {
           const photoFormData = new FormData();
           photoFormData.append('file', formPhotoFile);
+          photoFormData.append('requestId', `photo_${createdEmpId}_${Date.now()}`);
+          photoFormData.append('expectedRevision', '1');
           await fetch(`/api/employees/${createdEmpId}/photo`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${idToken}` },
@@ -344,8 +380,8 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
         });
 
         if (!patchRes.ok) {
-          const errData = await patchRes.json();
-          throw new Error(errData.message || 'ไม่สามารถแก้ไขข้อมูลพนักงานได้');
+          const errData = await patchRes.json().catch(() => ({}));
+          throw new Error(errData.error?.message || errData.message || 'ไม่สามารถแก้ไขข้อมูลพนักงานได้');
         }
 
         // Check if rate changed
@@ -360,7 +396,11 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
             },
             body: JSON.stringify({
               rateSatang: newRateSatang,
+              dailyRateSatang: newRateSatang,
+              dailyRate: rateNum.toString(),
               effectiveDate: formRateEffectiveDate || formStartDate,
+              effectiveFrom: formRateEffectiveDate || formStartDate,
+              expectedRevision: selectedEmployee.revision,
               requestId: `rate_emp_${selectedEmployee.id}_${Date.now()}`
             })
           });
@@ -383,6 +423,8 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
         if (formPhotoFile) {
           const photoFormData = new FormData();
           photoFormData.append('file', formPhotoFile);
+          photoFormData.append('requestId', `photo_${selectedEmployee.id}_${Date.now()}`);
+          photoFormData.append('expectedRevision', String(selectedEmployee.revision));
           await fetch(`/api/employees/${selectedEmployee.id}/photo`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${idToken}` },
@@ -421,8 +463,8 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.message || 'ไม่สามารถบันทึกการสิ้นสุดการจ้างได้');
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error?.message || errData.message || 'ไม่สามารถบันทึกการสิ้นสุดการจ้างได้');
       }
 
       setShowEndModal(false);

@@ -87,32 +87,48 @@ export async function POST(
   try {
     const owner = await verifyOwner(req);
     const { id: employeeId } = await params;
-    const body = await req.json();
-    const { base64Data, expectedRevision, requestId } = body;
+    const contentType = req.headers.get('content-type') || '';
+
+    let inputBuffer: Buffer;
+    let requestId: string;
+    let rawExpectedRevision: number | undefined;
+
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await req.formData();
+      const file = formData.get('file') as File | null;
+      if (!file) {
+        return createErrorResponse('INVALID_INPUT', 'กรุณาเลือกไฟล์รูปภาพ', 422);
+      }
+      inputBuffer = Buffer.from(await file.arrayBuffer());
+      requestId = (formData.get('requestId') as string) || `photo_${employeeId}_${Date.now()}`;
+      const revStr = formData.get('expectedRevision') as string;
+      rawExpectedRevision = revStr ? Number(revStr) : undefined;
+    } else {
+      const body = await req.json();
+      const { base64Data, expectedRevision, requestId: reqId } = body;
+      requestId = reqId || `photo_${employeeId}_${Date.now()}`;
+      rawExpectedRevision = typeof expectedRevision === 'number' ? expectedRevision : undefined;
+
+      if (!base64Data || typeof base64Data !== 'string') {
+        return createErrorResponse('INVALID_INPUT', 'กรุณาส่งข้อมูลรูปภาพ', 422);
+      }
+      const cleanBase64 = base64Data.replace(/^data:image\/[a-z]+;base64,/, '');
+      inputBuffer = Buffer.from(cleanBase64, 'base64');
+    }
 
     if (!requestId || typeof requestId !== 'string') {
       return createErrorResponse('INVALID_INPUT', 'กรุณาระบุ requestId ให้ถูกต้อง', 422);
     }
-    if (typeof expectedRevision !== 'number') {
-      return createErrorResponse('INVALID_INPUT', 'กรุณาระบุ expectedRevision', 422);
-    }
-    if (!base64Data || typeof base64Data !== 'string') {
-      return createErrorResponse('INVALID_INPUT', 'กรุณาส่งข้อมูลรูปภาพ base64', 422);
-    }
 
-    // Strip prefix e.g. "data:image/jpeg;base64,"
-    const cleanBase64 = base64Data.replace(/^data:image\/[a-z]+;base64,/, '');
-    const inputBuffer = Buffer.from(cleanBase64, 'base64');
-
-    if (inputBuffer.length > 2 * 1024 * 1024) {
-      return createErrorResponse('INVALID_INPUT', 'ขนาดไฟล์รูปภาพเกินกำหนด (ไม่เกิน 2 MB)', 422);
+    if (inputBuffer.length > 5 * 1024 * 1024) {
+      return createErrorResponse('INVALID_INPUT', 'ขนาดไฟล์รูปภาพเกินกำหนด (ไม่เกิน 5 MB)', 422);
     }
 
     // Process image with sharp: strip metadata, rotate by EXIF, resize to thumbnail <= 192px
     const image = sharp(inputBuffer);
     const metadata = await image.metadata();
 
-    if (!metadata.width || !metadata.height || metadata.width * metadata.height > 20_000_000) {
+    if (!metadata.width || !metadata.height || metadata.width * metadata.height > 25_000_000) {
       return createErrorResponse('INVALID_INPUT', 'ความละเอียดของรูปภาพสูงเกินไป', 422);
     }
 
@@ -141,7 +157,7 @@ export async function POST(
 
     const payloadHash = computePayloadHash(owner.uid, 'POST', `${employeeId}:photo`, {
       storageType: 'firestore',
-      expectedRevision
+      expectedRevision: rawExpectedRevision
     });
 
     const requestRef = getRequestsCol(shopId).doc(requestId);
@@ -158,6 +174,7 @@ export async function POST(
       }
 
       const current = empSnap.data() as any;
+      const expectedRevision = typeof rawExpectedRevision === 'number' ? rawExpectedRevision : current.revision;
       if (current.revision !== expectedRevision) {
         throw new Error('CONFLICT');
       }

@@ -13,7 +13,7 @@ import {
 } from '@/lib/server/repository';
 import { getAdminFirestore } from '@/lib/firebase/admin';
 import { dateKey } from '@/lib/payroll/dates';
-import { moneySatang } from '@/lib/payroll/money';
+import { moneySatang, validateSatang } from '@/lib/payroll/money';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
 
 export const dynamic = 'force-dynamic';
@@ -34,12 +34,21 @@ export async function GET(req: NextRequest) {
         const currentRate = ratesSnap.docs[0]?.data();
 
         const templatesSnap = await getExtraTemplatesCol(doc.id, shopId).get();
-        const extraTemplates = templatesSnap.docs.map(tDoc => ({
-          templateId: tDoc.id,
-          ...tDoc.data()
-        }));
+        const extraTemplates = templatesSnap.docs.map(tDoc => {
+          const tData = tDoc.data();
+          const label = tData.label || tData.name || '';
+          return {
+            id: tDoc.id,
+            templateId: tDoc.id,
+            name: label,
+            label,
+            amountSatang: typeof tData.amountSatang === 'number' ? tData.amountSatang : 0,
+            ...tData
+          };
+        });
 
         return {
+          id: doc.id,
           employeeId: doc.id,
           name: d.name,
           nickname: d.nickname || '',
@@ -48,8 +57,11 @@ export async function GET(req: NextRequest) {
           endDate: d.endDate || null,
           notes: d.notes || '',
           photo: d.photo ? { version: d.photo.version, width: d.photo.width, height: d.photo.height } : null,
+          photoPath: d.photo ? `/api/employees/${doc.id}/photo` : null,
+          photoVersion: d.photo?.version || 1,
           revision: d.revision || 1,
           currentRate: currentRate ? { effectiveFrom: currentRate.effectiveFrom, dailySatang: currentRate.dailySatang } : null,
+          dailyRateSatang: currentRate?.dailySatang || 0,
           extraTemplates
         };
       })
@@ -76,12 +88,14 @@ export async function POST(req: NextRequest) {
       position,
       startDate: rawStart,
       dailyRate: rawRate,
+      dailyRateSatang,
+      rateSatang,
       notes,
       extraTemplates,
       requestId
     } = body;
 
-    if (!requestId || typeof requestId !== 'string' || requestId.length < 10) {
+    if (!requestId || typeof requestId !== 'string' || requestId.length < 5) {
       return createErrorResponse('INVALID_INPUT', 'กรุณาระบุ requestId ให้ถูกต้อง', 422);
     }
 
@@ -98,7 +112,20 @@ export async function POST(req: NextRequest) {
     }
 
     const startDate = dateKey(rawStart);
-    const dailySatang = typeof rawRate === 'number' ? rawRate : moneySatang(String(rawRate));
+
+    // Support dailyRateSatang, rateSatang, or string/number dailyRate
+    const effectiveRate = dailyRateSatang !== undefined
+      ? dailyRateSatang
+      : (rateSatang !== undefined ? rateSatang : rawRate);
+
+    let dailySatang: number;
+    if (typeof effectiveRate === 'number') {
+      dailySatang = validateSatang(effectiveRate);
+    } else if (typeof effectiveRate === 'string' && effectiveRate.trim().length > 0) {
+      dailySatang = moneySatang(effectiveRate.trim());
+    } else {
+      return createErrorResponse('INVALID_INPUT', 'กรุณาระบุค่าแรงรายวันให้ถูกต้อง', 422);
+    }
 
     const shopId = getShopId();
     const db = getAdminFirestore();
@@ -145,15 +172,20 @@ export async function POST(req: NextRequest) {
       tx.set(employeeRef, employeeData);
       tx.set(rateRef, rateData);
 
-      // Save initial extra templates if any
+      // Save initial extra templates if any (supports both label and name)
       if (Array.isArray(extraTemplates)) {
         for (const t of extraTemplates) {
-          if (t.label && t.amountSatang !== undefined) {
+          const label = String(t.label || t.name || '').trim().slice(0, 80);
+          const amountSatang = typeof t.amountSatang === 'number'
+            ? t.amountSatang
+            : (t.amount ? Math.round(Number(t.amount) * 100) : 0);
+
+          if (label && Number.isSafeInteger(amountSatang) && amountSatang >= 0) {
             const templateRef = getExtraTemplatesCol(employeeId, shopId).doc('tpl_' + crypto.randomUUID());
             tx.set(templateRef, {
               employeeId,
-              label: String(t.label).trim().slice(0, 80),
-              amountSatang: Number(t.amountSatang),
+              label,
+              amountSatang,
               effectiveFromMonth: startDate.slice(0, 7),
               effectiveToMonth: null,
               version: 1,
@@ -177,8 +209,10 @@ export async function POST(req: NextRequest) {
       );
 
       const responsePayload = {
+        id: employeeId,
         employeeId,
         ...employeeData,
+        dailyRateSatang: dailySatang,
         currentRate: { effectiveFrom: startDate, dailySatang }
       };
 

@@ -13,7 +13,7 @@ import {
 } from '@/lib/server/repository';
 import { getAdminFirestore } from '@/lib/firebase/admin';
 import { dateKey } from '@/lib/payroll/dates';
-import { moneySatang } from '@/lib/payroll/money';
+import { moneySatang, validateSatang } from '@/lib/payroll/money';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
 
 export const dynamic = 'force-dynamic';
@@ -26,17 +26,39 @@ export async function POST(
     const owner = await verifyOwner(req);
     const { id: employeeId } = await params;
     const body = await req.json();
-    const { effectiveFrom: rawFrom, dailyRate: rawRate, expectedRevision, requestId } = body;
+    const {
+      effectiveFrom: rawFrom,
+      effectiveDate: rawDate,
+      dailyRate: rawRate,
+      rateSatang: rawRateSatang,
+      dailyRateSatang,
+      expectedRevision: rawRevision,
+      requestId
+    } = body;
 
     if (!requestId || typeof requestId !== 'string') {
       return createErrorResponse('INVALID_INPUT', 'กรุณาระบุ requestId ให้ถูกต้อง', 422);
     }
-    if (typeof expectedRevision !== 'number') {
-      return createErrorResponse('INVALID_INPUT', 'กรุณาระบุ expectedRevision ของพนักงาน', 422);
+
+    const fromDate = rawFrom || rawDate;
+    if (!fromDate) {
+      return createErrorResponse('INVALID_INPUT', 'กรุณาระบุวันที่เริ่มมีผล', 422);
+    }
+    const effectiveFrom = dateKey(fromDate);
+
+    const effectiveRate = dailyRateSatang !== undefined
+      ? dailyRateSatang
+      : (rawRateSatang !== undefined ? rawRateSatang : rawRate);
+
+    let dailySatang: number;
+    if (typeof effectiveRate === 'number') {
+      dailySatang = validateSatang(effectiveRate);
+    } else if (typeof effectiveRate === 'string' && effectiveRate.trim().length > 0) {
+      dailySatang = moneySatang(effectiveRate.trim());
+    } else {
+      return createErrorResponse('INVALID_INPUT', 'กรุณาระบุค่าแรงรายวันให้ถูกต้อง', 422);
     }
 
-    const effectiveFrom = dateKey(rawFrom);
-    const dailySatang = typeof rawRate === 'number' ? rawRate : moneySatang(String(rawRate));
     const targetMonthKey = effectiveFrom.slice(0, 7);
 
     const shopId = getShopId();
@@ -44,7 +66,7 @@ export async function POST(
     const payloadHash = computePayloadHash(owner.uid, 'POST', `${employeeId}:rates`, {
       effectiveFrom,
       dailySatang,
-      expectedRevision
+      expectedRevision: rawRevision
     });
 
     const requestRef = getRequestsCol(shopId).doc(requestId);
@@ -67,6 +89,7 @@ export async function POST(
       }
 
       const current = empSnap.data() as any;
+      const expectedRevision = typeof rawRevision === 'number' ? rawRevision : current.revision;
       if (current.revision !== expectedRevision) {
         throw new Error('CONFLICT');
       }
