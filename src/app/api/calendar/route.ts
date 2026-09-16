@@ -4,6 +4,7 @@ import { verifyOwner } from '@/lib/server/auth';
 import { createSuccessResponse, createErrorResponse } from '@/lib/server/errors';
 import {
   getShopId,
+  getProfileRef,
   getCalendarVersionsCol,
   getCalendarOverridesCol,
   getMonthRef,
@@ -12,7 +13,7 @@ import {
   recordAudit
 } from '@/lib/server/repository';
 import { getAdminFirestore } from '@/lib/firebase/admin';
-import { dateKey } from '@/lib/payroll/dates';
+import { dateKey, getBangkokToday } from '@/lib/payroll/dates';
 import { validateWeekdays } from '@/lib/payroll/calendar';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
 
@@ -50,7 +51,18 @@ export async function POST(req: NextRequest) {
   try {
     const owner = await verifyOwner(req);
     const body = await req.json();
-    const { type, effectiveFrom: rawFrom, weekdays, dateKey: rawDate, kind, note, requestId } = body;
+    const {
+      type: rawType,
+      effectiveFrom: rawFrom,
+      effectiveDate: rawDate,
+      weekdays: rawWeekdays,
+      workDays: rawWorkDays,
+      dateKey: rawDateKey,
+      targetDate: rawTargetDate,
+      kind,
+      note,
+      requestId
+    } = body;
 
     if (!requestId || typeof requestId !== 'string') {
       return createErrorResponse('INVALID_INPUT', 'กรุณาระบุ requestId ให้ถูกต้อง', 422);
@@ -59,8 +71,11 @@ export async function POST(req: NextRequest) {
     const shopId = getShopId();
     const db = getAdminFirestore();
 
+    const weekdays = rawWeekdays !== undefined ? rawWeekdays : rawWorkDays;
+    const type = rawType || (weekdays !== undefined ? 'VERSION' : (kind || rawDateKey || rawTargetDate ? 'OVERRIDE' : ''));
+
     if (type === 'OVERRIDE') {
-      const targetDate = dateKey(rawDate);
+      const targetDate = dateKey(rawDateKey || rawTargetDate || rawDate);
       const targetMonthKey = targetDate.slice(0, 7);
       if (!['WORKDAY', 'HOLIDAY'].includes(kind)) {
         return createErrorResponse('INVALID_INPUT', 'kind ต้องเป็น WORKDAY หรือ HOLIDAY', 422);
@@ -126,8 +141,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (type === 'VERSION') {
-      const effectiveFrom = dateKey(rawFrom);
+      if (!weekdays || !Array.isArray(weekdays)) {
+        return createErrorResponse('INVALID_INPUT', 'กรุณาระบุวันทำงาน', 422);
+      }
       validateWeekdays(weekdays);
+
+      const fromDateStr = rawFrom || rawDate || getBangkokToday();
+      const effectiveFrom = dateKey(fromDateStr);
       const targetMonthKey = effectiveFrom.slice(0, 7);
 
       const payloadHash = computePayloadHash(owner.uid, 'POST', `calendar:version:${effectiveFrom}`, {
@@ -138,6 +158,7 @@ export async function POST(req: NextRequest) {
       const requestRef = getRequestsCol(shopId).doc(requestId);
       const versionId = 'cal_' + crypto.randomUUID();
       const versionRef = getCalendarVersionsCol(shopId).doc(versionId);
+      const profileRef = getProfileRef(shopId);
       const monthRef = getMonthRef(targetMonthKey, shopId);
 
       const result = await db.runTransaction(async tx => {
@@ -159,6 +180,7 @@ export async function POST(req: NextRequest) {
         };
 
         tx.set(versionRef, data);
+        tx.set(profileRef, { workDays: weekdays, updatedAt: now }, { merge: true });
 
         recordAudit(
           tx,

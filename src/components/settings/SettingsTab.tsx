@@ -146,15 +146,19 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
         const profile = bootData.profile || bootData.shop || {};
         const currentShopName = profile.shopName || profile.displayName || 'DE TEAM';
         const currentRev = typeof profile.revision === 'number' ? profile.revision : 1;
+        const calVersions = bootData.calendarVersions || [];
+        const latestCal = Array.isArray(calVersions) && calVersions.length > 0
+          ? [...calVersions].sort((a: any, b: any) => (b.effectiveFrom || '').localeCompare(a.effectiveFrom || ''))[0]
+          : null;
+        const activeWorkDays = latestCal?.weekdays || profile.workDays || [1, 2, 3, 4, 5, 6];
+
         setShopSettings({
           shopName: currentShopName,
-          workDays: profile.workDays || [1, 2, 3, 4, 5, 6],
+          workDays: activeWorkDays,
           revision: currentRev
         });
         setShopNameInput(currentShopName);
-        if (profile.workDays) {
-          setSelectedWorkDays(profile.workDays);
-        }
+        setSelectedWorkDays(activeWorkDays);
       }
     } catch (err: any) {
       setError(err.message || 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
@@ -529,6 +533,7 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
   const handleSaveWorkDays = async () => {
     if (!idToken) return;
     try {
+      const today = new Date().toISOString().split('T')[0];
       const res = await fetch('/api/calendar', {
         method: 'POST',
         headers: {
@@ -536,13 +541,21 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+          type: 'VERSION',
+          weekdays: selectedWorkDays,
           workDays: selectedWorkDays,
-          effectiveDate: new Date().toISOString().split('T')[0],
+          effectiveFrom: today,
+          effectiveDate: today,
           requestId: `calendar_${Date.now()}`
         })
       });
 
-      if (!res.ok) throw new Error('ไม่สามารถบันทึกวันทำงานได้');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error?.message || errData.message || 'ไม่สามารถบันทึกวันทำงานได้');
+      }
+
+      setShopSettings(prev => ({ ...prev, workDays: selectedWorkDays }));
       showNotification('บันทึกวันทำงานเรียบร้อย');
       setCalendarOpen(false);
     } catch (err: any) {
