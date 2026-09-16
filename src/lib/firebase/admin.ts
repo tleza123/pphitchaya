@@ -18,7 +18,11 @@ export function getAdminApp(): admin.app.App {
     return globalFirebase.adminApp;
   }
 
-  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const projectId =
+    process.env.FIREBASE_PROJECT_ID ||
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+    process.env.GCP_PROJECT ||
+    process.env.GOOGLE_CLOUD_PROJECT;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
@@ -50,12 +54,13 @@ export function getAdminApp(): admin.app.App {
   } else {
     if (!process.env.FIRESTORE_EMULATOR_HOST && process.env.NODE_ENV !== 'test') {
       console.warn(
-        '[Firebase Admin] ไม่พบค่าตัวแปร FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL หรือ FIREBASE_PRIVATE_KEY ใน .env.local กรุณาตั้งค่า Service Account ก่อนเชื่อมต่อ Cloud Firestore'
+        '[Firebase Admin] ยังไม่ได้กำหนดค่าตัวแปร FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL หรือ FIREBASE_PRIVATE_KEY ใน .env.local หรือบน Vercel กรุณาตั้งค่า Service Account ก่อนเชื่อมต่อ Cloud Firestore'
       );
     }
-    // Fallback to application default credentials (ADC) or emulator
+    // Fallback to application default credentials (ADC) or emulator with guaranteed fallback ID
+    const effectiveProjectId = projectId || 'de-team-attendance';
     app = admin.initializeApp({
-      projectId: projectId || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+      projectId: effectiveProjectId,
       storageBucket: bucket
     });
   }
