@@ -11,7 +11,7 @@ import { getBangkokToday, getBangkokMonth } from '@/lib/payroll/dates';
 import styles from '@/components/shell/shell.module.css';
 
 export default function HomePage() {
-  const { idToken } = useAuth();
+  const { idToken, user, loading, signIn } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('attendance');
   const [shopName, setShopName] = useState<string>('DE TEAM');
 
@@ -32,6 +32,24 @@ export default function HomePage() {
 
   const today = getBangkokToday();
   const month = getBangkokMonth();
+
+  if (loading) {
+    return <main className={styles.appContainer} aria-busy="true" />;
+  }
+
+  if (!user) {
+    return (
+      <main className={styles.appContainer}>
+        <section className={styles.mainContent} style={{ display: 'grid', placeItems: 'center', minHeight: '100dvh' }}>
+          <div>
+            <h1>DE TEAM</h1>
+            <p>เข้าสู่ระบบเพื่อใช้งานระบบเช็คชื่อและสรุปค่าจ้าง</p>
+            <button type="button" onClick={() => void signIn()}>เข้าสู่ระบบด้วย Google</button>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <div className={styles.appContainer}>
