@@ -1,7 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState } from 'react';
-import { User } from 'firebase/auth';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import type { User } from '@supabase/supabase-js';
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
 interface AuthContextType {
   user: User | null;
@@ -13,32 +14,49 @@ interface AuthContextType {
   refreshToken: () => Promise<string | null>;
 }
 
-const defaultOwnerUser = {
-  uid: 'single-owner',
-  email: 'owner@local',
-  displayName: 'เจ้าของร้าน'
-} as unknown as User;
-
 const AuthContext = createContext<AuthContextType>({
-  user: defaultOwnerUser,
-  idToken: 'local-owner',
-  loading: false,
-  isOwner: true,
+  user: null,
+  idToken: null,
+  loading: true,
+  isOwner: false,
   signIn: async () => {},
   logout: async () => {},
   refreshToken: async () => 'local-owner'
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // Single-user mode: immediate ready state without login barrier
-  const [user] = useState<User | null>(defaultOwnerUser);
-  const [idToken] = useState<string | null>('local-owner');
-  const [loading] = useState(false);
-  const [isOwner] = useState(true);
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const [user, setUser] = useState<User | null>(null);
+  const [idToken, setIdToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isOwner, setIsOwner] = useState(false);
 
-  const signIn = async () => {};
-  const logout = async () => {};
-  const refreshToken = async () => 'local-owner';
+  useEffect(() => {
+    const applySession = async (session: Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']) => {
+      setUser(session?.user ?? null);
+      setIdToken(session?.access_token ?? null);
+      setIsOwner(Boolean(session?.user && (!process.env.NEXT_PUBLIC_OWNER_UID || session.user.id === process.env.NEXT_PUBLIC_OWNER_UID)));
+      setLoading(false);
+    };
+    supabase.auth.getSession().then(({ data }) => applySession(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => { void applySession(session); });
+    return () => listener.subscription.unsubscribe();
+  }, [supabase]);
+
+  const signIn = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/auth/callback`, queryParams: { prompt: 'select_account' } }
+    });
+    if (error) throw error;
+  };
+  const logout = async () => { const { error } = await supabase.auth.signOut(); if (error) throw error; };
+  const refreshToken = async () => {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error) return null;
+    setIdToken(data.session?.access_token ?? null);
+    return data.session?.access_token ?? null;
+  };
 
   return (
     <AuthContext.Provider

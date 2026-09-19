@@ -1,5 +1,5 @@
 import 'server-only';
-import { getAdminAuth } from '../firebase/admin';
+import { getSupabaseAuthClient } from '../supabase/server';
 
 export interface AuthenticatedOwner {
   uid: string;
@@ -19,28 +19,16 @@ export class AuthError extends Error {
 }
 
 /**
- * Validates request Bearer token against Firebase Admin and confirms UID matches OWNER_UID.
- * By default (Single-user mode), allows direct access without requiring a login system.
- * If REQUIRE_AUTH=true is explicitly set in environment variables, enforces Firebase token verification.
+ * Validates a Supabase JWT and confirms that it belongs to the configured owner.
  */
 export async function verifyOwner(req: Request): Promise<AuthenticatedOwner> {
-  const requireAuth = process.env.REQUIRE_AUTH === 'true';
-
-  // Single-user mode: allow direct access without login
-  if (!requireAuth) {
-    return {
-      uid: process.env.OWNER_UID || 'single-owner',
-      email: process.env.OWNER_EMAIL || 'owner@local'
-    };
-  }
-
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     throw new AuthError('AUTH_REQUIRED', 401, 'กรุณาเข้าสู่ระบบด้วยบัญชีผู้ดูแล');
   }
 
   const idToken = authHeader.slice(7).trim();
-  if (!idToken || idToken === 'local-owner') {
+  if (!idToken) {
     throw new AuthError('AUTH_REQUIRED', 401, 'กรุณาเข้าสู่ระบบด้วยบัญชีผู้ดูแล');
   }
 
@@ -51,16 +39,15 @@ export async function verifyOwner(req: Request): Promise<AuthenticatedOwner> {
   }
 
   try {
-    const adminAuth = getAdminAuth();
-    const decoded = await adminAuth.verifyIdToken(idToken);
-
-    if (decoded.uid !== ownerUid) {
+    const { data, error } = await getSupabaseAuthClient(idToken).auth.getUser(idToken);
+    if (error || !data.user) throw new AuthError('AUTH_REQUIRED', 401, 'เซสชันหมดอายุหรือข้อมูลประจำตัวไม่ถูกต้อง');
+    if (data.user.id !== ownerUid) {
       throw new AuthError('FORBIDDEN', 403, 'บัญชีนี้ไม่มีสิทธิ์เข้าถึงระบบเงินเดือน');
     }
 
     return {
-      uid: decoded.uid,
-      email: decoded.email
+      uid: data.user.id,
+      email: data.user.email
     };
   } catch (err: unknown) {
     if (err instanceof AuthError) {
