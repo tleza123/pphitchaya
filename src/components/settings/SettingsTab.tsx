@@ -103,9 +103,10 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
     setError(null);
     try {
       // Fetch employees
-      const res = await fetch('/api/employees', {
-        headers: { Authorization: `Bearer ${idToken}` }
-      });
+      const [res, bootRes] = await Promise.all([
+        fetch('/api/employees', { headers: { Authorization: `Bearer ${idToken}` } }),
+        fetch('/api/bootstrap', { headers: { Authorization: `Bearer ${idToken}` } })
+      ]);
       if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลพนักงานได้');
       const data = await res.json();
       const rawList = Array.isArray(data.data)
@@ -138,9 +139,6 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
       setEmployees(mappedList);
 
       // Fetch bootstrap/settings
-      const bootRes = await fetch('/api/bootstrap', {
-        headers: { Authorization: `Bearer ${idToken}` }
-      });
       if (bootRes.ok) {
         const bootJson = await bootRes.json();
         const bootData = bootJson.data || bootJson;
@@ -887,8 +885,8 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
           </div>
 
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--team-muted)' }}>
-              กำลังโหลดข้อมูล...
+            <div className={styles.employeeGrid} aria-busy="true" aria-label="กำลังโหลดพนักงาน">
+              {[0, 1, 2].map(index => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}
             </div>
           ) : filteredEmployees.length === 0 ? (
             <div

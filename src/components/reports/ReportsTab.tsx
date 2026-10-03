@@ -298,6 +298,18 @@ export function ReportsTab({ initialMonth, serverToday }: ReportsTabProps) {
     }
   };
 
+  if (selectedEmployeeId && detailLoading) {
+    return (
+      <div aria-busy="true" aria-label="กำลังโหลดรายละเอียดรายงาน">
+        <button type="button" className={styles.backBtn} onClick={handleBackToSummary}>กลับหน้ารายงาน</button>
+        <div className="loadingCard"><span className="loadingLine" /><span className="loadingLine" /></div>
+        <div className={styles.reportsGrid}>
+          {[0, 1, 2].map(index => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}
+        </div>
+      </div>
+    );
+  }
+
   // Detail view rendering
   if (selectedEmployeeId && detailData) {
     return (
@@ -549,9 +561,12 @@ export function ReportsTab({ initialMonth, serverToday }: ReportsTabProps) {
 
       {errorMsg && <div className={styles.notice}>{errorMsg}</div>}
 
-      {loading || !reportData ? (
-        <div className={styles.summaryCard}>
-          <p className={styles.summaryLabel}>กำลังคำนวณยอดเงินเดือน...</p>
+      {!loading && errorMsg && !reportData ? null : loading || !reportData ? (
+        <div aria-busy="true" aria-label="กำลังโหลดรายงาน">
+          <div className="loadingCard"><span className="loadingLine" /><span className="loadingLine" /></div>
+          <div className={styles.reportsGrid}>
+            {[0, 1, 2].map(index => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}
+          </div>
         </div>
       ) : (
         <>

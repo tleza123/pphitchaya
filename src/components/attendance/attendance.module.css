@@ -259,7 +259,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .statusBtn:disabled {
@@ -328,14 +328,10 @@
   border-radius: var(--team-radius-card);
   padding: 1.067rem;
   margin-bottom: 1rem;
-  min-height: 11rem;
-  animation: pulse 1.5s infinite ease-in-out;
-}
-
-@keyframes pulse {
-  0% { opacity: 0.6; }
-  50% { opacity: 1; }
-  100% { opacity: 0.6; }
+  min-height: 25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
 }
 
 .advanceSection {

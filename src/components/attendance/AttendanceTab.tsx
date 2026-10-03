@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { formatThaiDate } from '@/lib/payroll/dates';
 import styles from './attendance.module.css';
@@ -48,10 +48,12 @@ export function AttendanceTab({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [pendingMap, setPendingMap] = useState<Record<string, boolean>>({});
   const [clearingId, setClearingId] = useState<string | null>(null);
+  const fetchSequence = useRef(0);
 
   const fetchDayData = useCallback(
     async (date: string) => {
       if (!idToken) return;
+      const sequence = ++fetchSequence.current;
       setLoading(true);
       setErrorMsg(null);
       try {
@@ -59,6 +61,7 @@ export function AttendanceTab({
           headers: { Authorization: `Bearer ${idToken}` }
         });
         const json = await res.json();
+        if (sequence !== fetchSequence.current) return;
         if (json.ok) {
           setItems(json.data.items);
           setIsWorkday(json.data.isWorkday);
@@ -76,12 +79,16 @@ export function AttendanceTab({
           setAdvanceInputs(advances);
           setDeductionInputs(deductions);
         } else {
+          setItems([]);
           setErrorMsg(json.error?.message || 'โหลดข้อมูลไม่สำเร็จ');
         }
       } catch {
-        setErrorMsg('ไม่สามารถเชื่อมต่อระบบได้ กรุณาลองใหม่อีกครั้ง');
+        if (sequence === fetchSequence.current) {
+          setItems([]);
+          setErrorMsg('ไม่สามารถเชื่อมต่อระบบได้ กรุณาลองใหม่อีกครั้ง');
+        }
       } finally {
-        setLoading(false);
+        if (sequence === fetchSequence.current) setLoading(false);
       }
     },
     [idToken]
@@ -100,6 +107,13 @@ export function AttendanceTab({
   ) => {
     if (!idToken || isClosed) return;
     setPendingMap(prev => ({ ...prev, [employeeId]: true }));
+    setItems(prev => prev.map(item => item.employee.employeeId === employeeId
+      ? { ...item, attendance: {
+          ...item.attendance,
+          status: status === 'UNMARKED' && isWorkday ? 'FULL' : status,
+          automatic: status === 'UNMARKED' && isWorkday
+        } }
+      : item));
     const requestId = crypto.randomUUID();
 
     // Determine advanceSatang to send
@@ -181,6 +195,7 @@ export function AttendanceTab({
       }
     } catch {
       alert('เกิดข้อผิดพลาดในการส่งข้อมูล กรุณาตรวจสอบอีกครั้ง');
+      fetchDayData(selectedDate);
     } finally {
       setPendingMap(prev => ({ ...prev, [employeeId]: false }));
       setClearingId(null);
@@ -345,12 +360,12 @@ export function AttendanceTab({
       )}
 
       {loading ? (
-        <div className={styles.cardGrid}>
-          <div className={styles.skeletonCard} />
-          <div className={styles.skeletonCard} />
-          <div className={styles.skeletonCard} />
+        <div className={styles.cardGrid} aria-busy="true" aria-label="กำลังโหลดข้อมูลเช็กชื่อ">
+          {[0, 1, 2].map(index => <div className={styles.skeletonCard} key={index}>
+            <span className="loadingLine" /><span className="loadingLine" /><span className="loadingLine" />
+          </div>)}
         </div>
-      ) : items.length === 0 ? (
+      ) : errorMsg && items.length === 0 ? null : items.length === 0 ? (
         <div className={styles.notice}>
           <strong>ยังไม่มีรายชื่อพนักงาน</strong>
           <p>กรุณาเพิ่มพนักงานในแท็บตั้งค่าเพื่อเริ่มใช้งาน</p>

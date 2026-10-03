@@ -35,11 +35,16 @@ export async function GET(req: NextRequest) {
     const monthKey = targetDate.slice(0, 7);
     const shopId = getShopId();
 
-    const monthSnap = await getMonthRef(monthKey, shopId).get();
+    const [monthSnap, employeesSnap, calendarVersionsSnap, overridesSnap, attendanceSnap] = await Promise.all([
+      getMonthRef(monthKey, shopId).get(),
+      getEmployeesCol(shopId).get(),
+      getCalendarVersionsCol(shopId).get(),
+      getCalendarOverridesCol(shopId).get(),
+      getAttendanceCol(monthKey, shopId).where('dateKey', '==', targetDate).get()
+    ]);
     const monthData = monthSnap.exists ? monthSnap.data() : { state: 'OPEN', revision: 0 };
     const isClosed = monthData?.state === 'CLOSED';
 
-    const employeesSnap = await getEmployeesCol(shopId).get();
     const eligibleEmployees = employeesSnap.docs
       .map(doc => ({
         employeeId: doc.id,
@@ -48,13 +53,11 @@ export async function GET(req: NextRequest) {
       .filter((emp: any) => employedOn(emp, targetDate));
 
     // Calendar
-    const calendarVersionsSnap = await getCalendarVersionsCol(shopId).get();
     const calendarVersions = calendarVersionsSnap.docs.map(doc => ({
       versionId: doc.id,
       ...doc.data()
     })) as any[];
 
-    const overridesSnap = await getCalendarOverridesCol(shopId).get();
     const overrides: Record<string, 'WORKDAY' | 'HOLIDAY'> = {};
     overridesSnap.docs.forEach(doc => {
       overrides[doc.id] = doc.data().kind;
@@ -65,9 +68,6 @@ export async function GET(req: NextRequest) {
     const defaultFullDay = workday && targetDate <= getBangkokToday();
 
     // Attendance
-    const attendanceSnap = await getAttendanceCol(monthKey, shopId)
-      .where('dateKey', '==', targetDate)
-      .get();
     const attendanceMap = new Map<string, any>();
     attendanceSnap.docs.forEach(doc => {
       const d = doc.data();

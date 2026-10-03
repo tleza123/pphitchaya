@@ -105,9 +105,52 @@ input, select, textarea, button {
 
 button {
   cursor: pointer;
+  min-height: 3rem;
   touch-action: manipulation;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+a {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (pointer: coarse) {
+  button:active:not(:disabled), a:active {
+    opacity: 0.82;
+  }
+}
+
+.loadingCard {
+  min-height: 10rem;
+  padding: 1.15rem;
+  border: 1px solid var(--team-border);
+  border-radius: var(--team-radius-card);
+  background-color: var(--team-surface);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.85rem;
+}
+
+.loadingLine {
+  display: block;
+  width: 68%;
+  height: 1.2rem;
+  border-radius: 0.4rem;
+  background-color: #e6ecf3;
+  animation: loadingPulse 1.3s ease-in-out infinite;
+}
+
+.loadingLine:last-child { width: 44%; }
+
+@keyframes loadingPulse {
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loadingLine { animation: none; }
 }
 
 button:focus-visible,

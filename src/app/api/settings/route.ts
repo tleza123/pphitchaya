@@ -9,9 +9,26 @@ import {
 } from '@/lib/server/repository';
 import { getAdminFirestore } from '@/lib/firebase/admin';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
-import { DEFAULT_SHOP_NAME } from '@/lib/shop-name';
+import { DEFAULT_SHOP_NAME, displayShopName } from '@/lib/shop-name';
 
 export const dynamic = 'force-dynamic';
+
+export async function GET(req: NextRequest) {
+  try {
+    await verifyOwner(req);
+    const profileSnap = await getProfileRef(getShopId()).get();
+    const profile = profileSnap.data();
+    return createSuccessResponse({
+      profile: {
+        shopName: displayShopName(profile?.shopName || profile?.displayName),
+        revision: profile?.revision || 1
+      }
+    });
+  } catch (err: unknown) {
+    const error = err as { code?: string; message?: string; statusCode?: number };
+    return createErrorResponse(error.code || 'INTERNAL_ERROR', error.message, error.statusCode || 500);
+  }
+}
 
 export async function PATCH(req: NextRequest) {
   try {

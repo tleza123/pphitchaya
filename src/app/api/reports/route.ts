@@ -88,7 +88,13 @@ export async function GET(req: NextRequest) {
     }
 
     // Otherwise calculate dynamically for OPEN / CLOSING month
-    const employeesSnap = await getEmployeesCol(shopId).get();
+    const [employeesSnap, calendarVersionsSnap, overridesSnap, attendanceSnap, extrasSnap] = await Promise.all([
+      getEmployeesCol(shopId).get(),
+      getCalendarVersionsCol(shopId).get(),
+      getCalendarOverridesCol(shopId).get(),
+      getAttendanceCol(targetMonth, shopId).get(),
+      getMonthlyExtrasCol(targetMonth, shopId).get()
+    ]);
     const employees = employeesSnap.docs
       .map(doc => ({
         employeeId: doc.id,
@@ -104,26 +110,22 @@ export async function GET(req: NextRequest) {
     });
 
     // Calendar
-    const calendarVersionsSnap = await getCalendarVersionsCol(shopId).get();
     const calendarVersions = calendarVersionsSnap.docs.map(d => ({
       versionId: d.id,
       ...d.data()
     })) as any[];
 
-    const overridesSnap = await getCalendarOverridesCol(shopId).get();
     const overrides: Record<string, 'WORKDAY' | 'HOLIDAY'> = {};
     overridesSnap.docs.forEach(doc => {
       overrides[doc.id] = doc.data().kind;
     });
 
     // Attendance
-    const attendanceSnap = await getAttendanceCol(targetMonth, shopId).get();
     const attendanceRecords = attendanceSnap.docs.map(d => ({
       ...d.data()
     })) as any[];
 
     // Monthly Extras
-    const extrasSnap = await getMonthlyExtrasCol(targetMonth, shopId).get();
     const monthlyExtras = extrasSnap.docs
       .map(d => ({
         extraId: d.id,

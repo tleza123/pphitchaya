@@ -22,7 +22,14 @@ export async function GET(req: NextRequest) {
     const today = getBangkokToday();
     const currentMonth = getBangkokMonth();
 
-    const profileSnap = await getProfileRef(shopId).get();
+    const [profileSnap, employeesSnap, monthDocSnap, attendanceSnap, calendarVersionsSnap, overridesSnap] = await Promise.all([
+      getProfileRef(shopId).get(),
+      getEmployeesCol(shopId).get(),
+      getMonthRef(currentMonth, shopId).get(),
+      getAttendanceCol(currentMonth, shopId).where('dateKey', '==', today).get(),
+      getCalendarVersionsCol(shopId).get(),
+      getCalendarOverridesCol(shopId).get()
+    ]);
     const rawProfile = profileSnap.exists ? profileSnap.data() : null;
     const shopName = displayShopName(rawProfile?.shopName || rawProfile?.displayName);
     const profile = {
@@ -33,7 +40,6 @@ export async function GET(req: NextRequest) {
       revision: rawProfile?.revision || 1
     };
 
-    const employeesSnap = await getEmployeesCol(shopId).get();
     const employees = employeesSnap.docs.map(doc => {
       const d = doc.data();
       return {
@@ -48,14 +54,10 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const monthDocSnap = await getMonthRef(currentMonth, shopId).get();
     const monthState = monthDocSnap.exists
       ? monthDocSnap.data()
       : { state: 'OPEN', revision: 0, extrasRevision: 0 };
 
-    const attendanceSnap = await getAttendanceCol(currentMonth, shopId)
-      .where('dateKey', '==', today)
-      .get();
     const todayAttendance = attendanceSnap.docs.map(doc => {
       const d = doc.data();
       return {
@@ -68,13 +70,11 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const calendarVersionsSnap = await getCalendarVersionsCol(shopId).get();
     const calendarVersions = calendarVersionsSnap.docs.map(doc => ({
       versionId: doc.id,
       ...doc.data()
     }));
 
-    const overridesSnap = await getCalendarOverridesCol(shopId).get();
     const calendarOverrides: Record<string, 'WORKDAY' | 'HOLIDAY'> = {};
     overridesSnap.docs.forEach(doc => {
       const d = doc.data();
