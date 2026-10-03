@@ -58,6 +58,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   const reportFetchSequence = useRef(0);
   const detailFetchSequence = useRef(0);
   const wasActive = useRef(false);
+  const detailAttendanceVersion = useRef(attendanceVersion);
 
   const fetchMonthlyReport = useCallback(
     async (month: string) => {
@@ -65,6 +66,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       const sequence = ++reportFetchSequence.current;
       setLoading(true);
       setErrorMsg(null);
+      setReportData((previous: any) => previous?.month === month ? previous : null);
       try {
         const res = await fetch(`/api/reports?month=${month}`, {
           headers: { Authorization: `Bearer ${idToken}` }
@@ -119,11 +121,12 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   }, [active, attendanceVersion, selectedMonth, fetchMonthlyReport]);
 
   useEffect(() => {
-    if (active && !wasActive.current && selectedEmployeeId) {
+    if (active && selectedEmployeeId && (!wasActive.current || detailAttendanceVersion.current !== attendanceVersion)) {
       fetchEmployeeDetail(selectedEmployeeId, selectedMonth);
     }
     wasActive.current = active;
-  }, [active, selectedEmployeeId, selectedMonth, fetchEmployeeDetail]);
+    detailAttendanceVersion.current = attendanceVersion;
+  }, [active, attendanceVersion, selectedEmployeeId, selectedMonth, fetchEmployeeDetail]);
 
   const handleOpenDetail = (empId: string) => {
     setSelectedEmployeeId(empId);
@@ -580,8 +583,9 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       </div>
 
       {errorMsg && <div className={styles.notice}>{errorMsg}</div>}
+      {loading && reportData && <div className="refreshStatus" role="status">กำลังอัปเดตรายงาน</div>}
 
-      {!loading && errorMsg && !reportData ? null : loading || !reportData ? (
+      {!loading && errorMsg && !reportData ? null : !reportData ? (
         <div aria-busy="true" aria-label="กำลังโหลดรายงาน">
           <div className="loadingCard"><span className="loadingLine" /><span className="loadingLine" /></div>
           <div className={styles.reportsGrid}>
@@ -673,6 +677,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
               <button
                 type="button"
                 className={styles.primaryBtn}
+                disabled={loading}
                 onClick={() => {
                   setShowCloseModal(true);
                   handleStartClose();
@@ -685,12 +690,13 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                 type="button"
                 className={styles.secondaryBtn}
                 onClick={() => setShowReopenModal(true)}
+                disabled={loading}
               >
                 เปิดเดือนเพื่อแก้ไข
               </button>
             )}
 
-            <button type="button" className={styles.secondaryBtn} onClick={() => window.print()}>
+            <button type="button" className={styles.secondaryBtn} disabled={loading} onClick={() => window.print()}>
               พิมพ์รายงาน
             </button>
           </div>

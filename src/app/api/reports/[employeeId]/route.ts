@@ -69,33 +69,31 @@ export async function GET(
       ...empSnap.data()
     } as EmployeeRecord;
 
-    const ratesSnap = await getRatesCol(employeeId, shopId).get();
+    const [ratesSnap, calendarVersionsSnap, overridesSnap, attendanceSnap, extrasSnap] = await Promise.all([
+      getRatesCol(employeeId, shopId).get(),
+      getCalendarVersionsCol(shopId).get(),
+      getCalendarOverridesCol(shopId).get(),
+      getAttendanceCol(targetMonth, shopId).where('employeeId', '==', employeeId).get(),
+      getMonthlyExtrasCol(targetMonth, shopId).where('employeeId', '==', employeeId).get()
+    ]);
     const rates = ratesSnap.docs.map(d => ({
       rateId: d.id,
       employeeId,
       ...d.data()
     })) as RateRecord[];
 
-    const calendarVersionsSnap = await getCalendarVersionsCol(shopId).get();
     const calendarVersions = calendarVersionsSnap.docs.map(d => ({
       versionId: d.id,
       ...d.data()
     })) as any[];
 
-    const overridesSnap = await getCalendarOverridesCol(shopId).get();
     const overrides: Record<string, 'WORKDAY' | 'HOLIDAY'> = {};
     overridesSnap.docs.forEach(doc => {
       overrides[doc.id] = doc.data().kind;
     });
 
-    const attendanceSnap = await getAttendanceCol(targetMonth, shopId)
-      .where('employeeId', '==', employeeId)
-      .get();
     const attendanceRecords = attendanceSnap.docs.map(d => d.data()) as any[];
 
-    const extrasSnap = await getMonthlyExtrasCol(targetMonth, shopId)
-      .where('employeeId', '==', employeeId)
-      .get();
     const monthlyExtras = extrasSnap.docs
       .map(d => ({
         extraId: d.id,

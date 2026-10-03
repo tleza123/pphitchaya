@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
       await verifyFinanceGate(tx, controlRef, monthRef, monthKey);
 
       // 3. Check employee employment bounds
-      const empSnap = await tx.get(employeeRef);
+      const [empSnap, attSnap] = await tx.getAll(employeeRef, attendanceDocRef);
       if (!empSnap.exists) {
         throw new Error('NOT_FOUND');
       }
@@ -220,12 +220,14 @@ export async function POST(req: NextRequest) {
 
       // 4. Check calendar: cannot mark FULL/HALF/ABSENT on HOLIDAY
       if (status !== 'UNMARKED') {
-        const calendarVersionsSnap = await tx.get(getCalendarVersionsCol(shopId));
+        const [calendarVersionsSnap, overrideSnap] = await Promise.all([
+          tx.get(getCalendarVersionsCol(shopId)),
+          tx.get(getCalendarOverridesCol(shopId).doc(targetDate))
+        ]);
         const calendarVersions = calendarVersionsSnap.docs.map(d => ({
           versionId: d.id,
           ...d.data()
         })) as any[];
-        const overrideSnap = await tx.get(getCalendarOverridesCol(shopId).doc(targetDate));
         const overrides: Record<string, 'WORKDAY' | 'HOLIDAY'> = {};
         if (overrideSnap.exists) {
           overrides[targetDate] = overrideSnap.data()?.kind;
@@ -237,7 +239,6 @@ export async function POST(req: NextRequest) {
       }
 
       // 5. Check attendance revision
-      const attSnap = await tx.get(attendanceDocRef);
       const currentRevision = attSnap.exists ? attSnap.data()?.revision || 0 : 0;
       if (currentRevision !== expectedRevision) {
         throw new Error('CONFLICT');

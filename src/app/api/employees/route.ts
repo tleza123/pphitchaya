@@ -27,13 +27,12 @@ export async function GET(req: NextRequest) {
     const employees = await Promise.all(
       employeesSnap.docs.map(async doc => {
         const d = doc.data();
-        const ratesSnap = await getRatesCol(doc.id, shopId)
-          .orderBy('effectiveFrom', 'desc')
-          .limit(1)
-          .get();
+        const [ratesSnap, templatesSnap] = await Promise.all([
+          getRatesCol(doc.id, shopId).orderBy('effectiveFrom', 'desc').limit(1).get(),
+          getExtraTemplatesCol(doc.id, shopId).get()
+        ]);
         const currentRate = ratesSnap.docs[0]?.data();
 
-        const templatesSnap = await getExtraTemplatesCol(doc.id, shopId).get();
         const extraTemplates = templatesSnap.docs.map(tDoc => {
           const tData = tDoc.data();
           const label = tData.label || tData.name || '';

@@ -9,9 +9,10 @@ export type TabType = 'attendance' | 'reports' | 'settings';
 interface BottomNavProps {
   activeTab: TabType;
   onChangeTab: (tab: TabType) => void;
+  onPrepareTab?: (tab: TabType) => void;
 }
 
-export function BottomNav({ activeTab, onChangeTab }: BottomNavProps) {
+export function BottomNav({ activeTab, onChangeTab, onPrepareTab }: BottomNavProps) {
   return (
     <nav className={styles.nav} aria-label="เมนูหลัก">
       <button
@@ -19,6 +20,9 @@ export function BottomNav({ activeTab, onChangeTab }: BottomNavProps) {
         className={`${styles.navBtn} ${activeTab === 'attendance' ? styles.navBtnActive : ''}`}
         aria-current={activeTab === 'attendance' ? 'page' : undefined}
         onClick={() => onChangeTab('attendance')}
+        onPointerEnter={() => onPrepareTab?.('attendance')}
+        onPointerDown={() => onPrepareTab?.('attendance')}
+        onFocus={() => onPrepareTab?.('attendance')}
       >
         <ClipboardCheck className={styles.navIcon} aria-hidden="true" />
         <span>เช็คชื่อ</span>
@@ -29,6 +33,9 @@ export function BottomNav({ activeTab, onChangeTab }: BottomNavProps) {
         className={`${styles.navBtn} ${activeTab === 'reports' ? styles.navBtnActive : ''}`}
         aria-current={activeTab === 'reports' ? 'page' : undefined}
         onClick={() => onChangeTab('reports')}
+        onPointerEnter={() => onPrepareTab?.('reports')}
+        onPointerDown={() => onPrepareTab?.('reports')}
+        onFocus={() => onPrepareTab?.('reports')}
       >
         <ChartNoAxesCombined className={styles.navIcon} aria-hidden="true" />
         <span>รายงาน</span>
@@ -39,6 +46,9 @@ export function BottomNav({ activeTab, onChangeTab }: BottomNavProps) {
         className={`${styles.navBtn} ${activeTab === 'settings' ? styles.navBtnActive : ''}`}
         aria-current={activeTab === 'settings' ? 'page' : undefined}
         onClick={() => onChangeTab('settings')}
+        onPointerEnter={() => onPrepareTab?.('settings')}
+        onPointerDown={() => onPrepareTab?.('settings')}
+        onFocus={() => onPrepareTab?.('settings')}
       >
         <SettingsIcon className={styles.navIcon} aria-hidden="true" />
         <span>ตั้งค่า</span>

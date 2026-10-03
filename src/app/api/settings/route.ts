@@ -4,6 +4,7 @@ import { createSuccessResponse, createErrorResponse } from '@/lib/server/errors'
 import {
   getShopId,
   getProfileRef,
+  getCalendarVersionsCol,
   getRequestsCol,
   recordAudit
 } from '@/lib/server/repository';
@@ -16,13 +17,19 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     await verifyOwner(req);
-    const profileSnap = await getProfileRef(getShopId()).get();
+    const includeCalendar = req.nextUrl.searchParams.get('calendar') === '1';
+    const shopId = getShopId();
+    const [profileSnap, calendarSnap] = await Promise.all([
+      getProfileRef(shopId).get(),
+      includeCalendar ? getCalendarVersionsCol(shopId).get() : Promise.resolve(null)
+    ]);
     const profile = profileSnap.data();
     return createSuccessResponse({
       profile: {
         shopName: displayShopName(profile?.shopName || profile?.displayName),
         revision: profile?.revision || 1
-      }
+      },
+      ...(calendarSnap ? { calendarVersions: calendarSnap.docs.map(doc => ({ versionId: doc.id, ...doc.data() })) } : {})
     });
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; statusCode?: number };

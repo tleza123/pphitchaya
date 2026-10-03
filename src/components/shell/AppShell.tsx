@@ -9,9 +9,18 @@ import { getBangkokToday, getBangkokMonth } from '@/lib/payroll/dates';
 import styles from '@/components/shell/shell.module.css';
 import { DEFAULT_SHOP_NAME, displayShopName } from '@/lib/shop-name';
 
-const AttendanceTab = React.memo(dynamic(() => import('@/components/attendance/AttendanceTab').then(module => module.AttendanceTab)));
-const ReportsTab = React.memo(dynamic(() => import('@/components/reports/ReportsTab').then(module => module.ReportsTab)));
-const SettingsTab = React.memo(dynamic(() => import('@/components/settings/SettingsTab')));
+const loadAttendance = () => import('@/components/attendance/AttendanceTab').then(module => module.AttendanceTab);
+const loadReports = () => import('@/components/reports/ReportsTab').then(module => module.ReportsTab);
+const loadSettings = () => import('@/components/settings/SettingsTab');
+function TabLoading() {
+  return <div aria-busy="true" aria-label="กำลังเปิดหน้า" className="tabLoading">
+    {[0, 1, 2].map(index => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}
+  </div>;
+}
+const AttendanceTab = React.memo(dynamic(loadAttendance, { loading: TabLoading }));
+const ReportsTab = React.memo(dynamic(loadReports, { loading: TabLoading }));
+const SettingsTab = React.memo(dynamic(loadSettings, { loading: TabLoading }));
+const TAB_LOADERS = { attendance: loadAttendance, reports: loadReports, settings: loadSettings };
 
 const TAB_PATHS: Record<TabType, string> = {
   attendance: '/',
@@ -59,6 +68,10 @@ export default function AppShell({ initialTab }: { initialTab: TabType }) {
     }
     showTab(tab);
   }, [showTab]);
+  const prepareTab = useCallback((tab: TabType) => {
+    // Load code on interaction intent without reading or caching financial data.
+    void TAB_LOADERS[tab]().catch(() => {});
+  }, []);
   const navigateToSettings = useCallback(() => changeTab('settings'), [changeTab]);
   const notifyAttendanceChanged = useCallback(() => setAttendanceVersion(version => version + 1), []);
 
@@ -74,6 +87,7 @@ export default function AppShell({ initialTab }: { initialTab: TabType }) {
         shopName={shopName}
         activeTab={activeTab}
         onChangeTab={changeTab}
+        onPrepareTab={prepareTab}
       />
 
       <main className={styles.mainContent}>
@@ -95,7 +109,7 @@ export default function AppShell({ initialTab }: { initialTab: TabType }) {
         </div>
       </main>
 
-      <BottomNav activeTab={activeTab} onChangeTab={changeTab} />
+      <BottomNav activeTab={activeTab} onChangeTab={changeTab} onPrepareTab={prepareTab} />
     </div>
   );
 }

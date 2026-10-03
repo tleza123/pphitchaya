@@ -11,13 +11,15 @@ interface AppHeaderProps {
   isClosed?: boolean;
   activeTab?: TabType;
   onChangeTab?: (tab: TabType) => void;
+  onPrepareTab?: (tab: TabType) => void;
 }
 
 export function AppHeader({
   shopName = DEFAULT_SHOP_NAME,
   isClosed = false,
   activeTab = 'attendance',
-  onChangeTab
+  onChangeTab,
+  onPrepareTab
 }: AppHeaderProps) {
   return (
     <header className={styles.header}>
@@ -35,6 +37,9 @@ export function AppHeader({
               type="button"
               className={`${styles.desktopNavBtn} ${activeTab === 'attendance' ? styles.desktopNavBtnActive : ''}`}
               onClick={() => onChangeTab('attendance')}
+              onPointerEnter={() => onPrepareTab?.('attendance')}
+              onPointerDown={() => onPrepareTab?.('attendance')}
+              onFocus={() => onPrepareTab?.('attendance')}
             >
               <ClipboardCheck className={styles.desktopNavIcon} aria-hidden="true" />
               <span>เช็คชื่อ</span>
@@ -43,6 +48,9 @@ export function AppHeader({
               type="button"
               className={`${styles.desktopNavBtn} ${activeTab === 'reports' ? styles.desktopNavBtnActive : ''}`}
               onClick={() => onChangeTab('reports')}
+              onPointerEnter={() => onPrepareTab?.('reports')}
+              onPointerDown={() => onPrepareTab?.('reports')}
+              onFocus={() => onPrepareTab?.('reports')}
             >
               <ChartNoAxesCombined className={styles.desktopNavIcon} aria-hidden="true" />
               <span>รายงาน</span>
@@ -51,6 +59,9 @@ export function AppHeader({
               type="button"
               className={`${styles.desktopNavBtn} ${activeTab === 'settings' ? styles.desktopNavBtnActive : ''}`}
               onClick={() => onChangeTab('settings')}
+              onPointerEnter={() => onPrepareTab?.('settings')}
+              onPointerDown={() => onPrepareTab?.('settings')}
+              onFocus={() => onPrepareTab?.('settings')}
             >
               <SettingsIcon className={styles.desktopNavIcon} aria-hidden="true" />
               <span>ตั้งค่า</span>

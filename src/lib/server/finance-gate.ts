@@ -26,7 +26,7 @@ export async function verifyFinanceGate(
   monthRef: admin.firestore.DocumentReference,
   targetMonthKey: string
 ): Promise<{ control: FinanceControlDoc; month: MonthDoc | null }> {
-  const controlSnap = await transaction.get(controlRef);
+  const [controlSnap, monthSnap] = await transaction.getAll(controlRef, monthRef);
   const control = controlSnap.exists
     ? (controlSnap.data() as FinanceControlDoc)
     : { revision: 1, closingMonth: null, activeCloseJobId: null, updatedAt: new Date().toISOString() };
@@ -35,7 +35,6 @@ export async function verifyFinanceGate(
     throw new Error('MONTH_CLOSING');
   }
 
-  const monthSnap = await transaction.get(monthRef);
   const month = monthSnap.exists ? (monthSnap.data() as MonthDoc) : null;
 
   if (month) {

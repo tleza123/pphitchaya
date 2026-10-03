@@ -53,10 +53,20 @@ export function AttendanceTab({
   const [pendingMap, setPendingMap] = useState<Record<string, boolean>>({});
   const [clearingId, setClearingId] = useState<string | null>(null);
   const fetchSequence = useRef(0);
+  const loadedDate = useRef<string | null>(null);
+  const currentDate = useRef(selectedDate);
+  currentDate.current = selectedDate;
+  const pendingWrites = useRef(new Set<string>());
+  const refreshAfterSave = useRef(false);
 
   const fetchDayData = useCallback(
     async (date: string) => {
       if (!idToken) return;
+      if (pendingWrites.current.size > 0) {
+        refreshAfterSave.current = true;
+        setLoading(true);
+        return;
+      }
       const sequence = ++fetchSequence.current;
       setLoading(true);
       setErrorMsg(null);
@@ -67,6 +77,7 @@ export function AttendanceTab({
         const json = await res.json();
         if (sequence !== fetchSequence.current) return;
         if (json.ok) {
+          loadedDate.current = date;
           setItems(json.data.items);
           setIsWorkday(json.data.isWorkday);
           setIsClosed(json.data.isClosed);
@@ -99,7 +110,7 @@ export function AttendanceTab({
   );
 
   useEffect(() => {
-    if (active) fetchDayData(selectedDate);
+    if (active) fetchDayData(currentDate.current);
   }, [active, selectedDate, fetchDayData]);
 
   const handleMark = async (
@@ -109,7 +120,11 @@ export function AttendanceTab({
     customAdvanceSatang?: number,
     customDeductionSatang?: number
   ) => {
-    if (!idToken || isClosed) return;
+    if (!idToken || isClosed || loading || loadedDate.current !== selectedDate || pendingWrites.current.has(employeeId)) return;
+    const saveDate = selectedDate;
+    pendingWrites.current.add(employeeId);
+    // Discard any read started before this write; never let it overwrite the saved revision.
+    ++fetchSequence.current;
     setPendingMap(prev => ({ ...prev, [employeeId]: true }));
     setItems(prev => prev.map(item => item.employee.employeeId === employeeId
       ? { ...item, attendance: {
@@ -164,6 +179,11 @@ export function AttendanceTab({
 
       const json = await res.json();
       if (json.ok) {
+        onAttendanceChanged();
+        if (currentDate.current !== saveDate) {
+          refreshAfterSave.current = true;
+          return;
+        }
         setItems(prev =>
           prev.map(item =>
             item.employee.employeeId === employeeId
@@ -193,17 +213,21 @@ export function AttendanceTab({
         } else if (deductionToSend === 0) {
           setDeductionInputs(prev => ({ ...prev, [employeeId]: '' }));
         }
-        onAttendanceChanged();
       } else {
         alert(json.error?.message || 'บันทึกไม่สำเร็จ');
-        fetchDayData(selectedDate);
+        fetchDayData(currentDate.current);
       }
     } catch {
       alert('เกิดข้อผิดพลาดในการส่งข้อมูล กรุณาตรวจสอบอีกครั้ง');
-      fetchDayData(selectedDate);
+      fetchDayData(currentDate.current);
     } finally {
+      pendingWrites.current.delete(employeeId);
       setPendingMap(prev => ({ ...prev, [employeeId]: false }));
       setClearingId(null);
+      if (pendingWrites.current.size === 0 && refreshAfterSave.current) {
+        refreshAfterSave.current = false;
+        fetchDayData(currentDate.current);
+      }
     }
   };
 
@@ -264,7 +288,7 @@ export function AttendanceTab({
       const json = await res.json();
       if (json.ok) {
         onAttendanceChanged();
-        fetchDayData(selectedDate);
+        fetchDayData(currentDate.current);
       } else {
         alert(json.error?.message || 'ไม่สามารถเพิ่มวันทำงานได้');
       }
@@ -358,14 +382,15 @@ export function AttendanceTab({
           <strong>วันหยุดตามตาราง</strong>
           <span>หากพนักงานมาทำงานจริง กรุณากดบันทึกวันทำงานเพิ่มก่อนเริ่มเช็คชื่อ</span>
           {!isClosed && (
-            <button type="button" className={styles.noticeBtn} onClick={handleAddWorkday}>
+            <button type="button" className={styles.noticeBtn} disabled={loading} onClick={handleAddWorkday}>
               บันทึกวันทำงานเพิ่ม
             </button>
           )}
         </div>
       )}
 
-      {loading ? (
+      {loading && loadedDate.current === selectedDate && <div className="refreshStatus" role="status">กำลังอัปเดตข้อมูล</div>}
+      {loading && loadedDate.current !== selectedDate ? (
         <div className={styles.cardGrid} aria-busy="true" aria-label="กำลังโหลดข้อมูลเช็กชื่อ">
           {[0, 1, 2].map(index => <div className={styles.skeletonCard} key={index}>
             <span className="loadingLine" /><span className="loadingLine" /><span className="loadingLine" />
@@ -402,6 +427,8 @@ export function AttendanceTab({
                 <div className={styles.avatar}>
                   {emp.photo ? (
                     <img
+                      loading="lazy"
+                      decoding="async"
                       src={`/api/employees/${emp.employeeId}/photo?v=${emp.photo.version}`}
                       alt={`รูป ${emp.nickname || emp.name}`}
                     />
@@ -431,7 +458,7 @@ export function AttendanceTab({
                     att.status === 'FULL' ? styles.statusBtnFullSelected : ''
                   }`}
                   aria-pressed={att.status === 'FULL'}
-                  disabled={isPending || isClosed || !isWorkday}
+                  disabled={loading || isPending || isClosed || !isWorkday}
                   onClick={() => handleMark(emp.employeeId, 'FULL', att.revision)}
                 >
                   เต็มวัน
@@ -443,7 +470,7 @@ export function AttendanceTab({
                     att.status === 'HALF' ? styles.statusBtnHalfSelected : ''
                   }`}
                   aria-pressed={att.status === 'HALF'}
-                  disabled={isPending || isClosed || !isWorkday}
+                  disabled={loading || isPending || isClosed || !isWorkday}
                   onClick={() => handleMark(emp.employeeId, 'HALF', att.revision)}
                 >
                   ครึ่งวัน
@@ -455,7 +482,7 @@ export function AttendanceTab({
                     att.status === 'ABSENT' ? styles.statusBtnAbsentSelected : ''
                   }`}
                   aria-pressed={att.status === 'ABSENT'}
-                  disabled={isPending || isClosed || !isWorkday}
+                  disabled={loading || isPending || isClosed || !isWorkday}
                   onClick={() => handleMark(emp.employeeId, 'ABSENT', att.revision)}
                 >
                   ไม่มา
@@ -481,12 +508,12 @@ export function AttendanceTab({
                       const val = e.target.value;
                       setAdvanceInputs(prev => ({ ...prev, [emp.employeeId]: val }));
                     }}
-                    disabled={isPending || isClosed || !isWorkday}
+                    disabled={loading || isPending || isClosed || !isWorkday}
                   />
                   <button
                     type="button"
                     className={styles.advanceSaveBtn}
-                    disabled={isPending || isClosed || !isWorkday}
+                    disabled={loading || isPending || isClosed || !isWorkday}
                     onClick={() => handleSaveAdvance(emp.employeeId, att.status, att.revision)}
                   >
                     บันทึกเบิก
@@ -518,12 +545,12 @@ export function AttendanceTab({
                       const val = e.target.value;
                       setDeductionInputs(prev => ({ ...prev, [emp.employeeId]: val }));
                     }}
-                    disabled={isPending || isClosed || !isWorkday}
+                    disabled={loading || isPending || isClosed || !isWorkday}
                   />
                   <button
                     type="button"
                     className={styles.deductionSaveBtn}
-                    disabled={isPending || isClosed || !isWorkday}
+                    disabled={loading || isPending || isClosed || !isWorkday}
                     onClick={() => handleSaveDeduction(emp.employeeId, att.status, att.revision)}
                   >
                     บันทึกหัก

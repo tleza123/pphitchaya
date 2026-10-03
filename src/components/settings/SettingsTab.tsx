@@ -98,6 +98,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const loadSequence = useRef(0);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const loadData = async () => {
     if (!idToken) return;
@@ -108,9 +109,10 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
       // Fetch employees
       const [res, bootRes] = await Promise.all([
         fetch('/api/employees', { headers: { Authorization: `Bearer ${idToken}` } }),
-        fetch('/api/bootstrap', { headers: { Authorization: `Bearer ${idToken}` } })
+        fetch('/api/settings?calendar=1', { headers: { Authorization: `Bearer ${idToken}` } })
       ]);
       if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลพนักงานได้');
+      if (!bootRes.ok) throw new Error('ไม่สามารถโหลดการตั้งค่าได้');
       const data = await res.json();
       const rawList = Array.isArray(data.data)
         ? data.data
@@ -141,6 +143,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
       }));
       if (sequence !== loadSequence.current) return;
       setEmployees(mappedList);
+      setHasLoaded(true);
 
       // Fetch bootstrap/settings
       if (bootRes.ok) {
@@ -202,6 +205,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
   // Open edit form
   const handleOpenEdit = (emp: Employee) => {
+    if (loading) return;
     setSelectedEmployee(emp);
     setFormName(emp.name);
     setFormNickname(emp.nickname || '');
@@ -219,7 +223,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     );
     setFormPhotoFile(null);
     setFormPhotoPreview(
-      emp.photoPath ? `/api/employees/${emp.id}/photo?t=${emp.photoVersion || 1}` : null
+      emp.photoPath ? `/api/employees/${emp.id}/photo?v=${emp.photoVersion || 1}` : null
     );
     setView('edit');
   };
@@ -645,6 +649,8 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
               />
               {formPhotoPreview ? (
                 <img
+                  loading="lazy"
+                  decoding="async"
                   src={formPhotoPreview}
                   alt="รูปถ่าย"
                   className={styles.photoPreview}
@@ -867,6 +873,8 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
         </div>
       )}
 
+      {loading && hasLoaded && <div className="refreshStatus" role="status">กำลังอัปเดตข้อมูล</div>}
+
       {/* VIEW: LIST */}
       {view === 'list' && (
         <div>
@@ -892,7 +900,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
             </div>
           </div>
 
-          {loading ? (
+          {loading && !hasLoaded ? (
             <div className={styles.employeeGrid} aria-busy="true" aria-label="กำลังโหลดพนักงาน">
               {[0, 1, 2].map(index => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}
             </div>
@@ -918,7 +926,9 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                     <div className={styles.avatar}>
                       {emp.photoPath ? (
                         <img
-                          src={`/api/employees/${emp.id}/photo?t=${emp.photoVersion || 1}`}
+                          loading="lazy"
+                          decoding="async"
+                          src={`/api/employees/${emp.id}/photo?v=${emp.photoVersion || 1}`}
                           alt={emp.nickname || emp.name}
                         />
                       ) : (
@@ -959,6 +969,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                   <button
                     className={styles.editBtn}
                     onClick={() => handleOpenEdit(emp)}
+                    disabled={loading}
                   >
                     แก้ไขข้อมูล
                   </button>

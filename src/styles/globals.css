@@ -194,3 +194,39 @@ img {
     display: none !important;
   }
 }
+
+.refreshStatus {
+  position: fixed;
+  right: 1rem;
+  bottom: calc(6rem + env(safe-area-inset-bottom));
+  z-index: 20;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--team-border);
+  border-radius: 0.5rem;
+  background: var(--team-surface);
+  pointer-events: none;
+  color: var(--team-muted);
+  font-size: var(--team-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2rem;
+}
+.tabLoading {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 1rem;
+}
+.refreshStatus::before {
+  content: '';
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 1px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: refreshSpin 0.8s linear infinite;
+}
+@keyframes refreshSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .refreshStatus::before { animation: none; }
+}
