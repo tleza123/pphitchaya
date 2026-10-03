@@ -5,13 +5,19 @@ import { createSuccessResponse, createErrorResponse } from '@/lib/server/errors'
 import {
   getShopId,
   getEmployeeRef,
+  getEmployeePhotoRef,
   getRatesCol,
+  getExtraTemplatesCol,
   getMonthRef,
+  getMonthsCol,
+  getAttendanceCol,
+  getMonthlyExtrasCol,
   getRequestsCol,
   recordAudit
 } from '@/lib/server/repository';
 import { getAdminFirestore } from '@/lib/firebase/admin';
 import { dateKey } from '@/lib/payroll/dates';
+import { getBangkokMonth } from '@/lib/payroll/dates';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
 
 export const dynamic = 'force-dynamic';
@@ -159,5 +165,92 @@ export async function PATCH(
       error.message,
       error.statusCode || 500
     );
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const owner = await verifyOwner(req);
+    const { id: employeeId } = await params;
+    const body = await req.json();
+    const { expectedRevision, requestId } = body;
+    if (typeof expectedRevision !== 'number' || typeof requestId !== 'string' || requestId.length < 5) {
+      return createErrorResponse('INVALID_INPUT', 'ข้อมูลการลบไม่ครบถ้วน', 422);
+    }
+
+    const shopId = getShopId();
+    const db = getAdminFirestore();
+    const employeeRef = getEmployeeRef(employeeId, shopId);
+    const requestRef = getRequestsCol(shopId).doc(requestId);
+    const payloadHash = computePayloadHash(owner.uid, 'DELETE', employeeId, { expectedRevision });
+
+    const result = await db.runTransaction(async tx => {
+      const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
+      if (cached) return cached;
+
+      const employeeSnap = await tx.get(employeeRef);
+      if (!employeeSnap.exists) throw new Error('NOT_FOUND');
+      const employee = employeeSnap.data() as { startDate: string; endDate?: string | null; revision: number };
+      if (employee.revision !== expectedRevision) throw new Error('CONFLICT');
+
+      const monthsSnap = await tx.get(getMonthsCol(shopId));
+      const monthKeys = new Set(monthsSnap.docs.map(doc => doc.id));
+      monthKeys.add(employee.startDate.slice(0, 7));
+      monthKeys.add(getBangkokMonth());
+      const monthStates = new Map(monthsSnap.docs.map(doc => [doc.id, doc.data().state]));
+      const relatedDocs = [];
+
+      for (const month of monthKeys) {
+        if (month >= employee.startDate.slice(0, 7) && (!employee.endDate || month <= employee.endDate.slice(0, 7))) {
+          const state = monthStates.get(month);
+          if (state && state !== 'OPEN') throw new Error('MONTH_NOT_OPEN');
+        }
+        const attendance = await tx.get(getAttendanceCol(month, shopId).where('employeeId', '==', employeeId));
+        const extras = await tx.get(getMonthlyExtrasCol(month, shopId).where('employeeId', '==', employeeId));
+        relatedDocs.push(...attendance.docs, ...extras.docs);
+      }
+
+      const rates = await tx.get(getRatesCol(employeeId, shopId));
+      const templates = await tx.get(getExtraTemplatesCol(employeeId, shopId));
+      const photo = await tx.get(getEmployeePhotoRef(employeeId, shopId));
+      const documents = [...relatedDocs, ...rates.docs, ...templates.docs];
+      if (documents.length > 400) throw new Error('TOO_MANY_RECORDS');
+
+      for (const doc of documents) tx.delete(doc.ref);
+      if (photo.exists) tx.delete(photo.ref);
+      tx.delete(employeeRef);
+
+      const now = new Date().toISOString();
+      recordAudit(tx, shopId, owner.uid, 'DELETE_EMPLOYEE', employeeId, {
+        ...employeeSnap.data(),
+        deletedAttendanceAndExtras: relatedDocs.length,
+        deletedRates: rates.size,
+        deletedTemplates: templates.size
+      }, null, requestId);
+      const responsePayload = { employeeId, deleted: true, deletedAt: now };
+      recordRequestReceipt(tx, requestRef, {
+        requestId,
+        actorUid: owner.uid,
+        method: 'DELETE',
+        entityKey: employeeId,
+        payloadHash,
+        response: responsePayload,
+        createdAt: now
+      });
+      return responsePayload;
+    });
+
+    return createSuccessResponse(result, requestId);
+  } catch (err: unknown) {
+    const error = err as { code?: string; message?: string; statusCode?: number };
+    if (error.message === 'NOT_FOUND') return createErrorResponse('NOT_FOUND', undefined, 404);
+    if (error.message === 'CONFLICT') return createErrorResponse('CONFLICT', undefined, 409);
+    if (error.message && ['MONTH_NOT_OPEN', 'TOO_MANY_RECORDS'].includes(error.message)) {
+      return createErrorResponse(error.message, undefined, 422);
+    }
+    return createErrorResponse(error.code || 'INTERNAL_ERROR', error.message, error.statusCode || 500);
   }
 }
