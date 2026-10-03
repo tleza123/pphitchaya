@@ -356,6 +356,8 @@
 
 .advanceInput {
   flex: 1;
+  min-width: 0;
+  width: 100%;
   min-height: var(--team-btn-height);
   padding: 0.6rem 0.8rem;
   border: 1px solid var(--team-input-border);
