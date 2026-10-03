@@ -30,6 +30,7 @@ export default function AppShell({ initialTab }: { initialTab: TabType }) {
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [mountedTabs, setMountedTabs] = useState<Set<TabType>>(() => new Set([initialTab]));
   const [shopName, setShopName] = useState<string>(DEFAULT_SHOP_NAME);
+  const [attendanceVersion, setAttendanceVersion] = useState(0);
 
   useEffect(() => {
     fetch('/api/settings', {
@@ -59,6 +60,7 @@ export default function AppShell({ initialTab }: { initialTab: TabType }) {
     showTab(tab);
   }, [showTab]);
   const navigateToSettings = useCallback(() => changeTab('settings'), [changeTab]);
+  const notifyAttendanceChanged = useCallback(() => setAttendanceVersion(version => version + 1), []);
 
   useEffect(() => {
     const restoreTab = () => showTab(tabFromPath(window.location.pathname));
@@ -78,16 +80,18 @@ export default function AppShell({ initialTab }: { initialTab: TabType }) {
         {/* In-memory tab display caching to preserve scroll and state without re-render lag */}
         <div style={{ display: activeTab === 'attendance' ? 'block' : 'none' }}>
           {mountedTabs.has('attendance') && <AttendanceTab
+            active={activeTab === 'attendance'}
             initialDate={today}
             serverToday={today}
             onNavigateToSettings={navigateToSettings}
+            onAttendanceChanged={notifyAttendanceChanged}
           />}
         </div>
         <div style={{ display: activeTab === 'reports' ? 'block' : 'none' }}>
-          {mountedTabs.has('reports') && <ReportsTab initialMonth={month} serverToday={today} />}
+          {mountedTabs.has('reports') && <ReportsTab active={activeTab === 'reports'} attendanceVersion={attendanceVersion} initialMonth={month} serverToday={today} />}
         </div>
         <div style={{ display: activeTab === 'settings' ? 'block' : 'none' }}>
-          {mountedTabs.has('settings') && <SettingsTab onUpdateShopName={setShopName} />}
+          {mountedTabs.has('settings') && <SettingsTab active={activeTab === 'settings'} onUpdateShopName={setShopName} />}
         </div>
       </main>
 

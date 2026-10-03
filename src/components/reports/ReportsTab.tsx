@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { formatMoney } from '@/lib/payroll/money';
 import { formatThaiDate, formatThaiMonth } from '@/lib/payroll/dates';
@@ -27,11 +27,13 @@ interface EmployeeReportSummary {
 }
 
 interface ReportsTabProps {
+  active: boolean;
+  attendanceVersion: number;
   initialMonth: string;
   serverToday: string;
 }
 
-export function ReportsTab({ initialMonth, serverToday }: ReportsTabProps) {
+export function ReportsTab({ active, attendanceVersion, initialMonth, serverToday }: ReportsTabProps) {
   const { idToken } = useAuth();
   const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth);
   const [reportData, setReportData] = useState<any>(null);
@@ -53,10 +55,14 @@ export function ReportsTab({ initialMonth, serverToday }: ReportsTabProps) {
   const [extraType, setExtraType] = useState<'BONUS' | 'DEDUCTION'>('BONUS');
   const [newExtraLabel, setNewExtraLabel] = useState<string>('');
   const [newExtraAmount, setNewExtraAmount] = useState<string>('');
+  const reportFetchSequence = useRef(0);
+  const detailFetchSequence = useRef(0);
+  const wasActive = useRef(false);
 
   const fetchMonthlyReport = useCallback(
     async (month: string) => {
       if (!idToken) return;
+      const sequence = ++reportFetchSequence.current;
       setLoading(true);
       setErrorMsg(null);
       try {
@@ -64,15 +70,20 @@ export function ReportsTab({ initialMonth, serverToday }: ReportsTabProps) {
           headers: { Authorization: `Bearer ${idToken}` }
         });
         const json = await res.json();
+        if (sequence !== reportFetchSequence.current) return;
         if (json.ok) {
           setReportData(json.data);
         } else {
+          setReportData(null);
           setErrorMsg(json.error?.message || 'โหลดรายงานไม่สำเร็จ');
         }
       } catch {
-        setErrorMsg('ไม่สามารถเชื่อมต่อระบบได้');
+        if (sequence === reportFetchSequence.current) {
+          setReportData(null);
+          setErrorMsg('ไม่สามารถเชื่อมต่อระบบได้');
+        }
       } finally {
-        setLoading(false);
+        if (sequence === reportFetchSequence.current) setLoading(false);
       }
     },
     [idToken]
@@ -81,29 +92,38 @@ export function ReportsTab({ initialMonth, serverToday }: ReportsTabProps) {
   const fetchEmployeeDetail = useCallback(
     async (empId: string, month: string) => {
       if (!idToken) return;
+      const sequence = ++detailFetchSequence.current;
       setDetailLoading(true);
       try {
         const res = await fetch(`/api/reports/${empId}?month=${month}`, {
           headers: { Authorization: `Bearer ${idToken}` }
         });
         const json = await res.json();
+        if (sequence !== detailFetchSequence.current) return;
         if (json.ok) {
           setDetailData(json.data);
         } else {
           alert(json.error?.message || 'โหลดรายละเอียดไม่สำเร็จ');
         }
       } catch {
-        alert('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+        if (sequence === detailFetchSequence.current) alert('เกิดข้อผิดพลาดในการโหลดข้อมูล');
       } finally {
-        setDetailLoading(false);
+        if (sequence === detailFetchSequence.current) setDetailLoading(false);
       }
     },
     [idToken]
   );
 
   useEffect(() => {
-    fetchMonthlyReport(selectedMonth);
-  }, [selectedMonth, fetchMonthlyReport]);
+    if (active) fetchMonthlyReport(selectedMonth);
+  }, [active, attendanceVersion, selectedMonth, fetchMonthlyReport]);
+
+  useEffect(() => {
+    if (active && !wasActive.current && selectedEmployeeId) {
+      fetchEmployeeDetail(selectedEmployeeId, selectedMonth);
+    }
+    wasActive.current = active;
+  }, [active, selectedEmployeeId, selectedMonth, fetchEmployeeDetail]);
 
   const handleOpenDetail = (empId: string) => {
     setSelectedEmployeeId(empId);

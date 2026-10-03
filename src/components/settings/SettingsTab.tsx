@@ -48,12 +48,13 @@ interface ShopSettings {
 }
 
 interface SettingsTabProps {
+  active: boolean;
   onUpdateShopName?: (name: string) => void;
 }
 
 const DAY_NAMES = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 
-export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {}) {
+export default function SettingsTab({ active, onUpdateShopName }: SettingsTabProps) {
   const { idToken } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [filterActive, setFilterActive] = useState<boolean>(true);
@@ -96,9 +97,11 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
   const [endDateInput, setEndDateInput] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const loadSequence = useRef(0);
 
   const loadData = async () => {
     if (!idToken) return;
+    const sequence = ++loadSequence.current;
     setLoading(true);
     setError(null);
     try {
@@ -136,11 +139,13 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
           amountSatang: typeof t.amountSatang === 'number' ? t.amountSatang : 0
         }))
       }));
+      if (sequence !== loadSequence.current) return;
       setEmployees(mappedList);
 
       // Fetch bootstrap/settings
       if (bootRes.ok) {
         const bootJson = await bootRes.json();
+        if (sequence !== loadSequence.current) return;
         const bootData = bootJson.data || bootJson;
         const profile = bootData.profile || bootData.shop || {};
         const currentShopName = displayShopName(profile.shopName || profile.displayName);
@@ -160,15 +165,18 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
         setSelectedWorkDays(activeWorkDays);
       }
     } catch (err: any) {
-      setError(err.message || 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
+      if (sequence === loadSequence.current) {
+        setEmployees([]);
+        setError(err.message || 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
+      }
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-  }, [idToken]);
+    if (active) loadData();
+  }, [active, idToken]);
 
   const showNotification = (msg: string) => {
     setSuccessMessage(msg);

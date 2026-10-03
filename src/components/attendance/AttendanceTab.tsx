@@ -25,15 +25,19 @@ interface AttendanceItem {
 }
 
 interface AttendanceTabProps {
+  active: boolean;
   initialDate: string;
   serverToday: string;
   onNavigateToSettings: () => void;
+  onAttendanceChanged: () => void;
 }
 
 export function AttendanceTab({
+  active,
   initialDate,
   serverToday,
-  onNavigateToSettings
+  onNavigateToSettings,
+  onAttendanceChanged
 }: AttendanceTabProps) {
   const { idToken } = useAuth();
   const [selectedDate, setSelectedDate] = useState<string>(initialDate || serverToday);
@@ -95,8 +99,8 @@ export function AttendanceTab({
   );
 
   useEffect(() => {
-    fetchDayData(selectedDate);
-  }, [selectedDate, fetchDayData]);
+    if (active) fetchDayData(selectedDate);
+  }, [active, selectedDate, fetchDayData]);
 
   const handleMark = async (
     employeeId: string,
@@ -189,6 +193,7 @@ export function AttendanceTab({
         } else if (deductionToSend === 0) {
           setDeductionInputs(prev => ({ ...prev, [employeeId]: '' }));
         }
+        onAttendanceChanged();
       } else {
         alert(json.error?.message || 'บันทึกไม่สำเร็จ');
         fetchDayData(selectedDate);
@@ -258,6 +263,7 @@ export function AttendanceTab({
       });
       const json = await res.json();
       if (json.ok) {
+        onAttendanceChanged();
         fetchDayData(selectedDate);
       } else {
         alert(json.error?.message || 'ไม่สามารถเพิ่มวันทำงานได้');
