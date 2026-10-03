@@ -96,6 +96,7 @@ test('Test 1: 22 full + 4 half + 2 absent + monthly extras = 14,500 THB', () => 
 
 test('Test 2: Historical rates calculate each day, including half-days', () => {
   const f = fixture();
+  f.employee.endDate = '2026-09-22';
   f.rates.push({
     employeeId: 'e1',
     effectiveFrom: '2026-09-11',
@@ -143,25 +144,43 @@ test('Test 5: Leap year and invalid date', () => {
   assert.throws(() => monthKey('2026-13'));
 });
 
-test('Test 6: Unmarked days are pending, holidays and future days are excluded', () => {
+test('Test 6: Unmarked workdays default to full pay; holidays and future days are excluded', () => {
   const f = fixture();
   f.today = '2026-09-03';
   f.calendar = { '2026-09-02': 'HOLIDAY' };
   const r = calculateEmployeeMonth(f);
-  assert.equal(r.pending, 2);
+  assert.equal(r.pending, 0);
+  assert.equal(r.full, 2);
+  assert.equal(r.baseSatang, 100000);
   assert.equal(r.absent, 0);
   const holidayDay = r.days.find((x) => x.dateKey === '2026-09-02');
   assert.equal(holidayDay?.amountSatang, null);
   assert.equal(holidayDay?.status, 'HOLIDAY');
 });
 
-test('Test 7: Employment dates and system start bound pending days', () => {
+test('Test 7: Employment dates and system start bound default full days', () => {
   const f = fixture();
   f.employee.startDate = '2026-09-10';
   f.employee.endDate = '2026-09-12';
-  assert.equal(calculateEmployeeMonth(f).pending, 3);
+  assert.equal(calculateEmployeeMonth(f).full, 3);
   f.systemStartDate = '2026-09-11';
-  assert.equal(calculateEmployeeMonth(f).pending, 2);
+  assert.equal(calculateEmployeeMonth(f).full, 2);
+});
+
+test('Unmarked legacy records default to full; half and absent override it', () => {
+  const f = fixture();
+  f.today = '2026-09-04';
+  f.attendance = [
+    { employeeId: 'e1', dateKey: '2026-09-02', status: 'UNMARKED', advanceSatang: 0 },
+    { employeeId: 'e1', dateKey: '2026-09-03', status: 'HALF', advanceSatang: 0 },
+    { employeeId: 'e1', dateKey: '2026-09-04', status: 'ABSENT', advanceSatang: 0 }
+  ];
+  const r = calculateEmployeeMonth(f);
+  assert.equal(r.full, 2);
+  assert.equal(r.half, 1);
+  assert.equal(r.absent, 1);
+  assert.equal(r.pending, 0);
+  assert.equal(r.baseSatang, 125000);
 });
 
 test('Test 8: Duplicate attendance, rates and extras fail closed', () => {
@@ -280,6 +299,7 @@ test('Test 13: Closure manifest and employee snapshot properly persist and sum a
 
 test('Test 14: Employee with nickname-only is valid and calculated correctly', () => {
   const f = fixture();
+  f.today = '2026-09-05';
   f.employee.name = 'บอย'; // Only nickname used as name
   f.employee.nickname = 'บอย';
   f.attendance = marks(5, 'FULL');
@@ -295,6 +315,7 @@ test('Test 14: Employee with nickname-only is valid and calculated correctly', (
 
 test('Test 15: Deduction system correctly calculates daily and monthly deductions, updating snapshots and manifest', () => {
   const f = fixture();
+  f.today = '2026-09-05';
   f.attendance = marks(5, 'FULL');
   // Day 2 has advance 300 THB
   f.attendance[1].advanceSatang = 30000;

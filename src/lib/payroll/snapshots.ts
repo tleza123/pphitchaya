@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { EmployeeMonthResult } from './engine';
 
-export const ALGORITHM_VERSION = '2026.1';
+export const ALGORITHM_VERSION = '2026.2';
 
 export interface EmployeeSnapshot {
   employeeId: string;

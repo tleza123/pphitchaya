@@ -16,7 +16,7 @@ import {
 import { getAdminFirestore } from '@/lib/firebase/admin';
 import { dateKey, getBangkokToday } from '@/lib/payroll/dates';
 import { isWorkday, resolveWeekdaysForDate } from '@/lib/payroll/calendar';
-import { employedOn } from '@/lib/payroll/engine';
+import { employedOn, effectiveAttendanceStatus } from '@/lib/payroll/engine';
 import { validateSatang } from '@/lib/payroll/money';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
 import { verifyFinanceGate } from '@/lib/server/finance-gate';
@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
 
     const activeWeekdays = resolveWeekdaysForDate(targetDate, calendarVersions);
     const workday = isWorkday(targetDate, activeWeekdays, overrides);
+    const defaultFullDay = workday && targetDate <= getBangkokToday();
 
     // Attendance
     const attendanceSnap = await getAttendanceCol(monthKey, shopId)
@@ -93,7 +94,8 @@ export async function GET(req: NextRequest) {
         },
         attendance: record
           ? {
-              status: record.status,
+              status: defaultFullDay ? effectiveAttendanceStatus(record.status) : record.status,
+              automatic: defaultFullDay && record.status === 'UNMARKED',
               advanceSatang: record.advanceSatang || 0,
               deductionSatang: record.deductionSatang || 0,
               revision: record.revision,
@@ -101,7 +103,8 @@ export async function GET(req: NextRequest) {
               notes: record.notes
             }
           : {
-              status: 'UNMARKED',
+              status: defaultFullDay ? 'FULL' : 'UNMARKED',
+              automatic: defaultFullDay,
               advanceSatang: 0,
               deductionSatang: 0,
               revision: 0,

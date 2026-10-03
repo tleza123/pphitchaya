@@ -15,6 +15,7 @@ interface AttendanceItem {
   };
   attendance: {
     status: 'FULL' | 'HALF' | 'ABSENT' | 'UNMARKED';
+    automatic?: boolean;
     advanceSatang: number;
     deductionSatang: number;
     revision: number;
@@ -43,7 +44,7 @@ export function AttendanceTab({
   const [isClosed, setIsClosed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [filterUnchecked, setFilterUnchecked] = useState<boolean>(false);
+  const [filterExceptions, setFilterExceptions] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [pendingMap, setPendingMap] = useState<Record<string, boolean>>({});
   const [clearingId, setClearingId] = useState<string | null>(null);
@@ -151,7 +152,8 @@ export function AttendanceTab({
               ? {
                   ...item,
                   attendance: {
-                    status: json.data.status,
+                    status: json.data.status === 'UNMARKED' && isWorkday ? 'FULL' : json.data.status,
+                    automatic: json.data.status === 'UNMARKED' && isWorkday,
                     advanceSatang: json.data.advanceSatang || 0,
                     deductionSatang: json.data.deductionSatang || 0,
                     revision: json.data.revision,
@@ -252,7 +254,7 @@ export function AttendanceTab({
 
   const filteredItems = items
     .filter(item => {
-      if (filterUnchecked && item.attendance.status !== 'UNMARKED') return false;
+      if (filterExceptions && !['HALF', 'ABSENT'].includes(item.attendance.status)) return false;
       if (searchQuery.trim().length > 0) {
         const query = searchQuery.trim().toLowerCase();
         const matchName = item.employee.name.toLowerCase().includes(query);
@@ -263,7 +265,9 @@ export function AttendanceTab({
       return true;
     });
 
-  const checkedCount = items.filter(item => item.attendance.status !== 'UNMARKED').length;
+  const fullCount = items.filter(item => item.attendance.status === 'FULL').length;
+  const halfCount = items.filter(item => item.attendance.status === 'HALF').length;
+  const absentCount = items.filter(item => item.attendance.status === 'ABSENT').length;
 
   return (
     <div>
@@ -303,14 +307,14 @@ export function AttendanceTab({
 
           <div className={styles.toolbar}>
             <p className={styles.checkedCount}>
-              เช็คแล้ว {checkedCount} จาก {items.length} คน
+              {isWorkday ? `เต็มวัน ${fullCount} · ครึ่งวัน ${halfCount} · ไม่มา ${absentCount}` : 'วันหยุดตามตาราง'}
             </p>
             <button
               type="button"
-              className={`${styles.filterBtn} ${filterUnchecked ? styles.filterBtnActive : ''}`}
-              onClick={() => setFilterUnchecked(!filterUnchecked)}
+              className={`${styles.filterBtn} ${filterExceptions ? styles.filterBtnActive : ''}`}
+              onClick={() => setFilterExceptions(!filterExceptions)}
             >
-              {filterUnchecked ? 'ดูทั้งหมด' : 'ดูที่ยังไม่เช็ค'}
+              {filterExceptions ? 'ดูทั้งหมด' : 'ดูครึ่งวันและไม่มา'}
             </button>
           </div>
         </div>
@@ -356,7 +360,7 @@ export function AttendanceTab({
         </div>
       ) : filteredItems.length === 0 ? (
         <p style={{ textAlign: 'center', color: 'var(--team-muted)', margin: '2rem 0' }}>
-          {filterUnchecked ? 'เช็คชื่อครบทุกคนแล้ว' : 'ไม่พบรายชื่อที่ตรงกับการค้นหา'}
+          {filterExceptions ? 'ไม่มีรายการครึ่งวันหรือไม่มา' : 'ไม่พบรายชื่อที่ตรงกับการค้นหา'}
         </p>
       ) : (
         <div className={styles.cardGrid}>
@@ -366,7 +370,7 @@ export function AttendanceTab({
           const isPending = Boolean(pendingMap[emp.employeeId]);
           const isClearing = clearingId === emp.employeeId;
 
-          let statusLabel = 'ยังไม่เช็ค';
+          let statusLabel = 'วันหยุด';
           if (att.status === 'FULL') statusLabel = 'เต็มวัน';
           if (att.status === 'HALF') statusLabel = 'ครึ่งวัน';
           if (att.status === 'ABSENT') statusLabel = 'ไม่มา';
@@ -406,7 +410,7 @@ export function AttendanceTab({
                     att.status === 'FULL' ? styles.statusBtnFullSelected : ''
                   }`}
                   aria-pressed={att.status === 'FULL'}
-                  disabled={isPending || isClosed}
+                  disabled={isPending || isClosed || !isWorkday}
                   onClick={() => handleMark(emp.employeeId, 'FULL', att.revision)}
                 >
                   เต็มวัน
@@ -418,7 +422,7 @@ export function AttendanceTab({
                     att.status === 'HALF' ? styles.statusBtnHalfSelected : ''
                   }`}
                   aria-pressed={att.status === 'HALF'}
-                  disabled={isPending || isClosed}
+                  disabled={isPending || isClosed || !isWorkday}
                   onClick={() => handleMark(emp.employeeId, 'HALF', att.revision)}
                 >
                   ครึ่งวัน
@@ -430,7 +434,7 @@ export function AttendanceTab({
                     att.status === 'ABSENT' ? styles.statusBtnAbsentSelected : ''
                   }`}
                   aria-pressed={att.status === 'ABSENT'}
-                  disabled={isPending || isClosed}
+                  disabled={isPending || isClosed || !isWorkday}
                   onClick={() => handleMark(emp.employeeId, 'ABSENT', att.revision)}
                 >
                   ไม่มา
@@ -456,12 +460,12 @@ export function AttendanceTab({
                       const val = e.target.value;
                       setAdvanceInputs(prev => ({ ...prev, [emp.employeeId]: val }));
                     }}
-                    disabled={isPending || isClosed}
+                    disabled={isPending || isClosed || !isWorkday}
                   />
                   <button
                     type="button"
                     className={styles.advanceSaveBtn}
-                    disabled={isPending || isClosed}
+                    disabled={isPending || isClosed || !isWorkday}
                     onClick={() => handleSaveAdvance(emp.employeeId, att.status, att.revision)}
                   >
                     บันทึกเบิก
@@ -493,12 +497,12 @@ export function AttendanceTab({
                       const val = e.target.value;
                       setDeductionInputs(prev => ({ ...prev, [emp.employeeId]: val }));
                     }}
-                    disabled={isPending || isClosed}
+                    disabled={isPending || isClosed || !isWorkday}
                   />
                   <button
                     type="button"
                     className={styles.deductionSaveBtn}
-                    disabled={isPending || isClosed}
+                    disabled={isPending || isClosed || !isWorkday}
                     onClick={() => handleSaveDeduction(emp.employeeId, att.status, att.revision)}
                   >
                     บันทึกหัก
@@ -515,6 +519,8 @@ export function AttendanceTab({
                 <span className={styles.statusText}>
                   {isPending
                     ? 'กำลังบันทึก...'
+                    : att.automatic
+                    ? 'เต็มวัน · ค่าเริ่มต้น'
                     : att.status !== 'UNMARKED'
                     ? `${statusLabel} · บันทึกแล้ว`
                     : att.advanceSatang > 0 && att.deductionSatang > 0
@@ -523,14 +529,14 @@ export function AttendanceTab({
                     ? 'บันทึกเบิกเงินแล้ว'
                     : att.deductionSatang > 0
                     ? 'บันทึกหักเงินแล้ว'
-                    : 'ยังไม่เช็ค'}
+                    : 'วันหยุด'}
                 </span>
 
-                {(att.status !== 'UNMARKED' || att.advanceSatang > 0 || att.deductionSatang > 0) && !isClosed && (
+                {(!att.automatic && (att.status !== 'UNMARKED' || att.advanceSatang > 0 || att.deductionSatang > 0)) && !isClosed && (
                   <div>
                     {isClearing ? (
                       <div className={styles.confirmBox}>
-                        <span>ยืนยันล้างข้อมูล</span>
+                        <span>ยืนยันล้างสถานะและยอดเงิน</span>
                         <button
                           type="button"
                           className={styles.textBtn}

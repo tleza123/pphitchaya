@@ -6,6 +6,11 @@ export { validateSatang };
 
 export type AttendanceStatus = 'FULL' | 'HALF' | 'ABSENT' | 'UNMARKED' | 'HOLIDAY';
 
+/** A missing or cleared attendance entry uses the normal full-day schedule. */
+export function effectiveAttendanceStatus(status: AttendanceStatus | null | undefined): AttendanceStatus {
+  return !status || status === 'UNMARKED' ? 'FULL' : status;
+}
+
 export interface EmployeeRecord {
   employeeId: string;
   name: string;
@@ -221,7 +226,7 @@ export function calculateEmployeeMonth(input: CalculateInput): EmployeeMonthResu
 
     const workday = isWorkday(date, activeWeekdays, input.calendar);
     const row = attendanceMap.get(date);
-    const status: AttendanceStatus = row ? row.status : 'UNMARKED';
+    const status = effectiveAttendanceStatus(row?.status);
     const dayAdvance = row?.advanceSatang ? validateSatang(row.advanceSatang) : 0;
     const dayDeduction = row?.deductionSatang ? validateSatang(row.deductionSatang) : 0;
 
@@ -229,18 +234,6 @@ export function calculateEmployeeMonth(input: CalculateInput): EmployeeMonthResu
       result.days.push({
         dateKey: date,
         status: 'HOLIDAY',
-        amountSatang: null,
-        advanceSatang: dayAdvance,
-        deductionSatang: dayDeduction
-      });
-      return;
-    }
-
-    if (status === 'UNMARKED') {
-      result.pending += 1;
-      result.days.push({
-        dateKey: date,
-        status: 'UNMARKED',
         amountSatang: null,
         advanceSatang: dayAdvance,
         deductionSatang: dayDeduction
