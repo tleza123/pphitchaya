@@ -18,8 +18,8 @@ export class AuthError extends Error {
 }
 
 /**
- * The application is protected by Vercel Password Protection, so there is no
- * in-app sign-in prompt. Keep this boundary in one place for a future change.
+ * Single-owner mode has no in-app sign-in. This function supplies a stable
+ * actor ID for audit records; deployment access must be protected separately.
  */
 export async function verifyOwner(req: Request): Promise<AuthenticatedOwner> {
   void req;
