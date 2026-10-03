@@ -1,22 +1,6 @@
 @import './tokens.css';
 
-/* Thai & Latin Ekkamai New Web Fonts */
-@font-face {
-  font-family: 'Ekkamai New';
-  src: url('/fonts/EkkamaiNew-Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Ekkamai New';
-  src: url('/fonts/EkkamaiNew-Bold.woff2') format('woff2');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* Thai & Latin Sarabun Web Fonts */
+/* Local Thai and Latin Sarabun web fonts */
 @font-face {
   font-family: 'Sarabun';
   font-style: normal;

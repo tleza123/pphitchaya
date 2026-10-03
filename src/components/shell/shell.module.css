@@ -33,20 +33,10 @@
   min-width: 0;
 }
 
-.brand {
-  letter-spacing: 0.05em;
+.shopName {
   font-size: 1.15rem;
   font-weight: 700;
-  white-space: nowrap;
-}
-
-.brand span {
-  color: var(--team-accent);
-}
-
-.shopName {
-  font-size: var(--team-secondary);
-  color: #e1eaf4;
+  color: #ffffff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

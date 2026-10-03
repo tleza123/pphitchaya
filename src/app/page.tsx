@@ -9,11 +9,12 @@ import { ReportsTab } from '@/components/reports/ReportsTab';
 import SettingsTab from '@/components/settings/SettingsTab';
 import { getBangkokToday, getBangkokMonth } from '@/lib/payroll/dates';
 import styles from '@/components/shell/shell.module.css';
+import { DEFAULT_SHOP_NAME, displayShopName } from '@/lib/shop-name';
 
 export default function HomePage() {
   const { idToken } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('attendance');
-  const [shopName, setShopName] = useState<string>('DE TEAM');
+  const [shopName, setShopName] = useState<string>(DEFAULT_SHOP_NAME);
 
   useEffect(() => {
     fetch('/api/bootstrap', {
@@ -24,7 +25,7 @@ export default function HomePage() {
         const data = json.data || json;
         const profile = data.profile || data.shop;
         if (profile?.shopName || profile?.displayName) {
-          setShopName(profile.shopName || profile.displayName);
+          setShopName(displayShopName(profile.shopName || profile.displayName));
         }
       })
       .catch(() => {});

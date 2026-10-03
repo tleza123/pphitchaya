@@ -13,6 +13,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import styles from './settings.module.css';
+import { DEFAULT_SHOP_NAME, displayShopName } from '@/lib/shop-name';
 
 interface ExtraTemplate {
   name: string;
@@ -70,11 +71,11 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
 
   // Shop settings
   const [shopSettings, setShopSettings] = useState<ShopSettings>({
-    shopName: 'DE TEAM',
+    shopName: DEFAULT_SHOP_NAME,
     workDays: [1, 2, 3, 4, 5, 6],
     revision: 1
   });
-  const [shopNameInput, setShopNameInput] = useState<string>('DE TEAM');
+  const [shopNameInput, setShopNameInput] = useState<string>(DEFAULT_SHOP_NAME);
   const [selectedWorkDays, setSelectedWorkDays] = useState<number[]>([1, 2, 3, 4, 5, 6]);
 
   // Form states
@@ -144,7 +145,7 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
         const bootJson = await bootRes.json();
         const bootData = bootJson.data || bootJson;
         const profile = bootData.profile || bootData.shop || {};
-        const currentShopName = profile.shopName || profile.displayName || 'DE TEAM';
+        const currentShopName = displayShopName(profile.shopName || profile.displayName);
         const currentRev = typeof profile.revision === 'number' ? profile.revision : 1;
         const calVersions = bootData.calendarVersions || [];
         const latestCal = Array.isArray(calVersions) && calVersions.length > 0
@@ -505,11 +506,12 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
       }
       const resJson = await res.json();
       const updatedData = resJson.data || resJson;
-      const newName = updatedData.shopName || updatedData.displayName || shopNameInput.trim();
+      const newName = displayShopName(updatedData.shopName || updatedData.displayName || shopNameInput);
       const newRev = typeof updatedData.revision === 'number' ? updatedData.revision : (shopSettings.revision + 1);
 
       showNotification('บันทึกชื่อร้านเรียบร้อย');
       setShopSettings(prev => ({ ...prev, shopName: newName, revision: newRev }));
+      setShopNameInput(newName);
       onUpdateShopName?.(newName);
       setShopNameOpen(false);
     } catch (err: any) {

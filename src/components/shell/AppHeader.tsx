@@ -4,6 +4,7 @@ import React from 'react';
 import { ClipboardCheck, ChartNoAxesCombined, Settings as SettingsIcon } from 'lucide-react';
 import { TabType } from './BottomNav';
 import styles from './shell.module.css';
+import { DEFAULT_SHOP_NAME, displayShopName } from '@/lib/shop-name';
 
 interface AppHeaderProps {
   shopName?: string;
@@ -13,7 +14,7 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({
-  shopName = 'DE TEAM',
+  shopName = DEFAULT_SHOP_NAME,
   isClosed = false,
   activeTab = 'attendance',
   onChangeTab
@@ -22,11 +23,8 @@ export function AppHeader({
     <header className={styles.header}>
       <div className={styles.headerInner}>
         <div className={styles.headerLeft}>
-          <div className={styles.brand}>
-            DE <span>TEAM</span>
-          </div>
           <div className={styles.shopName}>
-            {shopName}
+            {displayShopName(shopName)}
             {isClosed && ' · ปิดรอบเดือนแล้ว'}
           </div>
         </div>

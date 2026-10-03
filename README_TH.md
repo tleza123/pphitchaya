@@ -1,4 +1,4 @@
-# DE TEAM — ระบบเช็คชื่อพนักงานและสรุปค่าจ้าง (Attendance & Payroll)
+# ระบบเช็คชื่อพนักงานและสรุปค่าจ้าง
 
 เว็บแอปพลิเคชันสำหรับเจ้าของธุรกิจเดี่ยว (Single Owner) ใช้งานผ่านมือถือเป็นหลัก ออกแบบด้วยหลักการ **"เรียบง่าย ตัวหนังสือใหญ่ ปุ่มใหญ่ ยอดเงินถูกต้อง 100%"** โดยยึดสถาปัตยกรรม **Next.js App Router + Firebase + Vercel** ตามข้อกำหนดใน [BLUEPRINT.md](file:///c:/attendance-blueprint/attendance-firebase-plan/BLUEPRINT.md) แทนที่ระบบ Google Apps Script เดิมอย่างสิ้นเชิง
 

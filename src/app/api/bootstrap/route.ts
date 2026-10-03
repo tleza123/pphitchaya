@@ -11,6 +11,7 @@ import {
   getShopId
 } from '@/lib/server/repository';
 import { getBangkokToday, getBangkokMonth } from '@/lib/payroll/dates';
+import { displayShopName } from '@/lib/shop-name';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
 
     const profileSnap = await getProfileRef(shopId).get();
     const rawProfile = profileSnap.exists ? profileSnap.data() : null;
-    const shopName = rawProfile?.shopName || rawProfile?.displayName || 'DE TEAM';
+    const shopName = displayShopName(rawProfile?.shopName || rawProfile?.displayName);
     const profile = {
       displayName: shopName,
       shopName,

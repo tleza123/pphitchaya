@@ -3,7 +3,7 @@ import { AuthProvider } from '@/features/auth/AuthContext';
 import '@/styles/globals.css';
 
 export const metadata: Metadata = {
-  title: 'DE TEAM — ระบบเช็คชื่อและสรุปค่าจ้าง',
+  title: 'ระบบเช็คชื่อพนักงานและสรุปค่าจ้าง',
   description: 'ระบบเช็คชื่อพนักงานและคำนวณค่าจ้างรายเดือนสำหรับเจ้าของกิจการ'
 };
 

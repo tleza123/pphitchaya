@@ -17,7 +17,7 @@ async function main() {
   const profileSnap = await profileRef.get();
   if (!profileSnap.exists) {
     batch.set(profileRef, {
-      name: 'DE TEAM',
+      name: 'ระบบเช็คชื่อพนักงาน',
       currency: 'THB',
       timezone: 'Asia/Bangkok',
       workDays: [1, 2, 3, 4, 5, 6], // Mon - Sat

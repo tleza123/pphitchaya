@@ -9,6 +9,7 @@ import {
 } from '@/lib/server/repository';
 import { getAdminFirestore } from '@/lib/firebase/admin';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
+import { DEFAULT_SHOP_NAME } from '@/lib/shop-name';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +47,7 @@ export async function PATCH(req: NextRequest) {
       const profileSnap = await tx.get(profileRef);
       const current = profileSnap.exists
         ? profileSnap.data()
-        : { displayName: 'DE TEAM', shopName: 'DE TEAM', timezone: 'Asia/Bangkok', systemStartDate: '2026-08-01', revision: 1 };
+        : { displayName: DEFAULT_SHOP_NAME, shopName: DEFAULT_SHOP_NAME, timezone: 'Asia/Bangkok', systemStartDate: '2026-08-01', revision: 1 };
 
       if (current?.revision !== expectedRevision) {
         throw new Error('CONFLICT');
