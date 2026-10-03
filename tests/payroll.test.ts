@@ -18,6 +18,13 @@ import {
   monthKey,
   monthDates
 } from '../src/lib/payroll/dates';
+import { resolveWeekdaysForDate } from '../src/lib/payroll/calendar';
+
+test('legacy calendar version remains readable for attendance and payroll', () => {
+  assert.deepEqual(resolveWeekdaysForDate('2026-10-03', [{
+    versionId: 'v1', effectiveDate: '2026-01-01', workDays: [1, 2, 3, 4, 5, 6], revision: 1
+  }]), [1, 2, 3, 4, 5, 6]);
+});
 
 const fixture = () => ({
   month: '2026-09',

@@ -3,8 +3,10 @@ import { dateKey } from './dates';
 
 export interface CalendarVersion {
   versionId: string;
-  effectiveFrom: string; // YYYY-MM-DD
-  weekdays: number[];    // e.g. [1, 2, 3, 4, 5, 6] (Mon-Sat), Sunday=0
+  effectiveFrom?: string; // YYYY-MM-DD
+  effectiveDate?: string; // legacy field
+  weekdays?: number[];    // e.g. [1, 2, 3, 4, 5, 6] (Mon-Sat), Sunday=0
+  workDays?: number[];    // legacy field
   revision: number;
 }
 
@@ -41,9 +43,12 @@ export function resolveWeekdaysForDate(
     return validateWeekdays(fallbackWeekdays);
   }
 
-  // Sort by effectiveFrom ascending
-  const sorted = [...calendarVersions].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
-  let chosen: CalendarVersion | null = null;
+  // Existing shops may still have the effectiveDate/workDays document shape.
+  const sorted = calendarVersions.map(version => ({
+    effectiveFrom: version.effectiveFrom || version.effectiveDate || '',
+    weekdays: version.weekdays ?? version.workDays
+  })).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+  let chosen: (typeof sorted)[number] | null = null;
   for (const v of sorted) {
     if (v.effectiveFrom <= dateStr) {
       chosen = v;
@@ -51,9 +56,9 @@ export function resolveWeekdaysForDate(
   }
 
   if (!chosen) {
-    return validateWeekdays(sorted[0].weekdays);
+    return validateWeekdays(sorted[0].weekdays as number[]);
   }
-  return validateWeekdays(chosen.weekdays);
+  return validateWeekdays(chosen.weekdays as number[]);
 }
 
 /**

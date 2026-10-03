@@ -148,9 +148,9 @@ export default function SettingsTab({ onUpdateShopName }: SettingsTabProps = {})
         const currentRev = typeof profile.revision === 'number' ? profile.revision : 1;
         const calVersions = bootData.calendarVersions || [];
         const latestCal = Array.isArray(calVersions) && calVersions.length > 0
-          ? [...calVersions].sort((a: any, b: any) => (b.effectiveFrom || '').localeCompare(a.effectiveFrom || ''))[0]
+          ? [...calVersions].sort((a: any, b: any) => (b.effectiveFrom || b.effectiveDate || '').localeCompare(a.effectiveFrom || a.effectiveDate || ''))[0]
           : null;
-        const activeWorkDays = latestCal?.weekdays || profile.workDays || [1, 2, 3, 4, 5, 6];
+        const activeWorkDays = latestCal?.weekdays || latestCal?.workDays || profile.workDays || [1, 2, 3, 4, 5, 6];
 
         setShopSettings({
           shopName: currentShopName,
