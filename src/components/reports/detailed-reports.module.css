@@ -1,0 +1,49 @@
+.page { min-width: 0; }
+.page h2 { font-size: var(--team-heading); line-height: 1.3; margin: 0; color: var(--team-primary-dark); }
+.page h3 { font-size: 1.3rem; line-height: 1.3; margin: 0 0 1rem; }
+.page h4 { font-size: var(--team-name); line-height: 1.3; margin: 0; }
+.page button { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border: 1px solid var(--team-border-strong); border-radius: .65rem; padding: .5rem .75rem; color: var(--team-primary); background: white; min-height: 3rem; }
+.page button:disabled { opacity: .55; cursor: default; }
+.page label { display: flex; flex-direction: column; gap: .4rem; min-width: 0; }
+.page input, .page select { width: 100%; min-width: 0; min-height: 3rem; padding: .5rem .65rem; color: var(--team-text); background: white; border: 1px solid var(--team-input-border); border-radius: .65rem; }
+.back { margin-bottom: 1rem; }
+.heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.filters, .panel { padding: 1.1rem; background: var(--team-surface); border: 1px solid var(--team-border); border-radius: var(--team-radius-card); margin-bottom: 1rem; min-width: 0; }
+.periods { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: .5rem; margin-bottom: 1rem; }
+.periods button[aria-pressed="true"] { color: white; background: var(--team-primary); border-color: var(--team-primary); font-weight: 700; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: 1rem; }
+.totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: .75rem; margin-bottom: 1rem; }
+.tile { background: var(--team-surface); border: 1px solid var(--team-border); border-radius: .8rem; padding: 1rem; display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.tile span { color: var(--team-muted); font-size: var(--team-secondary); }
+.tile strong { font-size: 1.5rem; color: var(--team-primary-dark); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.context { color: var(--team-muted); margin: .75rem 0 1rem; }
+.notice { background: var(--team-notice-bg); border: 1px solid var(--team-notice-border); padding: .85rem; border-radius: .65rem; }
+.notice button { margin-left: .5rem; }
+.charts { display: grid; gap: 1rem; grid-template-columns: minmax(0,1fr); }
+.figure { margin: 1rem 0 0; }
+.chartScroll, .tableScroll { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+.chart { display: block; width: 100%; height: auto; }
+.figure figcaption { color: var(--team-muted); font-size: var(--team-secondary); }
+.chartSkeleton { min-height: 20rem; background: white; border: 1px solid var(--team-border); border-radius: 1rem; padding: 2rem; }
+.page table { width: 100%; border-collapse: collapse; font-size: var(--team-secondary); }
+.page th, .page td { padding: .75rem; border-bottom: 1px solid var(--team-border); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.page th:first-child, .page td:first-child { text-align: left; }
+.page thead { background: var(--team-bg); }
+.people { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 1rem; }
+.person { min-width: 0; border: 1px solid var(--team-border); border-radius: .8rem; padding: 1rem; }
+.person p { color: var(--team-muted); margin: .25rem 0; }
+.person dl { margin: 1rem 0; }
+.person dl div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .4rem; padding: .35rem 0; }
+.person dt { color: var(--team-muted); }
+.person dd { margin: 0; font-variant-numeric: tabular-nums; }
+.person button { width: 100%; }
+@media (min-width: 1024px) { .charts { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media print {
+  .filters, .actions, .back, .person button { display: none !important; }
+  .chartScroll, .tableScroll { overflow: visible; }
+  .chart { min-width: 0 !important; }
+  .panel { break-inside: avoid; }
+  .page table { font-size: .65rem; }
+  .page th, .page td { padding: .25rem; white-space: normal; }
+}

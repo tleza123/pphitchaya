@@ -12,6 +12,7 @@ import { DEFAULT_SHOP_NAME, displayShopName } from '@/lib/shop-name';
 const loadAttendance = () => import('@/components/attendance/AttendanceTab').then(module => module.AttendanceTab);
 const loadReports = () => import('@/components/reports/ReportsTab').then(module => module.ReportsTab);
 const loadSettings = () => import('@/components/settings/SettingsTab');
+const DetailedReports = React.memo(dynamic(() => import('@/components/reports/DetailedReports'), { loading: TabLoading }));
 function TabLoading() {
   return <div aria-busy="true" aria-label="กำลังเปิดหน้า" className="tabLoading">
     {[0, 1, 2].map(index => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}
@@ -29,17 +30,19 @@ const TAB_PATHS: Record<TabType, string> = {
 };
 
 function tabFromPath(path: string): TabType {
-  if (path === '/reports') return 'reports';
+  if (path === '/reports' || path === '/reports/detailed') return 'reports';
   if (path === '/settings') return 'settings';
   return 'attendance';
 }
 
-export default function AppShell({ initialTab }: { initialTab: TabType }) {
+export default function AppShell({ initialTab, initialDetailedReports = false }: { initialTab: TabType; initialDetailedReports?: boolean }) {
   const { idToken } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [mountedTabs, setMountedTabs] = useState<Set<TabType>>(() => new Set([initialTab]));
   const [shopName, setShopName] = useState<string>(DEFAULT_SHOP_NAME);
   const [attendanceVersion, setAttendanceVersion] = useState(0);
+  const [detailedReports, setDetailedReports] = useState(initialDetailedReports);
+  const [mountedDetailedReports, setMountedDetailedReports] = useState(initialDetailedReports);
 
   useEffect(() => {
     fetch('/api/settings', {
@@ -58,9 +61,11 @@ export default function AppShell({ initialTab }: { initialTab: TabType }) {
 
   const today = getBangkokToday();
   const month = getBangkokMonth();
-  const showTab = useCallback((tab: TabType) => {
+  const showTab = useCallback((tab: TabType, detailed = false) => {
     setMountedTabs(previous => previous.has(tab) ? previous : new Set([...previous, tab]));
     setActiveTab(tab);
+    setDetailedReports(detailed);
+    if (detailed) setMountedDetailedReports(true);
   }, []);
   const changeTab = useCallback((tab: TabType) => {
     if (window.location.pathname !== TAB_PATHS[tab]) {
@@ -74,9 +79,14 @@ export default function AppShell({ initialTab }: { initialTab: TabType }) {
   }, []);
   const navigateToSettings = useCallback(() => changeTab('settings'), [changeTab]);
   const notifyAttendanceChanged = useCallback(() => setAttendanceVersion(version => version + 1), []);
+  const openDetailedReports = useCallback(() => {
+    window.history.pushState({}, '', '/reports/detailed');
+    showTab('reports', true);
+  }, [showTab]);
+  const backToReports = useCallback(() => changeTab('reports'), [changeTab]);
 
   useEffect(() => {
-    const restoreTab = () => showTab(tabFromPath(window.location.pathname));
+    const restoreTab = () => showTab(tabFromPath(window.location.pathname), window.location.pathname === '/reports/detailed');
     window.addEventListener('popstate', restoreTab);
     return () => window.removeEventListener('popstate', restoreTab);
   }, [showTab]);
@@ -102,7 +112,12 @@ export default function AppShell({ initialTab }: { initialTab: TabType }) {
           />}
         </div>
         <div style={{ display: activeTab === 'reports' ? 'block' : 'none' }}>
-          {mountedTabs.has('reports') && <ReportsTab active={activeTab === 'reports'} attendanceVersion={attendanceVersion} initialMonth={month} serverToday={today} />}
+          <div style={{ display: detailedReports ? 'none' : 'block' }}>
+            {mountedTabs.has('reports') && <ReportsTab active={activeTab === 'reports' && !detailedReports} attendanceVersion={attendanceVersion} initialMonth={month} serverToday={today} onOpenDetailedReports={openDetailedReports} />}
+          </div>
+          <div style={{ display: detailedReports ? 'block' : 'none' }}>
+            {mountedDetailedReports && <DetailedReports active={activeTab === 'reports' && detailedReports} attendanceVersion={attendanceVersion} onBack={backToReports} />}
+          </div>
         </div>
         <div style={{ display: activeTab === 'settings' ? 'block' : 'none' }}>
           {mountedTabs.has('settings') && <SettingsTab active={activeTab === 'settings'} onUpdateShopName={setShopName} />}

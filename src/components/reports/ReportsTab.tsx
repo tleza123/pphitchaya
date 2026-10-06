@@ -31,9 +31,10 @@ interface ReportsTabProps {
   attendanceVersion: number;
   initialMonth: string;
   serverToday: string;
+  onOpenDetailedReports: () => void;
 }
 
-export function ReportsTab({ active, attendanceVersion, initialMonth, serverToday }: ReportsTabProps) {
+export function ReportsTab({ active, attendanceVersion, initialMonth, serverToday, onOpenDetailedReports }: ReportsTabProps) {
   const { idToken } = useAuth();
   const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth);
   const [reportData, setReportData] = useState<any>(null);
@@ -704,6 +705,10 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       )}
 
       {/* Close Month Modal */}
+      <button type="button" className={styles.primaryBtn} style={{ width: '100%', marginTop: '1rem' }} onClick={onOpenDetailedReports}>
+        ดูรายงานละเอียดและกราฟ
+      </button>
+
       {showCloseModal && (
         <div className={styles.modalOverlay}>
           <div className={styles.modalCard}>
