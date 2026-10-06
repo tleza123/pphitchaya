@@ -7,7 +7,9 @@ import { formatThaiMonth } from '../payroll/dates';
 
 export async function createSalaryPdf(report: AnalyticsMonth): Promise<Buffer> {
   const sections = salaryLines(report);
-  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: `เงินเดือน ${report.nickname || report.name} ${report.month}` } });
+  const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true,
+    font: path.join(process.cwd(), 'src/assets/fonts/THSarabunNew.ttf'),
+    info: { Title: `เงินเดือน ${report.nickname || report.name} ${report.month}` } });
   doc.registerFont('Regular', path.join(process.cwd(), 'src/assets/fonts/THSarabunNew.ttf'));
   doc.registerFont('Bold', path.join(process.cwd(), 'src/assets/fonts/THSarabunNew-Bold.ttf'));
   const chunks: Buffer[] = [];
