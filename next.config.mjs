@@ -2,7 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  serverExternalPackages: ['firebase-admin', 'sharp'],
+  serverExternalPackages: ['firebase-admin', 'sharp', 'pdfkit'],
+  outputFileTracingIncludes: { '/api/reports/export': ['./src/assets/fonts/*.ttf'] },
   async headers() {
     return [
       {

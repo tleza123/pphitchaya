@@ -45,6 +45,29 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState<boolean>(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const exportLock = useRef(false);
+
+  const exportSalary = async (employeeId?: string) => {
+    if (!idToken || exportLock.current) return;
+    exportLock.current = true; setExporting(true); setExportError('');
+    const month = selectedMonth;
+    try {
+      const query = new URLSearchParams({ month, ...(employeeId ? { employeeId } : {}) });
+      const response = await fetch(`/api/reports/export?${query}`, { headers: { Authorization: `Bearer ${idToken}` } });
+      if (!response.ok) {
+        const json = await response.json(); throw new Error(json.error?.message || 'ส่งออกไม่สำเร็จ');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = url;
+      link.download = `เงินเดือน-${month}${employeeId ? `-${detailData?.nickname || detailData?.name || employeeId}.pdf` : '-ทุกคน.zip'}`;
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) { setExportError(error instanceof Error ? error.message : 'ส่งออกไม่สำเร็จ'); }
+    finally { exportLock.current = false; setExporting(false); }
+  };
 
   // Modal States
   const [showCloseModal, setShowCloseModal] = useState<boolean>(false);
@@ -348,6 +371,11 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           {formatThaiMonth(selectedMonth)} · {detailData.position}
           {detailData.name && detailData.nickname && detailData.name !== detailData.nickname && ` · ${detailData.name}`}
         </p>
+        <button type="button" className={styles.primaryBtn} disabled={exporting || detailLoading} onClick={() => exportSalary(selectedEmployeeId)}>
+          {exporting ? 'กำลังสร้าง PDF' : 'ส่งออกไฟล์เงินเดือน PDF'}
+        </button>
+        {exporting && <div className="refreshStatus" role="status">กำลังจัดทำใบเงินเดือน</div>}
+        {exportError && <p role="alert">{exportError}</p>}
 
         <div className={styles.detailGrid}>
           <div className={styles.detailLeftCol}>
@@ -709,6 +737,11 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       <button type="button" className={styles.primaryBtn} style={{ width: '100%', marginTop: '1rem' }} onClick={onOpenDetailedReports}>
         ดูรายงานละเอียดและกราฟ
       </button>
+      <button type="button" className={styles.secondaryBtn} style={{ width: '100%', marginTop: '1rem' }} disabled={exporting || loading || !reportData?.employees?.length} onClick={() => exportSalary()}>
+        {exporting ? 'กำลังสร้างไฟล์ทุกคน' : 'ส่งออกไฟล์ทุกคน'}
+      </button>
+      {exporting && <div className="refreshStatus" role="status">กำลังจัดทำ PDF แยกรายบุคคล</div>}
+      {exportError && <p role="alert">{exportError}</p>}
 
       {showCloseModal && (
         <div className={styles.modalOverlay}>
