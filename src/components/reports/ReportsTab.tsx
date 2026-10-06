@@ -391,11 +391,6 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           {formatThaiMonth(selectedMonth)} · {detailData.position}
           {detailData.name && detailData.nickname && detailData.name !== detailData.nickname && ` · ${detailData.name}`}
         </p>
-        <button type="button" className={styles.primaryBtn} disabled={exporting || detailLoading} onClick={() => exportSalary(selectedEmployeeId)}>
-          {exporting ? 'กำลังสร้าง PDF' : 'ส่งออกไฟล์เงินเดือน PDF'}
-        </button>
-        {exporting && <div className="refreshStatus" role="status">กำลังจัดทำใบเงินเดือน</div>}
-        {exportError && <p role="alert">{exportError}</p>}
 
         <div className={styles.detailGrid}>
           <div className={styles.detailLeftCol}>
@@ -540,6 +535,12 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
             </section>
           </div>
         </div>
+
+        <button type="button" className={styles.primaryBtn} style={{ width: '100%', marginTop: '1rem' }} disabled={exporting || detailLoading} onClick={() => exportSalary(selectedEmployeeId)}>
+          {exporting ? 'กำลังสร้าง PDF' : 'ส่งออกไฟล์เงินเดือน PDF'}
+        </button>
+        {exporting && <div className="refreshStatus" role="status">กำลังจัดทำใบเงินเดือน</div>}
+        {exportError && <p role="alert">{exportError}</p>}
 
         {/* Add Month Extra Modal */}
         {showExtrasModal && (
