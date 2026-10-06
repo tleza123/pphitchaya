@@ -41,6 +41,21 @@ test('PDF export supports long labels and multiple pages without mutating report
   assert.equal(JSON.stringify(report), original);
 });
 
+test('Three income lines and fifteen dated advances with no deductions fit one A4 page', async () => {
+  const report = example();
+  report.days = Array.from({ length: 15 }, (_, i) => ({ dateKey: `2026-10-${String(i + 1).padStart(2, '0')}`,
+    status: i === 0 ? 'HALF' : 'FULL', dailySatang: 45000, amountSatang: i === 0 ? 22500 : 45000,
+    advanceSatang: 10000, deductionSatang: 0 }));
+  report.full = 14; report.half = 1; report.absent = 0;
+  report.extras = [{ extraId: 'bonus', label: 'ค่าล้างรถ', amountSatang: 50000 }];
+  report.baseSatang = 652500; report.grossSatang = 702500;
+  report.advanceSatang = 150000; report.deductionSatang = 0; report.totalSatang = 552500;
+  const lines = salaryLines(report);
+  assert.equal(lines.income.length, 3); assert.equal(lines.advances.length, 15);
+  const pdf = await createSalaryPdf(report);
+  assert.equal((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 1);
+});
+
 test('Closed salary exports only read immutable snapshots and reject incomplete closure data', async () => {
   const globals = globalThis as unknown as { adminDb?: unknown }, previous = globals.adminDb;
   const shop = `shops/${process.env.SHOP_ID || 'main'}`, closure = `${shop}/months/2026-10/closures/closed`;

@@ -19,36 +19,39 @@ export async function createSalaryPdf(report: AnalyticsMonth): Promise<Buffer> {
   const left = 51, right = 544, width = right - left, pale = '#f3f6f9', ink = '#243447', muted = '#617084';
   const totalRows = Object.values(sections).reduce((n, rows) => n + Math.max(1, rows.length), 0);
   const compact = totalRows > 9;
-  const font = compact ? 13 : 14.3, padding = compact ? .5 : 5;
+  const dense = totalRows > 15;
+  const font = dense ? 12.5 : compact ? 13 : 14.3, padding = compact ? .5 : 5;
+  const lineGap = dense ? 0 : 1;
   const text = (value: string, x: number, y: number, w: number, size = font, bold = false, align: 'left' | 'right' = 'left', color = ink) => {
-    doc.font(bold ? 'Bold' : 'Regular').fontSize(size).fillColor(color).text(value, x, y, { width: w, align, lineGap: 1 });
+    doc.font(bold ? 'Bold' : 'Regular').fontSize(size).fillColor(color).text(value, x, y, { width: w, align, lineGap });
   };
-  const measured = (value: string, w: number, size = font) => doc.font('Regular').fontSize(size).heightOfString(value, { width: w, lineGap: 1 });
+  const measured = (value: string, w: number, size = font) => doc.font('Regular').fontSize(size).heightOfString(value, { width: w, lineGap });
   const line = (y: number) => doc.strokeColor('#dce3eb').lineWidth(.5).moveTo(left, y).lineTo(right, y).stroke();
   const name = report.nickname || report.name || 'พนักงาน';
-  const title = () => { text('เงินเดือน', left, 41, 230, 36, true); text(formatThaiMonth(report.month), 330, 50, 214, 19, true, 'right'); line(88); };
+  const title = () => { text('เงินเดือน', left, dense ? 30 : 41, 230, dense ? 32 : 36, true); text(formatThaiMonth(report.month), 330, dense ? 37 : 50, 214, dense ? 17 : 19, true, 'right'); line(dense ? 76 : 88); };
   title();
-  text('ชื่อพนักงาน', left, 101, 300, 13, false, 'left', muted);
-  let nameSize = 32;
+  text('ชื่อพนักงาน', left, dense ? 88 : 101, 300, 13, false, 'left', muted);
+  let nameSize = dense ? 26 : 32;
   while (nameSize > 22 && doc.font('Bold').fontSize(nameSize).widthOfString(name) > width) nameSize--;
-  text(name, left, 121, width, nameSize, true);
-  let y = Math.max(164, 121 + measured(name, width, nameSize));
-  text('จำนวนวันที่มาทำงาน', left, y, width, 14.3, false, 'left', muted); y += 26;
+  const nameTop = dense ? 105 : 121;
+  text(name, left, nameTop, width, nameSize, true);
+  let y = Math.max(dense ? 140 : 164, nameTop + measured(name, width, nameSize));
+  text('จำนวนวันที่มาทำงาน', left, y, width, dense ? 13 : 14.3, false, 'left', muted); y += dense ? 20 : 26;
   const labels = [['เต็มวัน', report.full], ['ครึ่งวัน', report.half], ['ไม่มาทำงาน', report.absent], ['วันหยุดของร้าน', report.days.filter(day => day.status === 'HOLIDAY').length]];
   const cell = (width - 24) / 4;
   labels.forEach(([label, count], i) => {
     const x = left + i * (cell + 8);
-    doc.roundedRect(x, y, cell, 53, 5).fill(pale);
-    text(String(label), x + 8, y + 7, cell - 16, 13, false, 'left', muted);
-    text(`${count} วัน`, x + 8, y + 27, cell - 16, 18, true);
+    doc.roundedRect(x, y, cell, dense ? 44 : 53, 5).fill(pale);
+    text(String(label), x + 8, y + (dense ? 4 : 7), cell - 16, 13, false, 'left', muted);
+    text(`${count} วัน`, x + 8, y + (dense ? 22 : 27), cell - 16, dense ? 16 : 18, true);
   });
-  y += 68;
+  y += dense ? 54 : 68;
   const newPage = () => { doc.addPage(); title(); text(name, left, 101, width, 18, true); y = Math.max(137, 101 + measured(name, width, 18) + 8); };
   const ensure = (height: number) => { if (y + height > 778) newPage(); };
   const table = (titleText: string, rows: SalaryLine[], total: number) => {
     const header = (continued = false) => {
-      text(titleText + (continued ? ' ต่อ' : ''), left, y, width, 17, true); y += compact ? 23 : 25;
-      const headerHeight = compact ? 21 : 23;
+      text(titleText + (continued ? ' ต่อ' : ''), left, y, width, dense ? 16 : 17, true); y += dense ? 22 : compact ? 23 : 25;
+      const headerHeight = dense ? 20 : compact ? 21 : 23;
       doc.rect(left, y, width, headerHeight).fill(pale);
       text('วันที่', left + 8, y + 4, 97, 13, true, 'left', muted);
       text('รายการ', left + 112, y + 4, 264, 13, true, 'left', muted);
@@ -66,11 +69,15 @@ export async function createSalaryPdf(report: AnalyticsMonth): Promise<Buffer> {
     }
     ensure(29);
     text('รวม' + titleText.replace('รายการ', ''), left + 8, y + 7, 330, 14.3, true);
-    text(formatMoney(total), right - 113, y + 7, 105, 14.3, true, 'right'); y += compact ? 28 : 35;
+    text(formatMoney(total), right - 113, y + 7, 105, 14.3, true, 'right'); y += dense ? 26 : compact ? 28 : 35;
   };
   table('รายการเงินที่ได้', sections.income, report.grossSatang);
   table('รายการเงินเบิก', sections.advances, report.advanceSatang);
-  table('รายการเงินหัก', sections.deductions, report.deductionSatang);
+  if (dense && !sections.deductions.length) {
+    ensure(28);
+    text('รายการเงินหัก: ไม่มีรายการ', left + 8, y + 4, 330, 14.3);
+    text('0.00', right - 113, y + 4, 105, 14.3, false, 'right'); y += 28;
+  } else table('รายการเงินหัก', sections.deductions, report.deductionSatang);
   ensure(63);
   doc.rect(left, y, width, 59).fillAndStroke(pale, '#dce3eb');
   text('ยอดเงินสุทธิที่ได้รับ', left + 14, y + 10, 270, 16, true);
