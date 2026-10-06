@@ -1,4 +1,5 @@
 'use client';
+import { useHistoryState } from '@/components/shared/useHistoryState';
 import { usePendingAction } from '@/components/shared/usePendingAction';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -43,7 +44,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Detail View State
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useHistoryState<string | null>('report-person', null);
   const [detailData, setDetailData] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState<boolean>(false);
   const [exporting, setExporting] = useState(false);
@@ -72,12 +73,12 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   };
 
   // Modal States
-  const [showCloseModal, setShowCloseModal] = useState<boolean>(false);
+  const [showCloseModal, setShowCloseModal] = useHistoryState<boolean>('close-month', false);
   const [closeStatus, setCloseStatus] = useState<any>(null);
   const [closeLoading, setCloseLoading] = useState<boolean>(false);
-  const [showReopenModal, setShowReopenModal] = useState<boolean>(false);
+  const [showReopenModal, setShowReopenModal] = useHistoryState<boolean>('reopen-month', false);
   const [reopenReason, setReopenReason] = useState<string>('');
-  const [showExtrasModal, setShowExtrasModal] = useState<boolean>(false);
+  const [showExtrasModal, setShowExtrasModal] = useHistoryState<boolean>('report-extras', false);
   const [extraType, setExtraType] = useState<'BONUS' | 'DEDUCTION'>('BONUS');
   const [newExtraLabel, setNewExtraLabel] = useState<string>('');
   const [newExtraAmount, setNewExtraAmount] = useState<string>('');
@@ -157,7 +158,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   useEffect(() => () => { reportController.current?.abort(); detailController.current?.abort(); }, []);
 
   useEffect(() => {
-    if (active && selectedEmployeeId && (!wasActive.current || detailAttendanceVersion.current !== attendanceVersion)) {
+    if (active && selectedEmployeeId) {
       fetchEmployeeDetail(selectedEmployeeId, selectedMonth);
     }
     wasActive.current = active;
@@ -165,8 +166,11 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   }, [active, attendanceVersion, selectedEmployeeId, selectedMonth, fetchEmployeeDetail]);
 
   const handleOpenDetail = (empId: string) => {
+    // The parent of an individual statement is the detailed report, including Android Back.
+    window.history.pushState({ ...window.history.state, attendanceParent: '/reports', attendanceNavigation: {} }, '', '/reports/detailed');
     setSelectedEmployeeId(empId);
-    fetchEmployeeDetail(empId, selectedMonth);
+    window.history.replaceState(window.history.state, '', '/reports');
+
   };
 
   const handleBackToDetailedReports = () => {
@@ -360,7 +364,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
     }
   };
 
-  if (selectedEmployeeId && detailLoading && !detailData) {
+  if (selectedEmployeeId && (!detailData || detailData.employeeId !== selectedEmployeeId || detailData.month !== selectedMonth)) {
     return (
       <div aria-busy="true" aria-label="กำลังโหลดรายละเอียดรายงาน">
         <button type="button" className={styles.backBtn} onClick={handleBackToDetailedReports}>กลับรายงานละเอียด</button>

@@ -1,4 +1,5 @@
 'use client';
+import { useHistoryState } from '@/components/shared/useHistoryState';
 import { usePendingAction } from '@/components/shared/usePendingAction';
 import { mutationData } from '@/lib/client/mutation-response';
 
@@ -65,7 +66,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // View state: 'list' | 'add' | 'edit'
-  const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
+  const [view, setView] = useHistoryState<'list' | 'add' | 'edit'>('settings-view', 'list', true);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
   // Collapsible sections
@@ -97,7 +98,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
   const { pending: settingsPending, run: runSettingsAction } = usePendingAction();
 
   // End employment modal
-  const [showEndModal, setShowEndModal] = useState<boolean>(false);
+  const [showEndModal, setShowEndModal] = useHistoryState<boolean>('end-employment', false);
   const [endDateInput, setEndDateInput] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);

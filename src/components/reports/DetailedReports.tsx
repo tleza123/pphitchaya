@@ -1,4 +1,5 @@
 'use client';
+import { useHistoryState } from '@/components/shared/useHistoryState';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, RefreshCw, Printer } from 'lucide-react';
@@ -76,7 +77,7 @@ export default function DetailedReports({ active, attendanceVersion, onBack }: {
   const [year, setYear] = useState(currentYear);
   const [fromYear, setFromYear] = useState(String(Math.max(2026, Number(currentYear) - 4)));
   const [toYear, setToYear] = useState(currentYear);
-  const [employeeId, setEmployeeId] = useState('all');
+  const [employeeId, setEmployeeId] = useHistoryState<string>('detailed-person', 'all');
   const [moneyMetric, setMoneyMetric] = useState<MoneyMetric>('grossSatang');
   const [attendanceMetric, setAttendanceMetric] = useState<AttendanceMetric>('workedDays');
   const [storedData, setData] = useState<AnalyticsReport | null>(null);

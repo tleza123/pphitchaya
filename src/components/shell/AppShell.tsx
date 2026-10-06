@@ -68,9 +68,10 @@ export default function AppShell({ initialTab, initialDetailedReports = false }:
     if (detailed) setMountedDetailedReports(true);
   }, []);
   const changeTab = useCallback((tab: TabType) => {
-    if (window.location.pathname !== TAB_PATHS[tab]) {
+    if (window.location.pathname !== TAB_PATHS[tab] || Object.values(window.history.state?.attendanceNavigation || {}).some(Boolean)) {
       window.history.pushState({}, '', TAB_PATHS[tab]);
     }
+    window.dispatchEvent(new Event('attendance-navigation'));
     showTab(tab);
   }, [showTab]);
   const prepareTab = useCallback((tab: TabType) => {
@@ -80,12 +81,19 @@ export default function AppShell({ initialTab, initialDetailedReports = false }:
   const navigateToSettings = useCallback(() => changeTab('settings'), [changeTab]);
   const notifyAttendanceChanged = useCallback(() => setAttendanceVersion(version => version + 1), []);
   const openDetailedReports = useCallback(() => {
-    window.history.pushState({}, '', '/reports/detailed');
+    if (window.location.pathname !== '/reports/detailed') window.history.pushState({ attendanceParent: window.location.pathname }, '', '/reports/detailed');
+    window.dispatchEvent(new Event('attendance-navigation'));
     showTab('reports', true);
   }, [showTab]);
-  const backToReports = useCallback(() => changeTab('reports'), [changeTab]);
+  const backToReports = useCallback(() => {
+    if (window.history.state?.attendanceParent === '/reports') window.history.back();
+    else changeTab('reports');
+  }, [changeTab]);
 
   useEffect(() => {
+    // Transient forms cannot be restored on reload without their in-memory drafts.
+    window.history.replaceState({ ...window.history.state, attendanceNavigation: {} }, '');
+    window.dispatchEvent(new Event('attendance-navigation'));
     const restoreTab = () => showTab(tabFromPath(window.location.pathname), window.location.pathname === '/reports/detailed');
     window.addEventListener('popstate', restoreTab);
     return () => window.removeEventListener('popstate', restoreTab);
