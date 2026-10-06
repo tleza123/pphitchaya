@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
       ? monthSnap.data()
       : { state: 'OPEN', revision: 0, extrasRevision: 0 };
     const isClosed = monthData?.state === 'CLOSED';
+    if (isClosed && !monthData?.currentClosureId) return createErrorResponse('INCOMPLETE_CLOSURE', 'ไม่พบข้อมูลปิดเดือน', 409);
 
     // If month is CLOSED, return immutable closure snapshot!
     if (isClosed && monthData?.currentClosureId) {
@@ -48,6 +49,10 @@ export async function GET(req: NextRequest) {
           .doc(monthData.currentClosureId)
           .collection('employees')
           .get();
+
+        if (!Array.isArray(manifest.employeeIds) || snapshotsSnap.size !== manifest.employeeIds.length || snapshotsSnap.docs.some(doc => !manifest.employeeIds.includes(doc.id))) {
+          return createErrorResponse('INCOMPLETE_CLOSURE', 'ข้อมูลปิดเดือนไม่ครบถ้วน', 409);
+        }
 
         const employeeReports = snapshotsSnap.docs.map(doc => {
           const s = doc.data() as any;
@@ -73,6 +78,7 @@ export async function GET(req: NextRequest) {
 
         return createSuccessResponse({
           month: targetMonth,
+          revision: monthData?.revision ?? 0,
           isClosed: true,
           closedAt: monthData.closedAt,
           closedBy: monthData.closedBy,
@@ -85,6 +91,7 @@ export async function GET(req: NextRequest) {
           employees: employeeReports
         });
       }
+      return createErrorResponse('INCOMPLETE_CLOSURE', 'ไม่พบข้อมูลปิดเดือน', 409);
     }
 
     // Otherwise calculate dynamically for OPEN / CLOSING month
@@ -217,6 +224,7 @@ export async function GET(req: NextRequest) {
 
     return createSuccessResponse({
       month: targetMonth,
+      revision: monthData?.revision ?? 0,
       isClosed: false,
       totals: {
         base: totalBase,

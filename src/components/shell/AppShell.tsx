@@ -8,6 +8,8 @@ import { BottomNav, TabType } from '@/components/shell/BottomNav';
 import { getBangkokToday, getBangkokMonth } from '@/lib/payroll/dates';
 import styles from '@/components/shell/shell.module.css';
 import { DEFAULT_SHOP_NAME, displayShopName } from '@/lib/shop-name';
+import { hasNavigationDetail } from '@/lib/client/navigation';
+import { DATA_CHANGED_EVENT } from '@/lib/client/data-events';
 
 const loadAttendance = () => import('@/components/attendance/AttendanceTab').then(module => module.AttendanceTab);
 const loadReports = () => import('@/components/reports/ReportsTab').then(module => module.ReportsTab);
@@ -68,7 +70,7 @@ export default function AppShell({ initialTab, initialDetailedReports = false }:
     if (detailed) setMountedDetailedReports(true);
   }, []);
   const changeTab = useCallback((tab: TabType) => {
-    if (window.location.pathname !== TAB_PATHS[tab] || Object.values(window.history.state?.attendanceNavigation || {}).some(Boolean)) {
+    if (window.location.pathname !== TAB_PATHS[tab] || hasNavigationDetail(window.history.state)) {
       window.history.pushState({}, '', TAB_PATHS[tab]);
     }
     window.dispatchEvent(new Event('attendance-navigation'));
@@ -80,6 +82,10 @@ export default function AppShell({ initialTab, initialDetailedReports = false }:
   }, []);
   const navigateToSettings = useCallback(() => changeTab('settings'), [changeTab]);
   const notifyAttendanceChanged = useCallback(() => setAttendanceVersion(version => version + 1), []);
+  useEffect(() => {
+    window.addEventListener(DATA_CHANGED_EVENT, notifyAttendanceChanged);
+    return () => window.removeEventListener(DATA_CHANGED_EVENT, notifyAttendanceChanged);
+  }, [notifyAttendanceChanged]);
   const openDetailedReports = useCallback(() => {
     if (window.location.pathname !== '/reports/detailed') window.history.pushState({ attendanceParent: window.location.pathname }, '', '/reports/detailed');
     window.dispatchEvent(new Event('attendance-navigation'));

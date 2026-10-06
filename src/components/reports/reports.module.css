@@ -239,6 +239,11 @@
   gap: 1.5rem;
 }
 
+.sectionHeading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .6rem; margin-bottom: .8rem; }
+.sectionHeading .sectionTitle { margin: 0; }
+.sectionHeading .backBtn { max-width: 100%; margin: 0; text-align: left; }
+.detailLeftCol, .detailRightCol { min-width: 0; }
+
 @media (min-width: 900px) {
   .detailGrid {
     display: grid;
@@ -317,6 +322,9 @@
   padding: 0.7rem 0;
   border-bottom: 1px solid #e1e7ee;
   font-size: var(--team-copy);
+  gap: .75rem;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
 }
 
 .lineItem:last-child {
@@ -343,8 +351,13 @@
   padding: 1.5rem;
   width: 100%;
   max-width: 28rem;
-  max-height: 90vh;
+  max-height: calc(100dvh - 2rem);
   overflow-y: auto;
+}
+
+@media (max-width: 639px) {
+  .modalCard { padding: 1rem; }
+  .confirmBox { flex-wrap: wrap; }
 }
 
 .modalTitle {

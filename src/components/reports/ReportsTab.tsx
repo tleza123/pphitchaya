@@ -1,6 +1,10 @@
 'use client';
 import { useHistoryState } from '@/components/shared/useHistoryState';
 import { usePendingAction } from '@/components/shared/usePendingAction';
+import { matchesReportSelection } from '@/lib/client/navigation';
+import { useModalInteraction } from '@/components/shared/useModalInteraction';
+import { MutationIntent } from '@/lib/client/mutation-intent';
+import { notifyDataChanged } from '@/lib/client/data-events';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -47,10 +51,14 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   const [selectedEmployeeId, setSelectedEmployeeId] = useHistoryState<string | null>('report-person', null);
   const [detailData, setDetailData] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState<boolean>(false);
+  const [detailError, setDetailError] = useState('');
+  const currentSelection = useRef({ employeeId: selectedEmployeeId, month: selectedMonth });
+  currentSelection.current = { employeeId: selectedEmployeeId, month: selectedMonth };
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   const { pending: reportPending, run: runReportAction } = usePendingAction();
   const exportLock = useRef(false);
+  const extraIntent = useRef(new MutationIntent());
 
   const exportSalary = async (employeeId?: string) => {
     if (!idToken || exportLock.current) return;
@@ -82,16 +90,19 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   const [extraType, setExtraType] = useState<'BONUS' | 'DEDUCTION'>('BONUS');
   const [newExtraLabel, setNewExtraLabel] = useState<string>('');
   const [newExtraAmount, setNewExtraAmount] = useState<string>('');
+  useModalInteraction(active && (showCloseModal || showReopenModal || showExtrasModal), () => {
+    if (showExtrasModal) setShowExtrasModal(false);
+    else if (showReopenModal) setShowReopenModal(false);
+    else setShowCloseModal(false);
+  });
   const reportFetchSequence = useRef(0);
   const detailFetchSequence = useRef(0);
   const reportController = useRef<AbortController | null>(null);
   const detailController = useRef<AbortController | null>(null);
-  const wasActive = useRef(false);
-  const detailAttendanceVersion = useRef(attendanceVersion);
 
   const fetchMonthlyReport = useCallback(
     async (month: string) => {
-      if (!idToken) return;
+      if (!idToken || currentSelection.current.month !== month) return;
       const sequence = ++reportFetchSequence.current;
       reportController.current?.abort();
       const controller = new AbortController(); reportController.current = controller;
@@ -104,7 +115,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           headers: { Authorization: `Bearer ${idToken}` }
         });
         const json = await res.json();
-        if (sequence !== reportFetchSequence.current) return;
+        if (sequence !== reportFetchSequence.current || currentSelection.current.month !== month) return;
         if (json.ok) {
           setReportData(json.data);
         } else {
@@ -125,26 +136,27 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
 
   const fetchEmployeeDetail = useCallback(
     async (empId: string, month: string) => {
-      if (!idToken) return;
+      if (!idToken || !matchesReportSelection(currentSelection.current, empId, month)) return;
       const sequence = ++detailFetchSequence.current;
       detailController.current?.abort();
       const controller = new AbortController(); detailController.current = controller;
       setDetailData((previous: any) => previous?.employeeId === empId && previous?.month === month ? previous : null);
       setDetailLoading(true);
+      setDetailError('');
       try {
         const res = await fetch(`/api/reports/${empId}?month=${month}`, {
           signal: controller.signal,
           headers: { Authorization: `Bearer ${idToken}` }
         });
         const json = await res.json();
-        if (sequence !== detailFetchSequence.current) return;
+        if (sequence !== detailFetchSequence.current || !matchesReportSelection(currentSelection.current, empId, month)) return;
         if (json.ok) {
           setDetailData(json.data);
         } else {
-          alert(json.error?.message || 'โหลดรายละเอียดไม่สำเร็จ');
+          setDetailError(json.error?.message || 'โหลดรายละเอียดไม่สำเร็จ');
         }
       } catch {
-        if (sequence === detailFetchSequence.current && !controller.signal.aborted) alert('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+        if (sequence === detailFetchSequence.current && !controller.signal.aborted && matchesReportSelection(currentSelection.current, empId, month)) setDetailError('ไม่สามารถโหลดรายละเอียดได้');
       } finally {
         if (sequence === detailFetchSequence.current) setDetailLoading(false);
       }
@@ -161,8 +173,6 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
     if (active && selectedEmployeeId) {
       fetchEmployeeDetail(selectedEmployeeId, selectedMonth);
     }
-    wasActive.current = active;
-    detailAttendanceVersion.current = attendanceVersion;
   }, [active, attendanceVersion, selectedEmployeeId, selectedMonth, fetchEmployeeDetail]);
 
   const handleOpenDetail = (empId: string) => {
@@ -176,6 +186,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   const handleBackToDetailedReports = () => {
     detailController.current?.abort(); ++detailFetchSequence.current;
     setDetailLoading(false);
+    if (window.history.state?.attendanceOwner === 'report-person') { window.history.back(); return; }
     setSelectedEmployeeId(null);
     setDetailData(null);
     onOpenDetailedReports();
@@ -183,8 +194,9 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
 
   // Month Closing Workflow
   const handleStartClose = async () => {
-    if (!idToken || !reportData) return;
+    if (!idToken || !reportData || closeLoading) return;
     setCloseLoading(true);
+    setCloseStatus(null);
     const requestId = crypto.randomUUID();
     try {
       const res = await fetch(`/api/months/${selectedMonth}/close`, {
@@ -194,7 +206,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           Authorization: `Bearer ${idToken}`
         },
         body: JSON.stringify({
-          expectedRevision: reportData.isClosed ? 0 : 0, // revision of month
+          expectedRevision: reportData.revision,
           requestId
         })
       });
@@ -230,7 +242,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           setCloseLoading(false);
           alert('ปิดเดือนสำเร็จเรียบร้อย');
           setShowCloseModal(false);
-          fetchMonthlyReport(selectedMonth);
+          notifyDataChanged();
         } else if (json.data.status === 'FAILED') {
           setCloseLoading(false);
         }
@@ -256,7 +268,9 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
         alert('ยกเลิกงานปิดเดือนเรียบร้อย');
         setShowCloseModal(false);
         setCloseStatus(null);
-        fetchMonthlyReport(selectedMonth);
+        notifyDataChanged();
+      } else {
+        alert(json.error?.message || 'ไม่สามารถยกเลิกงานปิดเดือนได้');
       }
     } catch {
       alert('ไม่สามารถยกเลิกงานปิดเดือนได้');
@@ -279,7 +293,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
         },
         body: JSON.stringify({
           reason: reopenReason.trim(),
-          expectedRevision: reportData?.isClosed ? 1 : 1,
+          expectedRevision: reportData?.revision,
           requestId
         })
       });
@@ -288,7 +302,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
         alert('เปิดเดือนเพื่อแก้ไขเรียบร้อย');
         setShowReopenModal(false);
         setReopenReason('');
-        fetchMonthlyReport(selectedMonth);
+        notifyDataChanged();
       } else {
         alert(json.error?.message || 'เปิดเดือนไม่สำเร็จ');
       }
@@ -303,7 +317,8 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       alert('กรุณาระบุชื่อรายการและจำนวนเงิน');
       return;
     }
-    const requestId = crypto.randomUUID();
+    const payload = { employeeId: selectedEmployeeId, label: newExtraLabel.trim(), amount: newExtraAmount.trim(), type: extraType };
+    const requestId = extraIntent.current.requestId({ month: selectedMonth, ...payload });
     try {
       const res = await fetch(`/api/months/${selectedMonth}/extras`, {
         method: 'POST',
@@ -312,22 +327,19 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           Authorization: `Bearer ${idToken}`
         },
         body: JSON.stringify({
-          employeeId: selectedEmployeeId,
-          label: newExtraLabel.trim(),
-          amount: newExtraAmount.trim(),
-          type: extraType,
+          ...payload,
           requestId
         })
       });
       const json = await res.json();
       if (json.ok) {
+        extraIntent.current.complete();
         alert(extraType === 'DEDUCTION' ? 'บันทึกรายการหักเงินเดือนนี้เรียบร้อย' : 'บันทึกเงินพิเศษเดือนนี้เรียบร้อย');
         setShowExtrasModal(false);
         setNewExtraLabel('');
         setNewExtraAmount('');
         setExtraType('BONUS');
-        fetchEmployeeDetail(selectedEmployeeId, selectedMonth);
-        fetchMonthlyReport(selectedMonth);
+        notifyDataChanged();
       } else {
         alert(json.error?.message || 'บันทึกไม่สำเร็จ');
       }
@@ -355,7 +367,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       const json = await res.json();
       if (json.ok) {
         alert('ยืนยันตรวจสอบเงินพิเศษเรียบร้อย');
-        fetchEmployeeDetail(selectedEmployeeId, selectedMonth);
+        notifyDataChanged();
       } else {
         alert(json.error?.message || 'ยืนยันไม่สำเร็จ');
       }
@@ -365,6 +377,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   };
 
   if (selectedEmployeeId && (!detailData || detailData.employeeId !== selectedEmployeeId || detailData.month !== selectedMonth)) {
+    if (detailError) return <div><button className={styles.backBtn} onClick={handleBackToDetailedReports}>กลับรายงานละเอียด</button><p role="alert" className={styles.notice}>{detailError}</p><button className={styles.primaryBtn} onClick={() => fetchEmployeeDetail(selectedEmployeeId, selectedMonth)}>ลองใหม่</button></div>;
     return (
       <div aria-busy="true" aria-label="กำลังโหลดรายละเอียดรายงาน">
         <button type="button" className={styles.backBtn} onClick={handleBackToDetailedReports}>กลับรายงานละเอียด</button>
@@ -381,6 +394,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   if (selectedEmployeeId && detailData) {
     return (
       <div className={styles.detailContainer}>
+        {detailError && <p className={styles.notice} role="alert">{detailError}<button className={styles.backBtn} onClick={() => fetchEmployeeDetail(selectedEmployeeId, selectedMonth)}>ลองใหม่</button></p>}
         {(detailLoading || reportPending) && <div className="refreshStatus" role="status">{reportPending || 'กำลังอัปเดตรายงานรายบุคคล'}</div>}
         <button type="button" className={styles.backBtn} onClick={handleBackToDetailedReports}>
           ← กลับรายงานละเอียด
@@ -419,12 +433,13 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
             </div>
 
             <section className={styles.sectionCard}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className={styles.sectionHeading}>
                 <h3 className={styles.sectionTitle}>รายละเอียดเงิน</h3>
                 {!reportData?.isClosed && (
                   <button
                     type="button"
                     className={styles.backBtn}
+                    disabled={Boolean(reportPending)}
                     onClick={() => {
                       setExtraType('BONUS');
                       setShowExtrasModal(true);
@@ -545,7 +560,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
         {/* Add Month Extra Modal */}
         {showExtrasModal && (
           <div className={styles.modalOverlay}>
-            <div className={styles.modalCard}>
+            <div className={styles.modalCard} data-app-dialog role="dialog" aria-modal="true" aria-label="รายการรายงาน" tabIndex={-1}>
               <h3 className={styles.modalTitle}>
                 {extraType === 'DEDUCTION' ? 'เพิ่มรายการหักเงินเดือนนี้' : 'เพิ่มเงินพิเศษเดือนนี้'}
               </h3>
@@ -766,7 +781,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
 
       {showCloseModal && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalCard}>
+          <div className={styles.modalCard} data-app-dialog role="dialog" aria-modal="true" aria-label="รายการรายงาน" tabIndex={-1}>
             <h3 className={styles.modalTitle}>ปิดรอบเดือน {formatThaiMonth(selectedMonth)}</h3>
 
             {closeLoading ? (
@@ -809,7 +824,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       {/* Reopen Month Modal */}
       {showReopenModal && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalCard}>
+          <div className={styles.modalCard} data-app-dialog role="dialog" aria-modal="true" aria-label="รายการรายงาน" tabIndex={-1}>
             <h3 className={styles.modalTitle}>ยืนยันการเปิดเดือนเพื่อแก้ไข</h3>
             <p style={{ color: 'var(--team-muted)', fontSize: 'var(--team-secondary)' }}>
               การเปิดเดือนที่ปิดแล้วจะอนุญาตให้แก้ไขการเช็คชื่อหรือเงินพิเศษได้ชั่วคราว

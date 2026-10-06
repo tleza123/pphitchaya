@@ -1,5 +1,7 @@
 'use client';
 import { usePendingAction } from '@/components/shared/usePendingAction';
+import { optionalMoney } from '@/lib/client/form-money';
+import { DATA_CHANGED_EVENT } from '@/lib/client/data-events';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -119,6 +121,11 @@ export function AttendanceTab({
     if (active) fetchDayData(currentDate.current);
   }, [active, selectedDate, fetchDayData]);
   useEffect(() => () => dayController.current?.abort(), []);
+  useEffect(() => {
+    const refresh = () => { if (active) void fetchDayData(currentDate.current); };
+    window.addEventListener(DATA_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(DATA_CHANGED_EVENT, refresh);
+  }, [active, fetchDayData]);
 
   const handleMark = async (
     employeeId: string,
@@ -142,29 +149,9 @@ export function AttendanceTab({
       : item));
     const requestId = crypto.randomUUID();
 
-    // Determine advanceSatang to send
-    let advanceToSend = customAdvanceSatang;
-    if (advanceToSend === undefined) {
-      const inputVal = advanceInputs[employeeId];
-      if (inputVal !== undefined && inputVal.trim() !== '') {
-        const num = parseFloat(inputVal);
-        if (!isNaN(num) && num >= 0) {
-          advanceToSend = Math.round(num * 100);
-        }
-      }
-    }
-
-    // Determine deductionSatang to send
-    let deductionToSend = customDeductionSatang;
-    if (deductionToSend === undefined) {
-      const inputVal = deductionInputs[employeeId];
-      if (inputVal !== undefined && inputVal.trim() !== '') {
-        const num = parseFloat(inputVal);
-        if (!isNaN(num) && num >= 0) {
-          deductionToSend = Math.round(num * 100);
-        }
-      }
-    }
+    // A status change must not save unfinished money fields. Omitted fields preserve stored amounts.
+    const advanceToSend = customAdvanceSatang;
+    const deductionToSend = customDeductionSatang;
 
     try {
       const res = await fetch('/api/attendance', {
@@ -209,13 +196,13 @@ export function AttendanceTab({
               : item
           )
         );
-        if (json.data.advanceSatang) {
+        if (advanceToSend !== undefined && json.data.advanceSatang) {
           setAdvanceInputs(prev => ({ ...prev, [employeeId]: (json.data.advanceSatang / 100).toFixed(2) }));
         } else if (advanceToSend === 0) {
           setAdvanceInputs(prev => ({ ...prev, [employeeId]: '' }));
         }
 
-        if (json.data.deductionSatang) {
+        if (deductionToSend !== undefined && json.data.deductionSatang) {
           setDeductionInputs(prev => ({ ...prev, [employeeId]: (json.data.deductionSatang / 100).toFixed(2) }));
         } else if (deductionToSend === 0) {
           setDeductionInputs(prev => ({ ...prev, [employeeId]: '' }));
@@ -243,17 +230,8 @@ export function AttendanceTab({
     currentStatus: 'FULL' | 'HALF' | 'ABSENT' | 'UNMARKED',
     expectedRevision: number
   ) => {
-    const rawVal = (advanceInputs[employeeId] || '').trim();
-    let satang = 0;
-    if (rawVal !== '') {
-      const num = parseFloat(rawVal);
-      if (isNaN(num) || num < 0) {
-        alert('กรุณากรอกจำนวนเงินเบิกเป็นตัวเลขที่ถูกต้อง');
-        return;
-      }
-      satang = Math.round(num * 100);
-    }
-    handleMark(employeeId, currentStatus, expectedRevision, satang, undefined);
+    try { handleMark(employeeId, currentStatus, expectedRevision, optionalMoney(advanceInputs[employeeId] || ''), undefined); }
+    catch { alert('กรุณากรอกเงินเบิกให้ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง'); }
   };
 
   const handleSaveDeduction = (
@@ -261,17 +239,8 @@ export function AttendanceTab({
     currentStatus: 'FULL' | 'HALF' | 'ABSENT' | 'UNMARKED',
     expectedRevision: number
   ) => {
-    const rawVal = (deductionInputs[employeeId] || '').trim();
-    let satang = 0;
-    if (rawVal !== '') {
-      const num = parseFloat(rawVal);
-      if (isNaN(num) || num < 0) {
-        alert('กรุณากรอกจำนวนเงินหักเป็นตัวเลขที่ถูกต้อง');
-        return;
-      }
-      satang = Math.round(num * 100);
-    }
-    handleMark(employeeId, currentStatus, expectedRevision, undefined, satang);
+    try { handleMark(employeeId, currentStatus, expectedRevision, undefined, optionalMoney(deductionInputs[employeeId] || '')); }
+    catch { alert('กรุณากรอกเงินหักให้ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง'); }
   };
 
   const handleAddWorkday = async () => {

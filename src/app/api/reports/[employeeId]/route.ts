@@ -39,6 +39,7 @@ export async function GET(
       ? monthSnap.data()
       : { state: 'OPEN', revision: 0, extrasRevision: 0 };
     const isClosed = monthData?.state === 'CLOSED';
+    if (isClosed && !monthData?.currentClosureId) return createErrorResponse('INCOMPLETE_CLOSURE', 'ไม่พบข้อมูลปิดเดือน', 409);
 
     // If CLOSED, read immutable snapshot
     if (isClosed && monthData?.currentClosureId) {
@@ -50,13 +51,18 @@ export async function GET(
 
       if (snapDoc.exists) {
         const data = snapDoc.data();
+        if (!data?.counts || !Array.isArray(data.days)) return createErrorResponse('INCOMPLETE_CLOSURE', 'รายละเอียดปิดเดือนไม่ครบถ้วน', 409);
         return createSuccessResponse({
+          ...data,
+          ...data.counts,
           employeeId,
           month: targetMonth,
           isClosed: true,
-          ...data
+          pending: 0,
+          grossSatang: data.grossSatang ?? data.baseSatang + data.extraSatang
         });
       }
+      return createErrorResponse('INCOMPLETE_CLOSURE', 'ไม่พบรายงานรายบุคคลที่บันทึกตอนปิดเดือน', 409);
     }
 
     // Otherwise calculate dynamically

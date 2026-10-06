@@ -2,6 +2,12 @@
 import { useHistoryState } from '@/components/shared/useHistoryState';
 import { usePendingAction } from '@/components/shared/usePendingAction';
 import { mutationData } from '@/lib/client/mutation-response';
+import { getBangkokToday } from '@/lib/payroll/dates';
+import { moneySatang } from '@/lib/payroll/money';
+import { employeeExtraTemplates } from '@/lib/client/form-money';
+import { useModalInteraction } from '@/components/shared/useModalInteraction';
+import { MutationIntent } from '@/lib/client/mutation-intent';
+import { notifyDataChanged } from '@/lib/client/data-events';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -100,21 +106,28 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
   // End employment modal
   const [showEndModal, setShowEndModal] = useHistoryState<boolean>('end-employment', false);
   const [endDateInput, setEndDateInput] = useState<string>('');
+  useModalInteraction(active && showEndModal, () => setShowEndModal(false));
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const loadSequence = useRef(0);
+  const loadController = useRef<AbortController | null>(null);
+  const submitLock = useRef(false);
+  const addIntent = useRef(new MutationIntent());
+  const photoSequence = useRef(0);
   const [hasLoaded, setHasLoaded] = useState(false);
 
   const loadData = async () => {
     if (!idToken) return;
     const sequence = ++loadSequence.current;
+    loadController.current?.abort();
+    const controller = new AbortController(); loadController.current = controller;
     setLoading(true);
     setError(null);
     try {
       // Fetch employees
       const [res, bootRes] = await Promise.all([
-        fetch('/api/employees', { headers: { Authorization: `Bearer ${idToken}` } }),
-        fetch('/api/settings?calendar=1', { headers: { Authorization: `Bearer ${idToken}` } })
+        fetch('/api/employees', { signal: controller.signal, headers: { Authorization: `Bearer ${idToken}` } }),
+        fetch('/api/settings?calendar=1', { signal: controller.signal, headers: { Authorization: `Bearer ${idToken}` } })
       ]);
       if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลพนักงานได้');
       if (!bootRes.ok) throw new Error('ไม่สามารถโหลดการตั้งค่าได้');
@@ -173,8 +186,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
         setSelectedWorkDays(activeWorkDays);
       }
     } catch (err: any) {
-      if (sequence === loadSequence.current) {
-        setEmployees([]);
+      if (sequence === loadSequence.current && !controller.signal.aborted) {
         setError(err.message || 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
       }
     } finally {
@@ -184,7 +196,10 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
   useEffect(() => {
     if (active) loadData();
+    return () => { ++loadSequence.current; loadController.current?.abort(); };
   }, [active, idToken]);
+
+  useEffect(() => { ++photoSequence.current; setPhotoPending(false); }, [view, active]);
 
   const showNotification = (msg: string) => {
     setSuccessMessage(msg);
@@ -193,12 +208,13 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
   // Open add form
   const handleOpenAdd = () => {
+    if (submitLock.current || photoPending) return;
     setSelectedEmployee(null);
     setFormName('');
     setFormNickname('');
     setFormPosition('');
     setFormNotes('');
-    const today = new Date().toISOString().split('T')[0];
+    const today = getBangkokToday();
     setFormStartDate(today);
     setFormDailyRate('500');
     setFormRateEffectiveDate(today);
@@ -210,7 +226,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
   // Open edit form
   const handleOpenEdit = (emp: Employee) => {
-    if (loading) return;
+    if (loading || submitLock.current || photoPending) return;
     setSelectedEmployee(emp);
     setFormName(emp.name);
     setFormNickname(emp.nickname || '');
@@ -218,7 +234,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     setFormNotes(emp.notes || '');
     setFormStartDate(emp.startDate || '');
     setFormDailyRate(((emp.dailyRateSatang || 0) / 100).toString());
-    const today = new Date().toISOString().split('T')[0];
+    const today = getBangkokToday();
     setFormRateEffectiveDate(today);
     setFormExtraTemplates(
       (emp.extraTemplates || []).map((t) => ({
@@ -245,13 +261,16 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     }
 
     setPhotoPending(true);
-    const photoError = () => { setPhotoPending(false); alert('ไม่สามารถเปิดรูปภาพนี้ได้'); };
+    const sequence = ++photoSequence.current;
+    const photoError = () => { if (sequence !== photoSequence.current) return; setPhotoPending(false); alert('ไม่สามารถเปิดรูปภาพนี้ได้'); };
     const reader = new FileReader();
     reader.onerror = photoError;
     reader.onload = (event) => {
+      if (sequence !== photoSequence.current) return;
       const img = new Image();
       img.onerror = photoError;
       img.onload = () => {
+        if (sequence !== photoSequence.current) return;
         const maxDim = 800;
         let width = img.width;
         let height = img.height;
@@ -275,6 +294,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
         canvas.toBlob(
           (blob) => {
+            if (sequence !== photoSequence.current) return;
             setPhotoPending(false);
             if (blob) {
               const resizedFile = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
@@ -315,30 +335,31 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
   // Submit Add / Edit
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!idToken || submitting || photoPending) return;
+    if (!idToken || submitLock.current || photoPending) return;
     const effectiveNick = formNickname.trim();
     const effectiveName = formName.trim() || effectiveNick;
     if (!effectiveNick && !formName.trim()) {
       alert('กรุณาระบุชื่อเล่นหรือชื่อ-นามสกุล');
       return;
     }
-    const rateNum = parseFloat(formDailyRate);
-    if (isNaN(rateNum) || rateNum <= 0) {
+    let rateSatang: number;
+    try { rateSatang = moneySatang(formDailyRate.trim()); }
+    catch { alert('กรุณากรอกค่าแรงให้ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง'); return; }
+    const rateNum = rateSatang / 100;
+    if (rateSatang <= 0) {
       alert('กรุณากรอกค่าแรงรายวันให้ถูกต้อง');
       return;
     }
 
-    setSubmitting(true);
+    submitLock.current = true; setSubmitting(true);
+    let writeStarted = false;
     try {
-      const extraTemplatesFormatted = formExtraTemplates
-        .filter((t) => (t.name || '').trim() && parseFloat(t.amount) > 0)
-        .map((t) => ({
-          name: t.name.trim(),
-          label: t.name.trim(),
-          amountSatang: Math.round(parseFloat(t.amount) * 100)
-        }));
+      const extraTemplatesFormatted = employeeExtraTemplates(formExtraTemplates);
 
       if (view === 'add') {
+        writeStarted = true;
+        const payload = { name: effectiveName, nickname: effectiveNick, position: formPosition.trim(), notes: formNotes.trim(),
+          startDate: formStartDate, dailyRate: rateNum.toString(), dailyRateSatang: rateSatang, rateSatang, extraTemplates: extraTemplatesFormatted };
         // Create employee
         const res = await fetch('/api/employees', {
           method: 'POST',
@@ -347,16 +368,8 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            name: effectiveName,
-            nickname: effectiveNick,
-            position: formPosition.trim(),
-            notes: formNotes.trim(),
-            startDate: formStartDate,
-            dailyRate: rateNum.toString(),
-            dailyRateSatang: Math.round(rateNum * 100),
-            rateSatang: Math.round(rateNum * 100),
-            extraTemplates: extraTemplatesFormatted,
-            requestId: `add_emp_${Date.now()}`
+            ...payload,
+            requestId: addIntent.current.requestId(payload)
           })
         });
 
@@ -366,6 +379,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
         }
 
         const newEmpData = await res.json();
+        addIntent.current.complete();
         const createdEmpId =
           newEmpData.data?.employeeId ||
           newEmpData.data?.id ||
@@ -391,8 +405,9 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
           }
         }
 
-        showNotification('เพิ่มพนักงานสำเร็จ');
+        notifyDataChanged(); showNotification('เพิ่มพนักงานสำเร็จ');
       } else if (view === 'edit' && selectedEmployee) {
+        writeStarted = true;
         // Update basic info
         const patchRes = await fetch(`/api/employees/${selectedEmployee.id}`, {
           method: 'PATCH',
@@ -405,6 +420,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
             nickname: effectiveNick,
             position: formPosition.trim(),
             notes: formNotes.trim(),
+            startDate: formStartDate,
             expectedRevision: selectedEmployee.revision,
             requestId: `patch_emp_${selectedEmployee.id}_${Date.now()}`
           })
@@ -416,7 +432,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
         }
         const patched = await mutationData(patchRes, 'ไม่สามารถแก้ไขข้อมูลพนักงานได้');
         let updatedRevision = patched.revision;
-        setSelectedEmployee(previous => previous ? { ...previous, revision: updatedRevision } : previous);
+        setSelectedEmployee(previous => previous?.id === selectedEmployee.id ? { ...previous, revision: updatedRevision } : previous);
 
         // Check if rate changed
         const currentRateSatang = selectedEmployee.dailyRateSatang;
@@ -439,7 +455,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
             })
           }), 'บันทึกค่าแรงไม่สำเร็จ');
           updatedRevision = rateResult.employeeRevision;
-          setSelectedEmployee(previous => previous ? { ...previous, revision: updatedRevision, dailyRateSatang: newRateSatang } : previous);
+          setSelectedEmployee(previous => previous?.id === selectedEmployee.id ? { ...previous, revision: updatedRevision, dailyRateSatang: newRateSatang } : previous);
         }
 
         // Update extra templates
@@ -468,22 +484,24 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
           }), 'บันทึกรูปภาพไม่สำเร็จ');
         }
 
-        showNotification('แก้ไขข้อมูลพนักงานสำเร็จ');
+        notifyDataChanged(); showNotification('แก้ไขข้อมูลพนักงานสำเร็จ');
       }
 
       await loadData();
       setView('list');
     } catch (err: any) {
+      if (writeStarted) notifyDataChanged();
       alert(err.message || 'เกิดข้อผิดพลาดในการบันทึก');
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   };
 
   // End employment
   const handleConfirmEndEmployment = async () => {
-    if (!selectedEmployee || !idToken || !endDateInput) return;
-    setSubmitting(true);
+    if (!selectedEmployee || !idToken || !endDateInput || submitLock.current) return;
+    submitLock.current = true; setSubmitting(true);
     try {
       const res = await fetch(`/api/employees/${selectedEmployee.id}/end-employment`, {
         method: 'POST',
@@ -504,12 +522,14 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
       }
 
       setShowEndModal(false);
+      notifyDataChanged();
       showNotification('บันทึกการสิ้นสุดการจ้างเรียบร้อย');
       await loadData();
       setView('list');
     } catch (err: any) {
       alert(err.message || 'เกิดข้อผิดพลาด');
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   };
@@ -566,7 +586,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
   const handleSaveWorkDays = async () => {
     if (!idToken) return;
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getBangkokToday();
       const res = await fetch('/api/calendar', {
         method: 'POST',
         headers: {
@@ -589,6 +609,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
       }
 
       setShopSettings(prev => ({ ...prev, workDays: selectedWorkDays }));
+      notifyDataChanged();
       showNotification('บันทึกวันทำงานเรียบร้อย');
       setCalendarOpen(false);
     } catch (err: any) {
@@ -658,6 +679,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
           </h2>
 
           <form onSubmit={handleSubmitForm}>
+            <fieldset disabled={submitting || photoPending} className={styles.formFields}>
             {/* Photo Section */}
             <div className={styles.formGroup}>
               <label className={styles.formLabel}>รูปถ่ายพนักงาน</label>
@@ -704,10 +726,11 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
             </div>
 
             {/* Nickname & Position */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+            <div className={styles.formPair}>
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>ชื่อเล่น *</label>
+                <label className={styles.formLabel} htmlFor="employee-nickname">ชื่อเล่น *</label>
                 <input
+                  id="employee-nickname"
                   type="text"
                   className={styles.formInput}
                   value={formNickname}
@@ -716,8 +739,9 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                 />
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>ตำแหน่ง *</label>
+                <label className={styles.formLabel} htmlFor="employee-position">ตำแหน่ง *</label>
                 <input
+                  id="employee-position"
                   type="text"
                   className={styles.formInput}
                   value={formPosition}
@@ -730,9 +754,10 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
             {/* Name */}
             <div className={styles.formGroup}>
-              <label className={styles.formLabel}>ชื่อจริง นามสกุล</label>
+              <label className={styles.formLabel} htmlFor="employee-name">ชื่อจริง นามสกุล</label>
               <input
-                type="text"
+                  id="employee-name"
+                  type="text"
                 className={styles.formInput}
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
@@ -742,9 +767,10 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
             {/* Start Date */}
             <div className={styles.formGroup}>
-              <label className={styles.formLabel}>วันที่เริ่มงาน *</label>
+              <label className={styles.formLabel} htmlFor="employee-start">วันที่เริ่มงาน *</label>
               <input
-                type="date"
+                  id="employee-start"
+                  type="date"
                 className={styles.formInput}
                 value={formStartDate}
                 onChange={(e) => setFormStartDate(e.target.value)}
@@ -754,9 +780,10 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
             {/* Daily Rate */}
             <div className={styles.formGroup}>
-              <label className={styles.formLabel}>ค่าแรงรายวัน บาท *</label>
+              <label className={styles.formLabel} htmlFor="employee-rate">ค่าแรงรายวัน บาท *</label>
               <input
-                type="number"
+                  id="employee-rate"
+                  type="number"
                 step="0.01"
                 min="0"
                 className={styles.formInput}
@@ -781,9 +808,10 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
             {/* Notes */}
             <div className={styles.formGroup}>
-              <label className={styles.formLabel}>บันทึกเพิ่มเติม</label>
+              <label className={styles.formLabel} htmlFor="employee-notes">บันทึกเพิ่มเติม</label>
               <textarea
-                className={styles.formTextarea}
+                  id="employee-notes"
+                  className={styles.formTextarea}
                 value={formNotes}
                 onChange={(e) => setFormNotes(e.target.value)}
                 placeholder="ข้อมูลติดต่อ หรือเงื่อนไขเพิ่มเติม"
@@ -822,7 +850,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
               ) : (
                 formExtraTemplates.map((item, idx) => (
                   <div key={idx} className={styles.extraItemRow}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr auto', gap: '0.5rem', alignItems: 'center' }}>
+                    <div className={styles.extraFields}>
                       <input
                         type="text"
                         className={styles.formInput}
@@ -840,6 +868,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                         placeholder="บาท"
                       />
                       <button
+                        aria-label={`ลบรายการเงินพิเศษ ${idx + 1}`}
                         type="button"
                         onClick={() => handleRemoveExtraTemplate(idx)}
                         style={{
@@ -890,6 +919,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                 สิ้นสุดการจ้างพนักงานคนนี้
               </button>
             )}
+            </fieldset>
           </form>
         </div>
       )}
@@ -900,7 +930,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
       {view === 'list' && (
         <div>
           <div className={styles.listControlsBar}>
-            <button className={styles.addBtn} onClick={handleOpenAdd}>
+            <button className={styles.addBtn} onClick={handleOpenAdd} disabled={submitting || photoPending}>
               เพิ่มพนักงานใหม่
             </button>
 
@@ -990,7 +1020,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                   <button
                     className={styles.editBtn}
                     onClick={() => handleOpenEdit(emp)}
-                    disabled={loading}
+                    disabled={loading || submitting || photoPending}
                   >
                     แก้ไขข้อมูล
                   </button>
@@ -1001,19 +1031,19 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
           {/* Collapsible: Work Schedule */}
           <div className={styles.collapsibleSection}>
-            <div
+            <button type="button" aria-expanded={calendarOpen}
               className={styles.sectionHeader}
               onClick={() => setCalendarOpen(!calendarOpen)}
             >
               <span>วันทำงานของร้าน</span>
               {calendarOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-            </div>
+            </button>
             {calendarOpen && (
               <div className={styles.sectionBody}>
                 <div style={{ margin: '0.8rem 0' }}>
                   เลือกวันทำงานปกติของร้านในแต่ละสัปดาห์:
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', marginBottom: '1rem' }}>
+                <div className={styles.workDays}>
                   {DAY_NAMES.map((dayName, idx) => {
                     const isSelected = selectedWorkDays.includes(idx);
                     return (
@@ -1021,8 +1051,10 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                         key={idx}
                         type="button"
                         onClick={() => handleToggleWorkDay(idx)}
+                        aria-pressed={isSelected}
+                        disabled={Boolean(settingsPending)}
                         style={{
-                          minHeight: '2.8rem',
+                          minHeight: '3rem',
                           border: `1px solid ${isSelected ? 'var(--team-primary)' : 'var(--team-border)'}`,
                           backgroundColor: isSelected ? 'var(--team-primary)' : '#ffffff',
                           color: isSelected ? '#ffffff' : 'var(--team-text)',
@@ -1051,21 +1083,23 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
           {/* Collapsible: Shop Name */}
           <div className={styles.collapsibleSection}>
-            <div
+            <button type="button" aria-expanded={shopNameOpen}
               className={styles.sectionHeader}
               onClick={() => setShopNameOpen(!shopNameOpen)}
             >
               <span>ชื่อร้าน</span>
               {shopNameOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-            </div>
+            </button>
             {shopNameOpen && (
               <div className={styles.sectionBody}>
                 <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>ชื่อร้าน</label>
+                  <label className={styles.formLabel} htmlFor="shop-name">ชื่อร้าน</label>
                   <input
-                    type="text"
+                  id="shop-name"
+                  type="text"
                     className={styles.formInput}
                     value={shopNameInput}
+                    disabled={Boolean(settingsPending)}
                     onChange={(e) => setShopNameInput(e.target.value)}
                   />
                 </div>
@@ -1097,8 +1131,10 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
             zIndex: 100
           }}
         >
-          <div
+          <div data-app-dialog role="dialog" aria-modal="true" aria-label="ยืนยันการสิ้นสุดการจ้าง" tabIndex={-1}
             style={{
+              maxHeight: 'calc(100dvh - 2rem)',
+              overflowY: 'auto',
               backgroundColor: '#ffffff',
               borderRadius: 'var(--team-radius-card)',
               padding: '1.5rem',
@@ -1121,9 +1157,10 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
               คุณต้องการบันทึกการสิ้นสุดการจ้างของ <strong>{selectedEmployee.name}</strong> หรือไม่
             </p>
             <div className={styles.formGroup}>
-              <label className={styles.formLabel}>วันทำงานวันสุดท้าย</label>
+              <label className={styles.formLabel} htmlFor="employee-end">วันทำงานวันสุดท้าย</label>
               <input
-                type="date"
+                  id="employee-end"
+                  type="date"
                 className={styles.formInput}
                 value={endDateInput}
                 onChange={(e) => setEndDateInput(e.target.value)}
