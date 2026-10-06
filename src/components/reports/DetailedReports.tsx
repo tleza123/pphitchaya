@@ -122,9 +122,9 @@ export default function DetailedReports({ active, attendanceVersion, onBack }: {
         <label>พนักงาน<select value={employeeId} onChange={event => setEmployeeId(event.target.value)}><option value="all">พนักงานทุกคน</option>{employeeId !== 'all' && !data?.employees.some(employee => employee.employeeId === employeeId) && <option value={employeeId} disabled>พนักงานที่เลือกไม่มีข้อมูลในช่วงนี้</option>}{data?.employees.map(employee => <option key={employee.employeeId} value={employee.employeeId}>{employee.nickname || employee.name}</option>)}</select></label>
       </div>
     </section>
-    {loading && data && <div className="refreshStatus" role="status">กำลังอัปเดตรายงาน</div>}
+    {loading && <div className="refreshStatus" role="status">กำลังโหลดรายงานละเอียด</div>}
     {error && <div className={styles.notice} role="alert">{error}<button onClick={() => setRefresh(value => value + 1)}>ลองใหม่</button></div>}
-    {loading && !data ? <div aria-busy="true" aria-label="กำลังโหลดรายงานละเอียด"><div className={styles.totals}>{Array.from({ length: 6 }, (_, index) => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}</div><div className={styles.chartSkeleton}><span className="loadingLine" /></div></div>
+    {loading && !data ? <div aria-busy="true" aria-label="กำลังโหลดรายงานละเอียด"><div className={styles.totals}>{Array.from({ length: 12 }, (_, index) => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}</div><div className={styles.charts}>{[0, 1].map(index => <div className={styles.chartSkeleton} key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}</div></div>
       : data && totals ? <>
         <p className={styles.context}>{selected ? selected.nickname || selected.name : 'พนักงานทุกคน'} · {period === 'day' ? formatThaiMonth(month) : period === 'month' ? `ปี ${Number(year) + 543}` : `ปี ${Number(fromYear) + 543}–${Number(toYear) + 543}`}</p>
         <Totals totals={totals} />

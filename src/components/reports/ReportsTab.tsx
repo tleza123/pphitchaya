@@ -1,4 +1,5 @@
 'use client';
+import { usePendingAction } from '@/components/shared/usePendingAction';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -47,6 +48,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   const [detailLoading, setDetailLoading] = useState<boolean>(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const { pending: reportPending, run: runReportAction } = usePendingAction();
   const exportLock = useRef(false);
 
   const exportSalary = async (employeeId?: string) => {
@@ -81,6 +83,8 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   const [newExtraAmount, setNewExtraAmount] = useState<string>('');
   const reportFetchSequence = useRef(0);
   const detailFetchSequence = useRef(0);
+  const reportController = useRef<AbortController | null>(null);
+  const detailController = useRef<AbortController | null>(null);
   const wasActive = useRef(false);
   const detailAttendanceVersion = useRef(attendanceVersion);
 
@@ -88,11 +92,14 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
     async (month: string) => {
       if (!idToken) return;
       const sequence = ++reportFetchSequence.current;
+      reportController.current?.abort();
+      const controller = new AbortController(); reportController.current = controller;
       setLoading(true);
       setErrorMsg(null);
       setReportData((previous: any) => previous?.month === month ? previous : null);
       try {
         const res = await fetch(`/api/reports?month=${month}`, {
+          signal: controller.signal,
           headers: { Authorization: `Bearer ${idToken}` }
         });
         const json = await res.json();
@@ -104,7 +111,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           setErrorMsg(json.error?.message || 'โหลดรายงานไม่สำเร็จ');
         }
       } catch {
-        if (sequence === reportFetchSequence.current) {
+        if (sequence === reportFetchSequence.current && !controller.signal.aborted) {
           setReportData(null);
           setErrorMsg('ไม่สามารถเชื่อมต่อระบบได้');
         }
@@ -119,9 +126,13 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
     async (empId: string, month: string) => {
       if (!idToken) return;
       const sequence = ++detailFetchSequence.current;
+      detailController.current?.abort();
+      const controller = new AbortController(); detailController.current = controller;
+      setDetailData((previous: any) => previous?.employeeId === empId && previous?.month === month ? previous : null);
       setDetailLoading(true);
       try {
         const res = await fetch(`/api/reports/${empId}?month=${month}`, {
+          signal: controller.signal,
           headers: { Authorization: `Bearer ${idToken}` }
         });
         const json = await res.json();
@@ -132,7 +143,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           alert(json.error?.message || 'โหลดรายละเอียดไม่สำเร็จ');
         }
       } catch {
-        if (sequence === detailFetchSequence.current) alert('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+        if (sequence === detailFetchSequence.current && !controller.signal.aborted) alert('เกิดข้อผิดพลาดในการโหลดข้อมูล');
       } finally {
         if (sequence === detailFetchSequence.current) setDetailLoading(false);
       }
@@ -143,6 +154,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   useEffect(() => {
     if (active) fetchMonthlyReport(selectedMonth);
   }, [active, attendanceVersion, selectedMonth, fetchMonthlyReport]);
+  useEffect(() => () => { reportController.current?.abort(); detailController.current?.abort(); }, []);
 
   useEffect(() => {
     if (active && selectedEmployeeId && (!wasActive.current || detailAttendanceVersion.current !== attendanceVersion)) {
@@ -158,6 +170,8 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   };
 
   const handleBackToDetailedReports = () => {
+    detailController.current?.abort(); ++detailFetchSequence.current;
+    setDetailLoading(false);
     setSelectedEmployeeId(null);
     setDetailData(null);
     onOpenDetailedReports();
@@ -346,10 +360,11 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
     }
   };
 
-  if (selectedEmployeeId && detailLoading) {
+  if (selectedEmployeeId && detailLoading && !detailData) {
     return (
       <div aria-busy="true" aria-label="กำลังโหลดรายละเอียดรายงาน">
         <button type="button" className={styles.backBtn} onClick={handleBackToDetailedReports}>กลับรายงานละเอียด</button>
+        <div className="refreshStatus" role="status">กำลังโหลดรายงานรายบุคคล</div>
         <div className="loadingCard"><span className="loadingLine" /><span className="loadingLine" /></div>
         <div className={styles.reportsGrid}>
           {[0, 1, 2].map(index => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}
@@ -362,6 +377,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   if (selectedEmployeeId && detailData) {
     return (
       <div className={styles.detailContainer}>
+        {(detailLoading || reportPending) && <div className="refreshStatus" role="status">{reportPending || 'กำลังอัปเดตรายงานรายบุคคล'}</div>}
         <button type="button" className={styles.backBtn} onClick={handleBackToDetailedReports}>
           ← กลับรายงานละเอียด
         </button>
@@ -474,7 +490,8 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                   type="button"
                   className={styles.secondaryBtn}
                   style={{ marginTop: '1rem' }}
-                  onClick={handleConfirmReview}
+                  onClick={() => runReportAction('กำลังยืนยันรายการเงิน', handleConfirmReview)}
+                  disabled={Boolean(reportPending) || detailLoading}
                 >
                   ยืนยันการตรวจสอบเงินพิเศษและรายการหัก
                 </button>
@@ -571,13 +588,14 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
               </label>
 
               <div className={styles.modalActions}>
-                <button type="button" className={styles.primaryBtn} onClick={handleAddMonthExtra}>
-                  บันทึกรายการ
+                <button type="button" className={styles.primaryBtn} disabled={Boolean(reportPending)} onClick={() => runReportAction('กำลังบันทึกรายการเงิน', handleAddMonthExtra)}>
+                  {reportPending ? <span className="busyInline">กำลังบันทึก</span> : 'บันทึกรายการ'}
                 </button>
                 <button
                   type="button"
                   className={styles.secondaryBtn}
                   onClick={() => setShowExtrasModal(false)}
+                  disabled={Boolean(reportPending)}
                 >
                   ยกเลิก
                 </button>
@@ -601,6 +619,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           </label>
           <input
             id="report-month-select"
+            disabled={Boolean(reportPending) || closeLoading}
             type="month"
             className={styles.monthSelect}
             value={selectedMonth}
@@ -613,7 +632,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       </div>
 
       {errorMsg && <div className={styles.notice}>{errorMsg}</div>}
-      {loading && reportData && <div className="refreshStatus" role="status">กำลังอัปเดตรายงาน</div>}
+      {(loading || reportPending) && <div className="refreshStatus" role="status">{reportPending || 'กำลังโหลดรายงาน'}</div>}
 
       {!loading && errorMsg && !reportData ? null : !reportData ? (
         <div aria-busy="true" aria-label="กำลังโหลดรายงาน">
@@ -750,7 +769,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
 
             {closeLoading ? (
               <div>
-                <p>กำลังประมวลผลข้อมูลและจัดเก็บ Snapshot...</p>
+                <p className="busyInline" role="status">กำลังประมวลผลและปิดเดือน</p>
                 {closeStatus && (
                   <p style={{ color: 'var(--team-muted)', fontSize: 'var(--team-secondary)' }}>
                     ความคืบหน้า: {closeStatus.cursor} จาก {closeStatus.totalEmployees} คน
@@ -771,14 +790,15 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                   <button
                     type="button"
                     className={styles.primaryBtn}
-                    onClick={() => handleCancelClose(closeStatus.jobId)}
+                    onClick={() => runReportAction('กำลังยกเลิกการปิดเดือน', () => handleCancelClose(closeStatus.jobId))}
+                    disabled={Boolean(reportPending)}
                   >
                     ยกเลิกและกลับไปแก้ไข
                   </button>
                 </div>
               </div>
             ) : (
-              <p>กำลังเตรียมการปิดเดือน...</p>
+              <p className="busyInline" role="status">กำลังเตรียมการปิดเดือน</p>
             )}
           </div>
         </div>
@@ -806,8 +826,8 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
             </label>
 
             <div className={styles.modalActions}>
-              <button type="button" className={styles.primaryBtn} onClick={handleReopen}>
-                ยืนยันเปิดเดือน
+              <button type="button" className={styles.primaryBtn} disabled={Boolean(reportPending)} onClick={() => runReportAction('กำลังเปิดเดือนเพื่อแก้ไข', handleReopen)}>
+                {reportPending ? <span className="busyInline">กำลังเปิดเดือน</span> : 'ยืนยันเปิดเดือน'}
               </button>
               <button
                 type="button"

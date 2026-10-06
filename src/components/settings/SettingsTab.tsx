@@ -1,4 +1,6 @@
 'use client';
+import { usePendingAction } from '@/components/shared/usePendingAction';
+import { mutationData } from '@/lib/client/mutation-response';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -91,6 +93,8 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
   const [formPhotoFile, setFormPhotoFile] = useState<File | null>(null);
   const [formPhotoPreview, setFormPhotoPreview] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [photoPending, setPhotoPending] = useState(false);
+  const { pending: settingsPending, run: runSettingsAction } = usePendingAction();
 
   // End employment modal
   const [showEndModal, setShowEndModal] = useState<boolean>(false);
@@ -230,6 +234,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
   // Resize photo client-side via canvas before saving
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (photoPending) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -238,9 +243,13 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
       return;
     }
 
+    setPhotoPending(true);
+    const photoError = () => { setPhotoPending(false); alert('ไม่สามารถเปิดรูปภาพนี้ได้'); };
     const reader = new FileReader();
+    reader.onerror = photoError;
     reader.onload = (event) => {
       const img = new Image();
+      img.onerror = photoError;
       img.onload = () => {
         const maxDim = 800;
         let width = img.width;
@@ -260,11 +269,12 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        if (!ctx) { photoError(); return; }
         ctx.drawImage(img, 0, 0, width, height);
 
         canvas.toBlob(
           (blob) => {
+            setPhotoPending(false);
             if (blob) {
               const resizedFile = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
               setFormPhotoFile(resizedFile);
@@ -304,7 +314,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
   // Submit Add / Edit
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!idToken) return;
+    if (!idToken || submitting || photoPending) return;
     const effectiveNick = formNickname.trim();
     const effectiveName = formName.trim() || effectiveNick;
     if (!effectiveNick && !formName.trim()) {
@@ -368,11 +378,16 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
           photoFormData.append('file', formPhotoFile);
           photoFormData.append('requestId', `photo_${createdEmpId}_${Date.now()}`);
           photoFormData.append('expectedRevision', '1');
-          await fetch(`/api/employees/${createdEmpId}/photo`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${idToken}` },
-            body: photoFormData
-          });
+          try {
+            await mutationData(await fetch(`/api/employees/${createdEmpId}/photo`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${idToken}` },
+              body: photoFormData
+            }), 'เพิ่มพนักงานแล้ว แต่บันทึกรูปภาพไม่สำเร็จ');
+          } catch (error) {
+            await loadData(); setView('list');
+            throw error;
+          }
         }
 
         showNotification('เพิ่มพนักงานสำเร็จ');
@@ -398,12 +413,15 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
           const errData = await patchRes.json().catch(() => ({}));
           throw new Error(errData.error?.message || errData.message || 'ไม่สามารถแก้ไขข้อมูลพนักงานได้');
         }
+        const patched = await mutationData(patchRes, 'ไม่สามารถแก้ไขข้อมูลพนักงานได้');
+        let updatedRevision = patched.revision;
+        setSelectedEmployee(previous => previous ? { ...previous, revision: updatedRevision } : previous);
 
         // Check if rate changed
         const currentRateSatang = selectedEmployee.dailyRateSatang;
         const newRateSatang = Math.round(rateNum * 100);
         if (currentRateSatang !== newRateSatang) {
-          await fetch(`/api/employees/${selectedEmployee.id}/rates`, {
+          const rateResult = await mutationData(await fetch(`/api/employees/${selectedEmployee.id}/rates`, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${idToken}`,
@@ -415,14 +433,16 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
               dailyRate: rateNum.toString(),
               effectiveDate: formRateEffectiveDate || formStartDate,
               effectiveFrom: formRateEffectiveDate || formStartDate,
-              expectedRevision: selectedEmployee.revision,
+              expectedRevision: updatedRevision,
               requestId: `rate_emp_${selectedEmployee.id}_${Date.now()}`
             })
-          });
+          }), 'บันทึกค่าแรงไม่สำเร็จ');
+          updatedRevision = rateResult.employeeRevision;
+          setSelectedEmployee(previous => previous ? { ...previous, revision: updatedRevision, dailyRateSatang: newRateSatang } : previous);
         }
 
         // Update extra templates
-        await fetch(`/api/employees/${selectedEmployee.id}/extra-templates`, {
+        await mutationData(await fetch(`/api/employees/${selectedEmployee.id}/extra-templates`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${idToken}`,
@@ -432,19 +452,19 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
             extraTemplates: extraTemplatesFormatted,
             requestId: `extra_tmpl_${selectedEmployee.id}_${Date.now()}`
           })
-        });
+        }), 'บันทึกรายการเงินพิเศษไม่สำเร็จ');
 
         // Upload photo if new photo selected
         if (formPhotoFile) {
           const photoFormData = new FormData();
           photoFormData.append('file', formPhotoFile);
           photoFormData.append('requestId', `photo_${selectedEmployee.id}_${Date.now()}`);
-          photoFormData.append('expectedRevision', String(selectedEmployee.revision));
-          await fetch(`/api/employees/${selectedEmployee.id}/photo`, {
+          photoFormData.append('expectedRevision', String(updatedRevision));
+          await mutationData(await fetch(`/api/employees/${selectedEmployee.id}/photo`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${idToken}` },
             body: photoFormData
-          });
+          }), 'บันทึกรูปภาพไม่สำเร็จ');
         }
 
         showNotification('แก้ไขข้อมูลพนักงานสำเร็จ');
@@ -842,9 +862,9 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
               <button
                 type="submit"
                 className={styles.primaryBtn}
-                disabled={submitting}
+                disabled={submitting || photoPending}
               >
-                {submitting ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}
+                {submitting ? <span className="busyInline">กำลังบันทึก</span> : 'บันทึกข้อมูล'}
               </button>
               <button
                 type="button"
@@ -873,7 +893,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
         </div>
       )}
 
-      {loading && hasLoaded && <div className="refreshStatus" role="status">กำลังอัปเดตข้อมูล</div>}
+      {(loading || settingsPending || submitting || photoPending) && <div className="refreshStatus" role="status">{settingsPending || (photoPending ? 'กำลังเตรียมรูปภาพ' : submitting ? 'กำลังบันทึกข้อมูล' : 'กำลังโหลดข้อมูลตั้งค่า')}</div>}
 
       {/* VIEW: LIST */}
       {view === 'list' && (
@@ -1018,7 +1038,9 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                 </div>
                 <button
                   className={styles.primaryBtn}
-                  onClick={handleSaveWorkDays}
+                  onClick={() => runSettingsAction('กำลังบันทึกวันทำงาน', handleSaveWorkDays)}
+                  disabled={Boolean(settingsPending)}
+                  aria-busy={Boolean(settingsPending)}
                 >
                   บันทึกวันทำงาน
                 </button>
@@ -1048,7 +1070,9 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                 </div>
                 <button
                   className={styles.primaryBtn}
-                  onClick={handleSaveShopName}
+                  onClick={() => runSettingsAction('กำลังบันทึกชื่อร้าน', handleSaveShopName)}
+                  disabled={Boolean(settingsPending)}
+                  aria-busy={Boolean(settingsPending)}
                 >
                   บันทึกชื่อร้าน
                 </button>
@@ -1113,7 +1137,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                 disabled={submitting}
                 style={{ margin: 0 }}
               >
-                {submitting ? 'กำลังบันทึก...' : 'ยืนยันการสิ้นสุดการจ้าง'}
+                {submitting ? <span className="busyInline">กำลังบันทึก</span> : 'ยืนยันการสิ้นสุดการจ้าง'}
               </button>
               <button
                 type="button"

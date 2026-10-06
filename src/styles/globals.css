@@ -196,10 +196,11 @@ img {
 }
 
 .refreshStatus {
+  max-width: calc(100vw - 2rem);
   position: fixed;
   right: 1rem;
   bottom: calc(6rem + env(safe-area-inset-bottom));
-  z-index: 20;
+  z-index: 200;
   padding: 0.3rem 0.75rem;
   border: 1px solid var(--team-border);
   border-radius: 0.5rem;
@@ -226,7 +227,32 @@ img {
   border-radius: 50%;
   animation: refreshSpin 0.8s linear infinite;
 }
+.busyInline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.busyInline::before {
+  content: '';
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: refreshSpin 0.8s linear infinite;
+}
+.saveStatusSlot {
+  min-height: 1.65rem;
+  margin-top: 0.5rem;
+  color: var(--team-muted);
+  font-size: var(--team-secondary);
+}
 @keyframes refreshSpin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .refreshStatus::before { animation: none; }
+  .refreshStatus::before, .busyInline::before { animation: none; }
+}
+@media print {
+  .refreshStatus, .saveStatusSlot { display: none !important; }
 }

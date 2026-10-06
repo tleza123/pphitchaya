@@ -1,4 +1,5 @@
 'use client';
+import { usePendingAction } from '@/components/shared/usePendingAction';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -47,12 +48,14 @@ export function AttendanceTab({
   const [isWorkday, setIsWorkday] = useState<boolean>(true);
   const [isClosed, setIsClosed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
+  const { pending: calendarPending, run: runCalendarAction } = usePendingAction();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [filterExceptions, setFilterExceptions] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [pendingMap, setPendingMap] = useState<Record<string, boolean>>({});
   const [clearingId, setClearingId] = useState<string | null>(null);
   const fetchSequence = useRef(0);
+  const dayController = useRef<AbortController | null>(null);
   const loadedDate = useRef<string | null>(null);
   const currentDate = useRef(selectedDate);
   currentDate.current = selectedDate;
@@ -68,10 +71,13 @@ export function AttendanceTab({
         return;
       }
       const sequence = ++fetchSequence.current;
+      dayController.current?.abort();
+      const controller = new AbortController(); dayController.current = controller;
       setLoading(true);
       setErrorMsg(null);
       try {
         const res = await fetch(`/api/attendance?date=${date}`, {
+          signal: controller.signal,
           headers: { Authorization: `Bearer ${idToken}` }
         });
         const json = await res.json();
@@ -98,7 +104,7 @@ export function AttendanceTab({
           setErrorMsg(json.error?.message || 'โหลดข้อมูลไม่สำเร็จ');
         }
       } catch {
-        if (sequence === fetchSequence.current) {
+        if (sequence === fetchSequence.current && !controller.signal.aborted) {
           setItems([]);
           setErrorMsg('ไม่สามารถเชื่อมต่อระบบได้ กรุณาลองใหม่อีกครั้ง');
         }
@@ -112,6 +118,7 @@ export function AttendanceTab({
   useEffect(() => {
     if (active) fetchDayData(currentDate.current);
   }, [active, selectedDate, fetchDayData]);
+  useEffect(() => () => dayController.current?.abort(), []);
 
   const handleMark = async (
     employeeId: string,
@@ -382,14 +389,14 @@ export function AttendanceTab({
           <strong>วันหยุดตามตาราง</strong>
           <span>หากพนักงานมาทำงานจริง กรุณากดบันทึกวันทำงานเพิ่มก่อนเริ่มเช็คชื่อ</span>
           {!isClosed && (
-            <button type="button" className={styles.noticeBtn} disabled={loading} onClick={handleAddWorkday}>
+            <button type="button" className={styles.noticeBtn} disabled={loading || Boolean(calendarPending)} onClick={() => runCalendarAction('กำลังเพิ่มวันทำงาน', handleAddWorkday)} aria-busy={Boolean(calendarPending)}>
               บันทึกวันทำงานเพิ่ม
             </button>
           )}
         </div>
       )}
 
-      {loading && loadedDate.current === selectedDate && <div className="refreshStatus" role="status">กำลังอัปเดตข้อมูล</div>}
+      {(loading || calendarPending) && <div className="refreshStatus" role="status">{calendarPending || 'กำลังโหลดข้อมูลเช็คชื่อ'}</div>}
       {loading && loadedDate.current !== selectedDate ? (
         <div className={styles.cardGrid} aria-busy="true" aria-label="กำลังโหลดข้อมูลเช็กชื่อ">
           {[0, 1, 2].map(index => <div className={styles.skeletonCard} key={index}>
@@ -422,7 +429,8 @@ export function AttendanceTab({
           if (att.status === 'ABSENT') statusLabel = 'ไม่มา';
 
           return (
-            <article key={emp.employeeId} className={styles.personCard}>
+            <article key={emp.employeeId} className={styles.personCard} aria-busy={isPending}>
+              <div className="saveStatusSlot" role="status">{isPending && <span className="busyInline">กำลังบันทึก</span>}</div>
               <div className={styles.personHead}>
                 <div className={styles.avatar}>
                   {emp.photo ? (
