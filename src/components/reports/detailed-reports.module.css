@@ -40,10 +40,24 @@
 .person button { width: 100%; }
 @media (min-width: 1024px) { .charts { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media print {
+  @page { size: A4 landscape; margin: 12mm; }
+  .page { color: #000; font-size: .85rem; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .filters, .actions, .back, .person button { display: none !important; }
+  .charts label { display: none !important; }
+  .heading { margin-bottom: .5rem; }
+  .totals { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .4rem; }
+  .tile { padding: .5rem; break-inside: avoid; }
+  .tile strong { font-size: 1.1rem; }
+  .charts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .chartScroll, .tableScroll { overflow: visible; }
   .chart { min-width: 0 !important; }
-  .panel { break-inside: avoid; }
-  .page table { font-size: .65rem; }
+  .panel { padding: .65rem; break-inside: auto; }
+  .charts .panel, .person { break-inside: avoid; }
+  .people { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .person { padding: .65rem; }
+  .page table { font-size: .75rem; }
   .page th, .page td { padding: .25rem; white-space: normal; }
+  .page thead { display: table-header-group; }
+  .page tr { break-inside: avoid; }
+  .page h3, .page h4 { break-after: avoid; }
 }

@@ -6,6 +6,14 @@
   background-color: var(--team-bg);
 }
 
+@media print {
+  .appContainer { min-height: auto !important; background: white !important; }
+  .header { position: static !important; background: white !important; color: black !important; border-bottom: 1px solid #ccc !important; }
+  .headerInner { max-width: none !important; padding: 0 0 .5rem !important; }
+  .shopName { color: black !important; }
+  .mainContent { max-width: none !important; width: 100% !important; padding: .5rem 0 0 !important; }
+}
+
 .header {
   background-color: var(--team-primary);
   color: #ffffff;

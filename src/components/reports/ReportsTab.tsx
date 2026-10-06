@@ -749,9 +749,6 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
               </button>
             )}
 
-            <button type="button" className={styles.secondaryBtn} disabled={loading} onClick={() => window.print()}>
-              พิมพ์รายงาน
-            </button>
           </div>
         </>
       )}

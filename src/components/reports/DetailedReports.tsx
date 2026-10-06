@@ -51,7 +51,7 @@ function Chart({ rows, period, metric, title, money, individualDaily = false }: 
         </g>)}
       </svg>
     </div>
-    <figcaption>{money ? 'จำนวนเงินเป็นบาท' : 'จำนวนวันรวมของพนักงาน'}</figcaption>
+    <figcaption>{title} · {money ? 'จำนวนเงินเป็นบาท' : 'จำนวนวันรวมของพนักงาน'}</figcaption>
   </figure>;
 }
 
@@ -111,7 +111,7 @@ export default function DetailedReports({ active, attendanceVersion, onBack }: {
     <button className={styles.back} onClick={() => { if (employeeId !== 'all') setEmployeeId('all'); else onBack(); }}><ArrowLeft size={20} aria-hidden="true" />{employeeId !== 'all' ? 'กลับรายงานละเอียด' : 'กลับหน้ารายงาน'}</button>
     <div className={styles.heading}><h2>{employeeId !== 'all' ? 'รายงานรายบุคคล' : 'รายงานละเอียด'}</h2><div className={styles.actions}>
       <button onClick={() => setRefresh(value => value + 1)} disabled={loading}><RefreshCw size={18} aria-hidden="true" />อัปเดต</button>
-      <button onClick={() => window.print()} disabled={loading || !data}><Printer size={18} aria-hidden="true" />พิมพ์</button>
+      <button onClick={() => window.print()} disabled={loading || !data || !totals || Boolean(error)}><Printer size={18} aria-hidden="true" />พิมพ์รายงานละเอียด</button>
     </div></div>
     <section className={styles.filters} aria-label="ตัวกรองรายงาน">
       <div className={styles.periods}>{(['day', 'month', 'year'] as ReportPeriod[]).map(value => <button key={value} aria-pressed={period === value} onClick={() => setPeriod(value)}>{periodLabels[value]}</button>)}</div>
