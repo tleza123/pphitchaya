@@ -134,9 +134,10 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
     fetchEmployeeDetail(empId, selectedMonth);
   };
 
-  const handleBackToSummary = () => {
+  const handleBackToDetailedReports = () => {
     setSelectedEmployeeId(null);
     setDetailData(null);
+    onOpenDetailedReports();
   };
 
   // Month Closing Workflow
@@ -325,7 +326,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   if (selectedEmployeeId && detailLoading) {
     return (
       <div aria-busy="true" aria-label="กำลังโหลดรายละเอียดรายงาน">
-        <button type="button" className={styles.backBtn} onClick={handleBackToSummary}>กลับหน้ารายงาน</button>
+        <button type="button" className={styles.backBtn} onClick={handleBackToDetailedReports}>กลับรายงานละเอียด</button>
         <div className="loadingCard"><span className="loadingLine" /><span className="loadingLine" /></div>
         <div className={styles.reportsGrid}>
           {[0, 1, 2].map(index => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}
@@ -338,8 +339,8 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   if (selectedEmployeeId && detailData) {
     return (
       <div className={styles.detailContainer}>
-        <button type="button" className={styles.backBtn} onClick={handleBackToSummary}>
-          ← กลับหน้ารายงาน
+        <button type="button" className={styles.backBtn} onClick={handleBackToDetailedReports}>
+          ← กลับรายงานละเอียด
         </button>
 
         <h2 className={styles.title}>{detailData.nickname || detailData.name}</h2>

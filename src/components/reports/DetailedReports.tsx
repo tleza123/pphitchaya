@@ -107,8 +107,8 @@ export default function DetailedReports({ active, attendanceVersion, onBack }: {
   const adjustments = (selected ? [selected] : employeeId === 'all' ? data?.employees || [] : []).flatMap(employee => employee.adjustments.map(extra => ({ ...extra, name: employee.nickname || employee.name, employeeId: employee.employeeId })));
   const years = Array.from({ length: Math.max(1, Number(currentYear) - 2026 + 1) }, (_, index) => String(Number(currentYear) - index));
   return <div className={styles.page}>
-    <button className={styles.back} onClick={onBack}><ArrowLeft size={20} aria-hidden="true" />กลับหน้ารายงาน</button>
-    <div className={styles.heading}><h2>รายงานละเอียด</h2><div className={styles.actions}>
+    <button className={styles.back} onClick={() => { if (employeeId !== 'all') setEmployeeId('all'); else onBack(); }}><ArrowLeft size={20} aria-hidden="true" />{employeeId !== 'all' ? 'กลับรายงานละเอียด' : 'กลับหน้ารายงาน'}</button>
+    <div className={styles.heading}><h2>{employeeId !== 'all' ? 'รายงานรายบุคคล' : 'รายงานละเอียด'}</h2><div className={styles.actions}>
       <button onClick={() => setRefresh(value => value + 1)} disabled={loading}><RefreshCw size={18} aria-hidden="true" />อัปเดต</button>
       <button onClick={() => window.print()} disabled={loading || !data}><Printer size={18} aria-hidden="true" />พิมพ์</button>
     </div></div>
