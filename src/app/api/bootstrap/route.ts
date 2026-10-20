@@ -50,6 +50,8 @@ export async function GET(req: NextRequest) {
         startDate: d.startDate,
         endDate: d.endDate || null,
         photo: d.photo ? { version: d.photo.version, width: d.photo.width, height: d.photo.height } : null,
+        status: d.status || (d.suspended ? 'SUSPENDED' : 'ACTIVE'),
+        suspended: Boolean(d.suspended || d.status === 'SUSPENDED'),
         revision: d.revision || 1
       };
     });

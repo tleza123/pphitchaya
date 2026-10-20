@@ -50,7 +50,20 @@ export async function GET(req: NextRequest) {
         employeeId: doc.id,
         ...doc.data()
       }))
-      .filter((emp: any) => employedOn(emp, targetDate));
+      .filter((emp: any) => {
+        if (!employedOn(emp, targetDate)) return false;
+        const isSuspended = Boolean(emp.suspended || emp.status === 'SUSPENDED');
+        if (isSuspended) {
+          const recDoc = attendanceSnap.docs.find(d => d.data().employeeId === emp.employeeId);
+          if (!recDoc) return false;
+          const rec = recDoc.data();
+          const hasWork = ['FULL', 'HALF', 'ABSENT'].includes(rec.status) ||
+            (rec.advanceSatang && rec.advanceSatang > 0) ||
+            (rec.deductionSatang && rec.deductionSatang > 0);
+          return Boolean(hasWork);
+        }
+        return true;
+      });
 
     // Calendar
     const calendarVersions = calendarVersionsSnap.docs.map(doc => ({
@@ -217,6 +230,9 @@ export async function POST(req: NextRequest) {
       if (!employedOn({ ...emp, employeeId }, targetDate)) {
         throw new Error('OUTSIDE_EMPLOYMENT');
       }
+      if ((emp.suspended || emp.status === 'SUSPENDED') && status !== 'UNMARKED') {
+        throw new Error('EMPLOYEE_SUSPENDED');
+      }
 
       // 4. Check calendar: cannot mark FULL/HALF/ABSENT on HOLIDAY
       if (status !== 'UNMARKED') {
@@ -322,6 +338,9 @@ export async function POST(req: NextRequest) {
     }
     if (error.message === 'OUTSIDE_EMPLOYMENT') {
       return createErrorResponse('INVALID_INPUT', 'วันที่นี้อยู่นอกช่วงการจ้างงานของพนักงาน', 422);
+    }
+    if (error.message === 'EMPLOYEE_SUSPENDED') {
+      return createErrorResponse('EMPLOYEE_SUSPENDED', 'พนักงานถูกพักการทำงาน ไม่สามารถเช็คชื่อได้', 422);
     }
     if (error.message === 'ATTENDANCE_ON_HOLIDAY') {
       return createErrorResponse('INVALID_INPUT', 'วันดังกล่าวเป็นวันหยุดตามตาราง กรุณาเพิ่มวันทำงานพิเศษก่อนเช็คชื่อ', 422);

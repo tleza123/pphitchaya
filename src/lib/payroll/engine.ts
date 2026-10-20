@@ -20,6 +20,9 @@ export interface EmployeeRecord {
   endDate?: string | null; // YYYY-MM-DD or empty/null
   notes?: string;
   revision: number;
+  status?: 'ACTIVE' | 'SUSPENDED';
+  suspended?: boolean;
+  suspendedAt?: string | null;
 }
 
 export interface RateRecord {
@@ -215,6 +218,8 @@ export function calculateEmployeeMonth(input: CalculateInput): EmployeeMonthResu
     ratePeriods: rates.map(r => ({ effectiveFrom: r.effectiveFrom, dailySatang: r.dailySatang }))
   };
 
+  const isSuspended = Boolean(employee.suspended || employee.status === 'SUSPENDED');
+
   monthDates(input.month).forEach(date => {
     if (!employedOn(employee, date) || date < input.systemStartDate || date > input.today) {
       return;
@@ -235,6 +240,18 @@ export function calculateEmployeeMonth(input: CalculateInput): EmployeeMonthResu
         dateKey: date,
         status: 'HOLIDAY',
         amountSatang: null,
+        advanceSatang: dayAdvance,
+        deductionSatang: dayDeduction
+      });
+      return;
+    }
+
+    if (isSuspended && (!row || row.status === 'UNMARKED')) {
+      result.days.push({
+        dateKey: date,
+        status: 'UNMARKED',
+        dailySatang: rateOn(rates, date),
+        amountSatang: 0,
         advanceSatang: dayAdvance,
         deductionSatang: dayDeduction
       });

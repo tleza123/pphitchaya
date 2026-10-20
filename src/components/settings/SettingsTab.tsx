@@ -48,6 +48,9 @@ interface Employee {
   photoPath?: string | null;
   photoVersion?: number;
   revision: number;
+  status?: 'ACTIVE' | 'SUSPENDED';
+  suspended?: boolean;
+  suspendedAt?: string | null;
 }
 
 interface ShopSettings {
@@ -66,7 +69,7 @@ const DAY_NAMES = ['อาทิตย์', 'จันทร์', 'อังค�
 export default function SettingsTab({ active, onUpdateShopName }: SettingsTabProps) {
   const { idToken } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [filterActive, setFilterActive] = useState<boolean>(true);
+  const [filterStatus, setFilterStatus] = useState<'active' | 'suspended' | 'ended'>('active');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -107,6 +110,9 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
   const [showEndModal, setShowEndModal] = useHistoryState<boolean>('end-employment', false);
   const [endDateInput, setEndDateInput] = useState<string>('');
   useModalInteraction(active && showEndModal, () => setShowEndModal(false));
+  const [showSuspendModal, setShowSuspendModal] = useHistoryState<boolean>('suspend-employment', false);
+  const [suspendTargetState, setSuspendTargetState] = useState<boolean>(true);
+  useModalInteraction(active && showSuspendModal, () => setShowSuspendModal(false));
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const loadSequence = useRef(0);
@@ -154,6 +160,9 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
         photoPath: emp.photoPath || (emp.photo ? `/api/employees/${emp.id || emp.employeeId}/photo` : null),
         photoVersion: emp.photoVersion || emp.photo?.version || 1,
         revision: emp.revision || 1,
+        status: emp.status || (emp.suspended ? 'SUSPENDED' : 'ACTIVE'),
+        suspended: Boolean(emp.suspended || emp.status === 'SUSPENDED'),
+        suspendedAt: emp.suspendedAt || null,
         extraTemplates: (emp.extraTemplates || []).map((t: any) => ({
           name: t.name || t.label || '',
           amountSatang: typeof t.amountSatang === 'number' ? t.amountSatang : 0
@@ -534,6 +543,43 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     }
   };
 
+  // Suspend / Resume employment
+  const handleConfirmToggleSuspend = async () => {
+    if (!selectedEmployee || !idToken || submitLock.current) return;
+    submitLock.current = true;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/employees/${selectedEmployee.id}/suspend`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          suspended: suspendTargetState,
+          expectedRevision: selectedEmployee.revision,
+          requestId: `suspend_emp_${selectedEmployee.id}_${Date.now()}`
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error?.message || errData.message || 'ไม่สามารถเปลี่ยนสถานะการทำงานได้');
+      }
+
+      setShowSuspendModal(false);
+      notifyDataChanged();
+      showNotification(suspendTargetState ? 'บันทึกพักการทำงานเรียบร้อย' : 'บันทึกให้พนักงานทำงานต่อเรียบร้อย');
+      await loadData();
+      setView('list');
+    } catch (err: any) {
+      alert(err.message || 'เกิดข้อผิดพลาด');
+    } finally {
+      submitLock.current = false;
+      setSubmitting(false);
+    }
+  };
+
   // Save Shop Name
   const handleSaveShopName = async () => {
     if (!idToken || !shopNameInput.trim()) return;
@@ -617,9 +663,12 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     }
   };
 
-  const filteredEmployees = employees.filter((emp) =>
-    filterActive ? !emp.endDate : !!emp.endDate
-  );
+  const filteredEmployees = employees.filter((emp) => {
+    if (filterStatus === 'active') return !emp.endDate && !emp.suspended;
+    if (filterStatus === 'suspended') return !emp.endDate && Boolean(emp.suspended);
+    if (filterStatus === 'ended') return Boolean(emp.endDate);
+    return true;
+  });
 
   return (
     <div>
@@ -906,9 +955,47 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
               </button>
             </div>
 
-            {/* End Employment Button (Edit view only) */}
+            {/* Suspend or End Employment Buttons (Edit view only) */}
             {view === 'edit' && selectedEmployee && !selectedEmployee.endDate && (
-              <button
+              <div style={{ marginTop: '1.2rem', display: 'grid', gap: '0.8rem' }}>
+                {selectedEmployee.suspended ? (
+                  <>
+                    <div className={styles.suspendedAlertBox}>
+                      <AlertCircle size={20} color="#b45309" />
+                      <div>
+                        <strong>พนักงานคนนี้อยู่ในสถานะพักการทำงาน</strong>
+                        <p style={{ margin: '0.2rem 0 0', fontSize: 'var(--team-secondary)', color: 'var(--team-text)' }}>
+                          ไม่ได้ลาออกถาวร ข้อมูลทั้งหมดยังคงอยู่ แต่จะไม่แสดงในรายการเช็คชื่อประจำวัน
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.resumeWorkBtn}
+                      style={{ marginTop: 0 }}
+                      onClick={() => {
+                        setSuspendTargetState(false);
+                        setShowSuspendModal(true);
+                      }}
+                    >
+                      ทำงานต่อ
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.suspendWorkBtn}
+                    style={{ marginTop: 0 }}
+                    onClick={() => {
+                      setSuspendTargetState(true);
+                      setShowSuspendModal(true);
+                    }}
+                  >
+                    พักการทำงานพนักงานคนนี้
+                  </button>
+                )}
+
+                <button
                 type="button"
                 className={styles.endWorkBtn}
                 onClick={() => {
@@ -918,6 +1005,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
               >
                 สิ้นสุดการจ้างพนักงานคนนี้
               </button>
+              </div>
             )}
             </fieldset>
           </form>
@@ -937,14 +1025,20 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
             {/* Filter Active / Inactive */}
             <div className={styles.filterRow}>
               <button
-                className={`${styles.filterBtn} ${filterActive ? styles.filterBtnActive : ''}`}
-                onClick={() => setFilterActive(true)}
+                className={`${styles.filterBtn} ${filterStatus === 'active' ? styles.filterBtnActive : ''}`}
+                onClick={() => setFilterStatus('active')}
               >
-                พนักงานปัจจุบัน {employees.filter((e) => !e.endDate).length} คน
+                ทำงานอยู่ {employees.filter((e) => !e.endDate && !e.suspended).length} คน
               </button>
               <button
-                className={`${styles.filterBtn} ${!filterActive ? styles.filterBtnActive : ''}`}
-                onClick={() => setFilterActive(false)}
+                className={`${styles.filterBtn} ${filterStatus === 'suspended' ? styles.filterBtnActive : ''}`}
+                onClick={() => setFilterStatus('suspended')}
+              >
+                พักการทำงาน {employees.filter((e) => !e.endDate && !!e.suspended).length} คน
+              </button>
+              <button
+                className={`${styles.filterBtn} ${filterStatus === 'ended' ? styles.filterBtnActive : ''}`}
+                onClick={() => setFilterStatus('ended')}
               >
                 สิ้นสุดการจ้าง {employees.filter((e) => !!e.endDate).length} คน
               </button>
@@ -1011,19 +1105,46 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                     <div>
                       เงินพิเศษประจำ: {emp.extraTemplates?.length || 0} รายการ
                     </div>
+                    {emp.suspended && (
+                      <div>
+                        <span className={styles.statusBadgeSuspended}>พักการทำงาน</span>
+                      </div>
+                    )}
+                    {emp.endDate && (
+                      <div>
+                        <span className={styles.statusBadgeEnded}>สิ้นสุดการจ้าง</span>
+                      </div>
+                    )}
                     <div style={{ fontSize: 'var(--team-secondary)', color: 'var(--team-muted)' }}>
                       เริ่มงาน: {emp.startDate}
                       {emp.endDate && ` สิ้นสุดงาน: ${emp.endDate}`}
                     </div>
                   </div>
 
-                  <button
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
+                    <button
                     className={styles.editBtn}
+                    style={{ marginTop: 0, flex: 1 }}
                     onClick={() => handleOpenEdit(emp)}
                     disabled={loading || submitting || photoPending}
                   >
                     แก้ไขข้อมูล
-                  </button>
+                    </button>
+                    {emp.suspended && (
+                      <button
+                        type="button"
+                        className={styles.resumeWorkCardBtn}
+                        onClick={() => {
+                          setSelectedEmployee(emp);
+                          setSuspendTargetState(false);
+                          setShowSuspendModal(true);
+                        }}
+                        disabled={loading || submitting || photoPending}
+                      >
+                        ทำงานต่อ
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1181,6 +1302,109 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                 type="button"
                 className={styles.secondaryBtn}
                 onClick={() => setShowEndModal(false)}
+                disabled={submitting}
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Suspend / Resume Employment Confirmation Modal */}
+      {showSuspendModal && selectedEmployee && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+            zIndex: 100
+          }}
+        >
+          <div
+            data-app-dialog
+            role="dialog"
+            aria-modal="true"
+            aria-label={suspendTargetState ? 'ยืนยันการพักการทำงาน' : 'ยืนยันการให้ทำงานต่อ'}
+            tabIndex={-1}
+            style={{
+              maxHeight: 'calc(100dvh - 2rem)',
+              overflowY: 'auto',
+              backgroundColor: '#ffffff',
+              borderRadius: 'var(--team-radius-card)',
+              padding: '1.5rem',
+              maxWidth: '26rem',
+              width: '100%',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+            }}
+          >
+            <h3
+              style={{
+                fontSize: 'var(--team-name)',
+                color: suspendTargetState ? 'var(--team-accent, #d97706)' : 'var(--team-present, #16a34a)',
+                margin: '0 0 0.8rem',
+                fontWeight: 700
+              }}
+            >
+              {suspendTargetState ? 'ยืนยันการพักการทำงาน' : 'ยืนยันให้ทำงานต่อ'}
+            </h3>
+            <p style={{ color: 'var(--team-text)', margin: '0 0 1rem', fontSize: 'var(--team-copy)' }}>
+              {suspendTargetState ? (
+                <>
+                  คุณต้องการพักการทำงานของ <strong>{selectedEmployee.nickname || selectedEmployee.name}</strong> หรือไม่?
+                </>
+              ) : (
+                <>
+                  คุณต้องการให้ <strong>{selectedEmployee.nickname || selectedEmployee.name}</strong> กลับมาทำงานต่อหรือไม่?
+                </>
+              )}
+            </p>
+            <div
+              style={{
+                backgroundColor: suspendTargetState ? '#fffbeb' : '#f0fdf4',
+                border: `1px solid ${suspendTargetState ? '#fde68a' : '#bbf7d0'}`,
+                borderRadius: 'var(--team-radius-small)',
+                padding: '0.8rem',
+                marginBottom: '1.2rem',
+                fontSize: 'var(--team-secondary)',
+                color: suspendTargetState ? '#92400e' : '#166534',
+                lineHeight: 1.5
+              }}
+            >
+              {suspendTargetState ? (
+                <>
+                  💡 <strong>ไม่ใช่การลาออกถาวร:</strong> ข้อมูลประวัติ ค่าแรง และเงินพิเศษทั้งหมดจะถูกคงไว้เหมือนเดิม แต่จะไม่แสดงชื่อในรายการเช็คชื่อประจำวัน และสามารถกดให้กลับมาทำงานต่อได้ตลอดเวลา
+                </>
+              ) : (
+                <>
+                  ✅ <strong>กลับมาทำงานต่อ:</strong> พนักงานจะกลับมาแสดงชื่อในรายการเช็คชื่อประจำวันอีกครั้ง
+                </>
+              )}
+            </div>
+            <div style={{ display: 'grid', gap: '0.6rem' }}>
+              <button
+                type="button"
+                className={suspendTargetState ? styles.suspendWorkConfirmBtn : styles.resumeWorkConfirmBtn}
+                onClick={handleConfirmToggleSuspend}
+                disabled={submitting}
+                style={{ margin: 0 }}
+              >
+                {submitting ? (
+                  <span className="busyInline">กำลังบันทึก</span>
+                ) : suspendTargetState ? (
+                  'ยืนยันพักการทำงาน'
+                ) : (
+                  'ยืนยันให้ทำงานต่อ'
+                )}
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryBtn}
+                onClick={() => setShowSuspendModal(false)}
                 disabled={submitting}
               >
                 ยกเลิก

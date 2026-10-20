@@ -30,7 +30,7 @@ export async function PATCH(
     const owner = await verifyOwner(req);
     const { id: employeeId } = await params;
     const body = await req.json();
-    const { name, nickname, position, notes, startDate: rawStartDate, expectedRevision, requestId } = body;
+    const { name, nickname, position, notes, startDate: rawStartDate, status, suspended, expectedRevision, requestId } = body;
     const startDate = rawStartDate === undefined ? undefined : dateKey(rawStartDate);
 
     if (!requestId || typeof requestId !== 'string') {
@@ -48,6 +48,8 @@ export async function PATCH(
       position,
       notes,
       startDate,
+      status,
+      suspended,
       expectedRevision
     });
 
@@ -99,6 +101,9 @@ export async function PATCH(
         position: position !== undefined ? String(position).trim().slice(0, 80) : current.position,
         notes: notes !== undefined ? String(notes).slice(0, 500) : current.notes,
         startDate: startDate || current.startDate,
+        status: status !== undefined ? status : (suspended !== undefined ? (suspended ? 'SUSPENDED' : 'ACTIVE') : (current.status || (current.suspended ? 'SUSPENDED' : 'ACTIVE'))),
+        suspended: suspended !== undefined ? Boolean(suspended) : (status !== undefined ? status === 'SUSPENDED' : Boolean(current.suspended || current.status === 'SUSPENDED')),
+        suspendedAt: (suspended !== undefined ? Boolean(suspended) : (status !== undefined ? status === 'SUSPENDED' : Boolean(current.suspended || current.status === 'SUSPENDED'))) ? (current.suspendedAt || now) : null,
         revision: newRevision,
         updatedAt: now
       };

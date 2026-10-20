@@ -72,6 +72,7 @@ export async function POST(
         // Skip employees who already ended before this month
         if (emp.endDate && emp.endDate < `${targetMonth}-01`) continue;
         if (emp.startDate > `${targetMonth}-31`) continue;
+        if (emp.suspended || emp.status === 'SUSPENDED') continue;
 
         const templatesSnap = await tx.get(getExtraTemplatesCol(empId, shopId));
         for (const tDoc of templatesSnap.docs) {
