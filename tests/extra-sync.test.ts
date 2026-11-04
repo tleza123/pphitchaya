@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ensureMonthExtrasPrepared } from '../src/lib/server/extra-sync';
 import { calculateEmployeeMonth } from '../src/lib/payroll/engine';
 
-test('ensureMonthExtrasPrepared automatically copies extraTemplates to monthly extras and calculates total salary', async () => {
+test('ensureMonthExtrasPrepared strictly executes all reads before all writes in transaction', async () => {
   const globals = globalThis as unknown as { adminDb?: unknown };
   const previous = globals.adminDb;
 
@@ -11,35 +11,29 @@ test('ensureMonthExtrasPrepared automatically copies extraTemplates to monthly e
   const targetMonth = '2026-09';
   const docs = new Map<string, any>();
 
-  // Set up mock Firestore data
   const shop = `shops/${shopId}`;
   docs.set(`${shop}/months/${targetMonth}`, { state: 'OPEN', revision: 1 });
   docs.set(`${shop}/control/finance`, { closingMonth: null, activeCloseJobId: null });
 
-  // Employee 1 with active range
-  const empId = 'emp_somchai';
-  docs.set(`${shop}/employees/${empId}`, {
-    name: 'สมชาย',
-    nickname: 'ชาย',
-    position: 'ช่างเครื่อง',
-    startDate: '2026-08-01',
-    endDate: null,
-    status: 'ACTIVE'
-  });
+  // Add 3 active employees with extra templates
+  for (let i = 1; i <= 3; i++) {
+    const empId = `emp_${i}`;
+    docs.set(`${shop}/employees/${empId}`, {
+      name: `พนักงาน ${i}`,
+      position: 'ช่าง',
+      startDate: '2026-08-01',
+      status: 'ACTIVE'
+    });
 
-  // Extra template: ค่าเดินทาง 1,500 บาท (150,000 satang)
-  const tplId = 'tpl_travel';
-  docs.set(`${shop}/employees/${empId}/extraTemplates/${tplId}`, {
-    templateId: tplId,
-    employeeId: empId,
-    label: 'ค่าเดินทาง',
-    amountSatang: 150000,
-    effectiveFromMonth: '2026-08',
-    effectiveToMonth: null,
-    version: 1
-  });
+    docs.set(`${shop}/employees/${empId}/extraTemplates/tpl_${i}`, {
+      templateId: `tpl_${i}`,
+      employeeId: empId,
+      label: `เบี้ยขยัน ${i}`,
+      amountSatang: 100000 * i,
+      version: 1
+    });
+  }
 
-  // Mock reference builder
   function reference(path: string): any {
     return {
       path,
@@ -59,29 +53,25 @@ test('ensureMonthExtrasPrepared automatically copies extraTemplates to monthly e
             data: () => value
           }))
         };
-      },
-      set: async (data: any, options?: any) => {
-        if (options?.merge && docs.has(path)) {
-          docs.set(path, { ...docs.get(path), ...data });
-        } else {
-          docs.set(path, data);
-        }
-      },
-      update: async (data: any) => {
-        docs.set(path, { ...docs.get(path), ...data });
-      },
-      delete: async () => {
-        docs.delete(path);
       }
     };
   }
 
+  // Strict Firestore transaction validator: fails immediately if any read follows a write
+  let writeExecuted = false;
   const mockDb: any = {
     collection: (name: string) => reference(name),
     runTransaction: async (updateFn: (tx: any) => Promise<any>) => {
+      writeExecuted = false;
       const tx = {
-        get: async (ref: any) => ref.get(),
+        get: async (ref: any) => {
+          if (writeExecuted) {
+            throw new Error('Firestore transactions require all reads to be executed before all writes.');
+          }
+          return ref.get();
+        },
         set: (ref: any, data: any, options?: any) => {
+          writeExecuted = true;
           if (options?.merge && docs.has(ref.path)) {
             docs.set(ref.path, { ...docs.get(ref.path), ...data });
           } else {
@@ -89,9 +79,11 @@ test('ensureMonthExtrasPrepared automatically copies extraTemplates to monthly e
           }
         },
         update: (ref: any, data: any) => {
+          writeExecuted = true;
           docs.set(ref.path, { ...docs.get(ref.path), ...data });
         },
         delete: (ref: any) => {
+          writeExecuted = true;
           docs.delete(ref.path);
         }
       };
@@ -102,11 +94,112 @@ test('ensureMonthExtrasPrepared automatically copies extraTemplates to monthly e
   globals.adminDb = mockDb;
 
   try {
-    // Run ensureMonthExtrasPrepared
+    const result = await ensureMonthExtrasPrepared(mockDb, shopId, targetMonth);
+    assert.equal(result.createdCount, 3);
+
+    // Verify all 3 extras were successfully created
+    const createdExtras = [...docs.entries()].filter(([key]) => key.startsWith(`${shop}/months/${targetMonth}/extras/`));
+    assert.equal(createdExtras.length, 3);
+  } finally {
+    globals.adminDb = previous;
+  }
+});
+
+test('ensureMonthExtrasPrepared automatically copies extraTemplates to monthly extras and calculates total salary', async () => {
+  const globals = globalThis as unknown as { adminDb?: unknown };
+  const previous = globals.adminDb;
+
+  const shopId = 'main';
+  const targetMonth = '2026-09';
+  const docs = new Map<string, any>();
+
+  const shop = `shops/${shopId}`;
+  docs.set(`${shop}/months/${targetMonth}`, { state: 'OPEN', revision: 1 });
+  docs.set(`${shop}/control/finance`, { closingMonth: null, activeCloseJobId: null });
+
+  const empId = 'emp_somchai';
+  docs.set(`${shop}/employees/${empId}`, {
+    name: 'สมชาย',
+    nickname: 'ชาย',
+    position: 'ช่างเครื่อง',
+    startDate: '2026-08-01',
+    endDate: null,
+    status: 'ACTIVE'
+  });
+
+  const tplId = 'tpl_travel';
+  docs.set(`${shop}/employees/${empId}/extraTemplates/${tplId}`, {
+    templateId: tplId,
+    employeeId: empId,
+    label: 'ค่าเดินทาง',
+    amountSatang: 150000,
+    effectiveFromMonth: '2026-08',
+    effectiveToMonth: null,
+    version: 1
+  });
+
+  function reference(path: string): any {
+    return {
+      path,
+      id: path.slice(path.lastIndexOf('/') + 1),
+      collection: (name: string) => reference(`${path}/${name}`),
+      doc: (name?: string) => reference(name ? `${path}/${name}` : `${path}/gen_${Math.random()}`),
+      get: async () => {
+        const records = [...docs.entries()].filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/'));
+        return {
+          exists: docs.has(path),
+          data: () => docs.get(path),
+          size: records.length,
+          empty: records.length === 0,
+          docs: records.map(([key, value]) => ({
+            id: key.slice(path.length + 1),
+            ref: reference(key),
+            data: () => value
+          }))
+        };
+      }
+    };
+  }
+
+  let writeExecuted = false;
+  const mockDb: any = {
+    collection: (name: string) => reference(name),
+    runTransaction: async (updateFn: (tx: any) => Promise<any>) => {
+      writeExecuted = false;
+      const tx = {
+        get: async (ref: any) => {
+          if (writeExecuted) {
+            throw new Error('Firestore transactions require all reads to be executed before all writes.');
+          }
+          return ref.get();
+        },
+        set: (ref: any, data: any, options?: any) => {
+          writeExecuted = true;
+          if (options?.merge && docs.has(ref.path)) {
+            docs.set(ref.path, { ...docs.get(ref.path), ...data });
+          } else {
+            docs.set(ref.path, data);
+          }
+        },
+        update: (ref: any, data: any) => {
+          writeExecuted = true;
+          docs.set(ref.path, { ...docs.get(ref.path), ...data });
+        },
+        delete: (ref: any) => {
+          writeExecuted = true;
+          docs.delete(ref.path);
+        }
+      };
+      return await updateFn(tx);
+    }
+  };
+
+  globals.adminDb = mockDb;
+
+  try {
     const result = await ensureMonthExtrasPrepared(mockDb, shopId, targetMonth);
     assert.equal(result.createdCount, 1);
 
-    // Verify monthly extra was created
     const createdExtras = [...docs.entries()].filter(([key]) => key.startsWith(`${shop}/months/${targetMonth}/extras/`));
     assert.equal(createdExtras.length, 1);
     const extraRecord = createdExtras[0][1];
@@ -114,7 +207,6 @@ test('ensureMonthExtrasPrepared automatically copies extraTemplates to monthly e
     assert.equal(extraRecord.amountSatang, 150000);
     assert.equal(extraRecord.sourceTemplateId, tplId);
 
-    // Verify calculateEmployeeMonth now includes this extra
     const calculated = calculateEmployeeMonth({
       month: targetMonth,
       today: '2026-09-30',
@@ -133,9 +225,6 @@ test('ensureMonthExtrasPrepared automatically copies extraTemplates to monthly e
       weekdays: [1, 2, 3, 4, 5, 6]
     });
 
-    // 26 workdays in September (Mon-Sat) * 50,000 = 1,300,000 satang
-    // Extra satang = 150,000 (1,500 THB)
-    // Total satang = 1,450,000 (14,500 THB)
     assert.equal(calculated.baseSatang, 1300000);
     assert.equal(calculated.extraSatang, 150000);
     assert.equal(calculated.grossSatang, 1450000);
@@ -205,21 +294,34 @@ test('ensureMonthExtrasPrepared does not overwrite manually overridden or delete
             data: () => value
           }))
         };
-      },
-      set: async (data: any) => docs.set(path, data),
-      update: async (data: any) => docs.set(path, { ...docs.get(path), ...data }),
-      delete: async () => docs.delete(path)
+      }
     };
   }
 
+  let writeExecuted = false;
   const mockDb: any = {
     collection: (name: string) => reference(name),
     runTransaction: async (updateFn: (tx: any) => Promise<any>) => {
+      writeExecuted = false;
       const tx = {
-        get: async (ref: any) => ref.get(),
-        set: (ref: any, data: any) => docs.set(ref.path, data),
-        update: (ref: any, data: any) => docs.set(ref.path, { ...docs.get(ref.path), ...data }),
-        delete: (ref: any) => docs.delete(ref.path)
+        get: async (ref: any) => {
+          if (writeExecuted) {
+            throw new Error('Firestore transactions require all reads to be executed before all writes.');
+          }
+          return ref.get();
+        },
+        set: (ref: any, data: any) => {
+          writeExecuted = true;
+          docs.set(ref.path, data);
+        },
+        update: (ref: any, data: any) => {
+          writeExecuted = true;
+          docs.set(ref.path, { ...docs.get(ref.path), ...data });
+        },
+        delete: (ref: any) => {
+          writeExecuted = true;
+          docs.delete(ref.path);
+        }
       };
       return await updateFn(tx);
     }

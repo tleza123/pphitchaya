@@ -51,10 +51,11 @@ export async function PATCH(
     const extraRef = getMonthlyExtrasCol(targetMonth, shopId).doc(extraId);
 
     const result = await db.runTransaction(async tx => {
+      // 1. All reads strictly first
       const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
       if (cached) return cached;
 
-      // Finance gate
+      // Finance gate read
       await verifyFinanceGate(tx, controlRef, monthRef, targetMonth);
 
       const extraSnap = await tx.get(extraRef);
@@ -66,6 +67,11 @@ export async function PATCH(
         throw new Error('CONFLICT');
       }
 
+      const reviewRef = getExtraReviewsCol(targetMonth, shopId).doc(current.employeeId);
+      const reviewSnap = await tx.get(reviewRef);
+      const currentReviewRev = reviewSnap.exists ? reviewSnap.data()?.extrasRevision || 1 : 1;
+
+      // 2. All writes strictly second
       const now = new Date().toISOString();
       const newRevision = current.revision + 1;
       const updated: Record<string, any> = {
@@ -86,9 +92,6 @@ export async function PATCH(
       tx.update(extraRef, updated);
 
       // Invalidate review for this employee
-      const reviewRef = getExtraReviewsCol(targetMonth, shopId).doc(current.employeeId);
-      const reviewSnap = await tx.get(reviewRef);
-      const currentReviewRev = reviewSnap.exists ? reviewSnap.data()?.extrasRevision || 1 : 1;
       tx.set(
         reviewRef,
         {

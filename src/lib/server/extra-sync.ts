@@ -20,6 +20,9 @@ export interface EnsureExtrasResult {
 /**
  * Ensures all regular allowance templates (เงินพิเศษประจำ) for active employees
  * are synchronized into the monthly extras collection for the given open month.
+ *
+ * Adheres strictly to the Firestore rule:
+ * All transaction reads MUST be executed before any transaction writes.
  */
 export async function ensureMonthExtrasPrepared(
   db: admin.firestore.Firestore,
@@ -36,7 +39,10 @@ export async function ensureMonthExtrasPrepared(
     set: (ref: any, data: any, opts?: any) => any;
     update: (ref: any, data: any) => any;
   }) => {
-    // 1. Check month state
+    // ==========================================
+    // 1. ALL READS (Phase 1)
+    // ==========================================
+
     const [monthSnap, controlSnap] = await Promise.all([
       tx.get(monthRef),
       tx.get(controlRef)
@@ -54,15 +60,37 @@ export async function ensureMonthExtrasPrepared(
       return { month: targetMonth, createdCount: 0, updatedCount: 0 };
     }
 
-    const employeesSnap = await tx.get(getEmployeesCol(shopId));
+    const monthlyExtrasCol = getMonthlyExtrasCol(targetMonth, shopId);
+    const [employeesSnap, existingExtrasSnap] = await Promise.all([
+      tx.get(getEmployeesCol(shopId)),
+      tx.get(monthlyExtrasCol)
+    ]);
+
     if (!employeesSnap || !Array.isArray(employeesSnap.docs)) {
       return { month: targetMonth, createdCount: 0, updatedCount: 0 };
     }
 
-    const monthlyExtrasCol = getMonthlyExtrasCol(targetMonth, shopId);
-    const existingExtrasSnap = await tx.get(monthlyExtrasCol);
+    // Filter relevant active employees
+    const activeEmployees = employeesSnap.docs.filter((empDoc: any) => {
+      const emp = empDoc.data();
+      if (!emp) return false;
+      if (emp.endDate && emp.endDate < `${targetMonth}-01`) return false;
+      if (emp.startDate && emp.startDate > `${targetMonth}-31`) return false;
+      if (emp.suspended || emp.status === 'SUSPENDED') return false;
+      return true;
+    });
 
-    // Map existing extras by employeeId and templateId
+    // Fetch all extra templates and reviews for all active employees (ALL READS)
+    const [allTemplatesSnaps, allReviewSnaps] = await Promise.all([
+      Promise.all(activeEmployees.map((empDoc: any) => tx.get(getExtraTemplatesCol(empDoc.id, shopId)))),
+      Promise.all(activeEmployees.map((empDoc: any) => tx.get(getExtraReviewsCol(targetMonth, shopId).doc(empDoc.id))))
+    ]);
+
+    // ==========================================
+    // 2. ALL WRITES (Phase 2)
+    // No more tx.get() calls after this point!
+    // ==========================================
+
     const existingByTemplate = new Map<string, any>();
     if (existingExtrasSnap && Array.isArray(existingExtrasSnap.docs)) {
       existingExtrasSnap.docs.forEach((doc: any) => {
@@ -77,17 +105,12 @@ export async function ensureMonthExtrasPrepared(
     let updatedCount = 0;
     const now = new Date().toISOString();
 
-    for (const empDoc of employeesSnap.docs) {
+    for (let i = 0; i < activeEmployees.length; i++) {
+      const empDoc = activeEmployees[i];
       const empId = empDoc.id;
-      const emp = empDoc.data();
-      if (!emp) continue;
+      const templatesSnap = allTemplatesSnaps[i];
+      const reviewSnap = allReviewSnaps[i];
 
-      // Skip employees outside their active employment range for this month
-      if (emp.endDate && emp.endDate < `${targetMonth}-01`) continue;
-      if (emp.startDate && emp.startDate > `${targetMonth}-31`) continue;
-      if (emp.suspended || emp.status === 'SUSPENDED') continue;
-
-      const templatesSnap = await tx.get(getExtraTemplatesCol(empId, shopId));
       if (templatesSnap && Array.isArray(templatesSnap.docs)) {
         for (const tDoc of templatesSnap.docs) {
           const t = tDoc.data();
@@ -140,9 +163,8 @@ export async function ensureMonthExtrasPrepared(
       }
 
       // Ensure review tracking exists for this employee
-      const reviewRef = getExtraReviewsCol(targetMonth, shopId).doc(empId);
-      const reviewSnap = await tx.get(reviewRef);
       if (!reviewSnap?.exists) {
+        const reviewRef = getExtraReviewsCol(targetMonth, shopId).doc(empId);
         tx.set(reviewRef, {
           employeeId: empId,
           extrasRevision: 1,

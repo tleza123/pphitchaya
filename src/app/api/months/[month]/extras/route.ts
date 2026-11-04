@@ -78,12 +78,18 @@ export async function POST(
     const reviewRef = getExtraReviewsCol(targetMonth, shopId).doc(employeeId);
 
     const result = await db.runTransaction(async tx => {
+      // 1. All reads strictly first
       const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
       if (cached) return cached;
 
-      // Finance gate
+      // Finance gate read
       await verifyFinanceGate(tx, controlRef, monthRef, targetMonth);
 
+      // Review state read
+      const reviewSnap = await tx.get(reviewRef);
+      const currentReviewRev = reviewSnap.exists ? reviewSnap.data()?.extrasRevision || 1 : 1;
+
+      // 2. All writes strictly second
       const now = new Date().toISOString();
       const extraData = {
         extraId,
@@ -102,8 +108,6 @@ export async function POST(
       tx.set(extraRef, extraData);
 
       // Invalidate review for this employee
-      const reviewSnap = await tx.get(reviewRef);
-      const currentReviewRev = reviewSnap.exists ? reviewSnap.data()?.extrasRevision || 1 : 1;
       tx.set(
         reviewRef,
         {
