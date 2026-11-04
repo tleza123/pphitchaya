@@ -12,7 +12,7 @@ import { getAdminFirestore } from '@/lib/firebase/admin';
 import { monthKey } from '@/lib/payroll/dates';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
 import { verifyFinanceGate } from '@/lib/server/finance-gate';
-import { ensureMonthExtrasPrepared } from '@/lib/server/extra-sync';
+import { ensureMonthExtrasPrepared, syncAllActiveOpenMonths } from '@/lib/server/extra-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +23,6 @@ export async function POST(
   try {
     const owner = await verifyOwner(req);
     const { month: rawMonth } = await params;
-    const targetMonth = monthKey(rawMonth);
     const body = await req.json();
     const { requestId } = body;
 
@@ -33,6 +32,20 @@ export async function POST(
 
     const shopId = getShopId();
     const db = getAdminFirestore();
+
+    if (rawMonth === 'all') {
+      const results = await syncAllActiveOpenMonths(db, shopId, owner.uid);
+      const totalCreated = results.reduce((acc, r) => acc + r.createdCount, 0);
+      const totalUpdated = results.reduce((acc, r) => acc + r.updatedCount, 0);
+      return createSuccessResponse({
+        month: 'all',
+        syncedMonths: results.map(r => r.month),
+        createdCount: totalCreated,
+        updatedCount: totalUpdated
+      }, requestId);
+    }
+
+    const targetMonth = monthKey(rawMonth);
     const payloadHash = computePayloadHash(owner.uid, 'POST', `${targetMonth}:prepare-extras`, {
       targetMonth
     });

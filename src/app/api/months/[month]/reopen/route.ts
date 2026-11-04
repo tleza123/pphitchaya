@@ -10,6 +10,7 @@ import {
 import { getAdminFirestore } from '@/lib/firebase/admin';
 import { monthKey } from '@/lib/payroll/dates';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
+import { ensureMonthExtrasPrepared } from '@/lib/server/extra-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,6 +107,9 @@ export async function POST(
 
       return responsePayload;
     });
+
+    // Immediately prepare and synchronize regular extras for the newly reopened month
+    await ensureMonthExtrasPrepared(db, shopId, targetMonth, owner.uid).catch(() => {});
 
     return createSuccessResponse(result, requestId);
   } catch (err: unknown) {

@@ -15,7 +15,7 @@ import { getAdminFirestore } from '@/lib/firebase/admin';
 import { dateKey, getBangkokMonth } from '@/lib/payroll/dates';
 import { moneySatang, validateSatang } from '@/lib/payroll/money';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
-import { ensureMonthExtrasPrepared } from '@/lib/server/extra-sync';
+import { ensureMonthExtrasPrepared, syncAllActiveOpenMonths } from '@/lib/server/extra-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -236,7 +236,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (Array.isArray(extraTemplates) && extraTemplates.length > 0) {
-      await ensureMonthExtrasPrepared(db, shopId, getBangkokMonth(), owner.uid).catch(() => {});
+      await syncAllActiveOpenMonths(db, shopId, owner.uid).catch(() => {});
     }
 
     return createSuccessResponse(result, requestId);

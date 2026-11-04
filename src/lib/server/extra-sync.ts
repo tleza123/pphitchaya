@@ -3,13 +3,14 @@ import crypto from 'node:crypto';
 import * as admin from 'firebase-admin';
 import {
   getMonthRef,
+  getMonthsCol,
   getEmployeesCol,
   getExtraTemplatesCol,
   getMonthlyExtrasCol,
   getExtraReviewsCol,
   getFinanceControlRef
 } from './repository';
-import { monthKey } from '../payroll/dates';
+import { monthKey, getBangkokMonth } from '../payroll/dates';
 
 export interface EnsureExtrasResult {
   month: string;
@@ -115,7 +116,9 @@ export async function ensureMonthExtrasPrepared(
         for (const tDoc of templatesSnap.docs) {
           const t = tDoc.data();
           if (!t) continue;
-          if (t.effectiveFromMonth && t.effectiveFromMonth > targetMonth) continue;
+          // Regular allowances apply to all months the employee is active.
+          // Do not skip past months even if the template's effectiveFromMonth was stamped with a later month.
+          // Only skip if the template was explicitly marked to end before this month.
           if (t.effectiveToMonth && t.effectiveToMonth < targetMonth) continue;
 
           const key = `${empId}:${t.templateId}`;
@@ -198,4 +201,84 @@ export async function ensureMonthExtrasPrepared(
     }
   };
   return await executeSync(directTx);
+}
+
+/**
+ * Automatically synchronizes regular extra templates across all open months
+ * (both current month and past open months) from the earliest active employee
+ * start date up to the current Bangkok month.
+ */
+export async function syncAllActiveOpenMonths(
+  db: admin.firestore.Firestore,
+  shopId: string,
+  actorUid = 'system'
+): Promise<EnsureExtrasResult[]> {
+  const currentMonth = getBangkokMonth();
+  const employeesCol = getEmployeesCol(shopId);
+  const monthsCol = getMonthsCol(shopId);
+
+  const [employeesSnap, monthsSnap] = await Promise.all([
+    employeesCol.get(),
+    monthsCol.get()
+  ]);
+
+  if (!employeesSnap || !Array.isArray(employeesSnap.docs) || employeesSnap.docs.length === 0) {
+    return [];
+  }
+
+  // Find the earliest start month among active employees
+  let earliestMonth = currentMonth;
+  employeesSnap.docs.forEach((doc: any) => {
+    const data = doc.data();
+    if (data?.startDate && typeof data.startDate === 'string') {
+      const startM = data.startDate.slice(0, 7);
+      if (startM < earliestMonth) {
+        earliestMonth = startM;
+      }
+    }
+  });
+
+  // Bound by system start boundary ('2026-08')
+  if (earliestMonth < '2026-08') {
+    earliestMonth = '2026-08';
+  }
+
+  const closedMonths = new Set<string>();
+  if (monthsSnap && Array.isArray(monthsSnap.docs)) {
+    monthsSnap.docs.forEach((doc: any) => {
+      const data = doc.data();
+      if (data?.state === 'CLOSED') {
+        closedMonths.add(doc.id);
+      }
+      if (doc.id < earliestMonth && doc.id >= '2026-08') {
+        earliestMonth = doc.id;
+      }
+    });
+  }
+
+  const [startYear, startMonthNum] = earliestMonth.split('-').map(Number);
+  const [currentYear, currentMonthNum] = currentMonth.split('-').map(Number);
+
+  const monthsToSync: string[] = [];
+  let y = startYear;
+  let m = startMonthNum;
+  while (y < currentYear || (y === currentYear && m <= currentMonthNum)) {
+    const mStr = `${y}-${String(m).padStart(2, '0')}`;
+    if (!closedMonths.has(mStr)) {
+      monthsToSync.push(mStr);
+    }
+    m++;
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+
+  const results: EnsureExtrasResult[] = [];
+  for (const mStr of monthsToSync) {
+    const res = await ensureMonthExtrasPrepared(db, shopId, mStr, actorUid);
+    results.push(res);
+  }
+
+  return results;
 }

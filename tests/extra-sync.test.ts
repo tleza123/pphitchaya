@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureMonthExtrasPrepared } from '../src/lib/server/extra-sync';
+import { ensureMonthExtrasPrepared, syncAllActiveOpenMonths } from '../src/lib/server/extra-sync';
 import { calculateEmployeeMonth } from '../src/lib/payroll/engine';
 
 test('ensureMonthExtrasPrepared strictly executes all reads before all writes in transaction', async () => {
@@ -338,6 +338,220 @@ test('ensureMonthExtrasPrepared does not overwrite manually overridden or delete
     const preserved = docs.get(`${shop}/months/${targetMonth}/extras/${extraId}`);
     assert.equal(preserved.amountSatang, 200000);
     assert.equal(preserved.label, 'ค่าเดินทางพิเศษ');
+  } finally {
+    globals.adminDb = previous;
+  }
+});
+
+test('ensureMonthExtrasPrepared pulls regular allowances into past months even if template effectiveFromMonth was stamped with current or future month', async () => {
+  const globals = globalThis as unknown as { adminDb?: unknown };
+  const previous = globals.adminDb;
+
+  const shopId = 'main';
+  const targetMonth = '2026-09'; // Past month
+  const empId = 'emp_past';
+  const tplId = 'tpl_past';
+
+  const docs = new Map<string, any>();
+  const shop = `shops/${shopId}`;
+
+  docs.set(`${shop}/months/${targetMonth}`, { state: 'OPEN', revision: 1 });
+  docs.set(`${shop}/control/finance`, { closingMonth: null, activeCloseJobId: null });
+
+  docs.set(`${shop}/employees/${empId}`, {
+    name: 'นายสมบัติ ใจดี',
+    nickname: 'บอย',
+    position: 'หัวหน้าช่าง',
+    startDate: '2026-08-01',
+    status: 'ACTIVE'
+  });
+
+  // Template stamped with 2026-11 (e.g. current month when edited in settings)
+  docs.set(`${shop}/employees/${empId}/extraTemplates/${tplId}`, {
+    templateId: tplId,
+    employeeId: empId,
+    label: 'ค่าตำแหน่ง',
+    amountSatang: 250000,
+    effectiveFromMonth: '2026-11',
+    version: 1
+  });
+
+  function reference(path: string): any {
+    return {
+      path,
+      id: path.slice(path.lastIndexOf('/') + 1),
+      collection: (name: string) => reference(`${path}/${name}`),
+      doc: (name?: string) => reference(name ? `${path}/${name}` : `${path}/gen_${Math.random()}`),
+      get: async () => {
+        const records = [...docs.entries()].filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/'));
+        return {
+          exists: docs.has(path),
+          data: () => docs.get(path),
+          size: records.length,
+          empty: records.length === 0,
+          docs: records.map(([key, value]) => ({
+            id: key.slice(path.length + 1),
+            ref: reference(key),
+            data: () => value
+          }))
+        };
+      }
+    };
+  }
+
+  let writeExecuted = false;
+  const mockDb: any = {
+    collection: (name: string) => reference(name),
+    runTransaction: async (updateFn: (tx: any) => Promise<any>) => {
+      writeExecuted = false;
+      const tx = {
+        get: async (ref: any) => {
+          if (writeExecuted) {
+            throw new Error('Firestore transactions require all reads to be executed before all writes.');
+          }
+          return ref.get();
+        },
+        set: (ref: any, data: any) => {
+          writeExecuted = true;
+          docs.set(ref.path, data);
+        },
+        update: (ref: any, data: any) => {
+          writeExecuted = true;
+          docs.set(ref.path, { ...docs.get(ref.path), ...data });
+        },
+        delete: (ref: any) => {
+          writeExecuted = true;
+          docs.delete(ref.path);
+        }
+      };
+      return await updateFn(tx);
+    }
+  };
+
+  globals.adminDb = mockDb;
+
+  try {
+    const result = await ensureMonthExtrasPrepared(mockDb, shopId, targetMonth);
+    assert.equal(result.createdCount, 1);
+
+    const createdExtras = [...docs.entries()].filter(([key]) => key.startsWith(`${shop}/months/${targetMonth}/extras/`));
+    assert.equal(createdExtras.length, 1);
+    assert.equal(createdExtras[0][1].amountSatang, 250000);
+    assert.equal(createdExtras[0][1].label, 'ค่าตำแหน่ง');
+  } finally {
+    globals.adminDb = previous;
+  }
+});
+
+test('syncAllActiveOpenMonths synchronizes all past open months where employees worked, skipping closed months', async () => {
+  const globals = globalThis as unknown as { adminDb?: unknown };
+  const previous = globals.adminDb;
+
+  const shopId = 'main';
+  const empId = 'emp_multi';
+  const tplId = 'tpl_multi';
+
+  const docs = new Map<string, any>();
+  const shop = `shops/${shopId}`;
+
+  // 2026-08 is CLOSED
+  docs.set(`${shop}/months/2026-08`, { state: 'CLOSED', revision: 2 });
+  // 2026-09 and 2026-10 are OPEN
+  docs.set(`${shop}/months/2026-09`, { state: 'OPEN', revision: 1 });
+  docs.set(`${shop}/months/2026-10`, { state: 'OPEN', revision: 1 });
+  docs.set(`${shop}/control/finance`, { closingMonth: null, activeCloseJobId: null });
+
+  docs.set(`${shop}/employees/${empId}`, {
+    name: 'นายสมควร ขยันยิ่ง',
+    nickname: 'ควร',
+    position: 'ช่างยนต์',
+    startDate: '2026-08-01',
+    status: 'ACTIVE'
+  });
+
+  docs.set(`${shop}/employees/${empId}/extraTemplates/${tplId}`, {
+    templateId: tplId,
+    employeeId: empId,
+    label: 'เบี้ยเลี้ยงพิเศษ',
+    amountSatang: 300000,
+    version: 1
+  });
+
+  function reference(path: string): any {
+    return {
+      path,
+      id: path.slice(path.lastIndexOf('/') + 1),
+      collection: (name: string) => reference(`${path}/${name}`),
+      doc: (name?: string) => reference(name ? `${path}/${name}` : `${path}/gen_${Math.random()}`),
+      get: async () => {
+        const records = [...docs.entries()].filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/'));
+        return {
+          exists: docs.has(path),
+          data: () => docs.get(path),
+          size: records.length,
+          empty: records.length === 0,
+          docs: records.map(([key, value]) => ({
+            id: key.slice(path.length + 1),
+            ref: reference(key),
+            data: () => value
+          }))
+        };
+      }
+    };
+  }
+
+  let writeExecuted = false;
+  const mockDb: any = {
+    collection: (name: string) => reference(name),
+    runTransaction: async (updateFn: (tx: any) => Promise<any>) => {
+      writeExecuted = false;
+      const tx = {
+        get: async (ref: any) => {
+          if (writeExecuted) {
+            throw new Error('Firestore transactions require all reads to be executed before all writes.');
+          }
+          return ref.get();
+        },
+        set: (ref: any, data: any) => {
+          writeExecuted = true;
+          docs.set(ref.path, data);
+        },
+        update: (ref: any, data: any) => {
+          writeExecuted = true;
+          docs.set(ref.path, { ...docs.get(ref.path), ...data });
+        },
+        delete: (ref: any) => {
+          writeExecuted = true;
+          docs.delete(ref.path);
+        }
+      };
+      return await updateFn(tx);
+    }
+  };
+
+  globals.adminDb = mockDb;
+
+  try {
+    const results = await syncAllActiveOpenMonths(mockDb, shopId);
+    // Closed month 2026-08 should NOT be in synced open months
+    assert.equal(results.some(r => r.month === '2026-08'), false);
+    // Open months 2026-09 and 2026-10 should be synced
+    assert.equal(results.some(r => r.month === '2026-09'), true);
+    assert.equal(results.some(r => r.month === '2026-10'), true);
+
+    // Verify 2026-08 has no extras created
+    const extras08 = [...docs.entries()].filter(([key]) => key.startsWith(`${shop}/months/2026-08/extras/`));
+    assert.equal(extras08.length, 0);
+
+    // Verify 2026-09 has extra created
+    const extras09 = [...docs.entries()].filter(([key]) => key.startsWith(`${shop}/months/2026-09/extras/`));
+    assert.equal(extras09.length, 1);
+    assert.equal(extras09[0][1].amountSatang, 300000);
+
+    // Verify 2026-10 has extra created
+    const extras10 = [...docs.entries()].filter(([key]) => key.startsWith(`${shop}/months/2026-10/extras/`));
+    assert.equal(extras10.length, 1);
+    assert.equal(extras10[0][1].amountSatang, 300000);
   } finally {
     globals.adminDb = previous;
   }

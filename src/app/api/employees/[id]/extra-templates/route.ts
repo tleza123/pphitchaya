@@ -13,7 +13,7 @@ import { getAdminFirestore } from '@/lib/firebase/admin';
 import { monthKey, getBangkokMonth } from '@/lib/payroll/dates';
 import { moneySatang, validateSatang } from '@/lib/payroll/money';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
-import { ensureMonthExtrasPrepared } from '@/lib/server/extra-sync';
+import { ensureMonthExtrasPrepared, syncAllActiveOpenMonths } from '@/lib/server/extra-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +60,7 @@ export async function POST(
       if (!empSnap.exists) {
         throw new Error('NOT_FOUND');
       }
+      const currentEmp = empSnap.data() as any;
 
       const now = new Date().toISOString();
 
@@ -84,7 +85,7 @@ export async function POST(
               employeeId,
               label: lbl,
               amountSatang: amt,
-              effectiveFromMonth: t.effectiveFromMonth ? monthKey(t.effectiveFromMonth) : getBangkokMonth(),
+              effectiveFromMonth: t.effectiveFromMonth ? monthKey(t.effectiveFromMonth) : (currentEmp?.startDate ? currentEmp.startDate.slice(0, 7) : '2026-08'),
               effectiveToMonth: t.effectiveToMonth ? monthKey(t.effectiveToMonth) : null,
               version: 1,
               revision: 1,
@@ -138,7 +139,7 @@ export async function POST(
         amountSatang = 0;
       }
 
-      const effectiveFromMonth = rawMonth ? monthKey(rawMonth) : getBangkokMonth();
+      const effectiveFromMonth = rawMonth ? monthKey(rawMonth) : (currentEmp?.startDate ? currentEmp.startDate.slice(0, 7) : '2026-08');
       const effectiveToMonth = rawToMonth ? monthKey(rawToMonth) : null;
 
       const templateId = 'tpl_' + crypto.randomUUID();
@@ -185,8 +186,8 @@ export async function POST(
       return responsePayload;
     });
 
-    // Automatically sync updated templates into the current open month
-    await ensureMonthExtrasPrepared(db, shopId, getBangkokMonth(), owner.uid).catch(() => {});
+    // Automatically sync updated templates into all open months (current and past open months)
+    await syncAllActiveOpenMonths(db, shopId, owner.uid).catch(() => {});
 
     return createSuccessResponse(result, requestId);
   } catch (err: unknown) {
