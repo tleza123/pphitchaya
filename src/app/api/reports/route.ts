@@ -14,6 +14,8 @@ import {
 } from '@/lib/server/repository';
 import { monthKey, getBangkokToday } from '@/lib/payroll/dates';
 import { calculateEmployeeMonth, EmployeeRecord, RateRecord } from '@/lib/payroll/engine';
+import { getAdminFirestore } from '@/lib/firebase/admin';
+import { ensureMonthExtrasPrepared } from '@/lib/server/extra-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,6 +97,8 @@ export async function GET(req: NextRequest) {
     }
 
     // Otherwise calculate dynamically for OPEN / CLOSING month
+    await ensureMonthExtrasPrepared(getAdminFirestore(), shopId, targetMonth);
+
     const [employeesSnap, calendarVersionsSnap, overridesSnap, attendanceSnap, extrasSnap] = await Promise.all([
       getEmployeesCol(shopId).get(),
       getCalendarVersionsCol(shopId).get(),

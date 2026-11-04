@@ -12,9 +12,10 @@ import {
   recordAudit
 } from '@/lib/server/repository';
 import { getAdminFirestore } from '@/lib/firebase/admin';
-import { dateKey } from '@/lib/payroll/dates';
+import { dateKey, getBangkokMonth } from '@/lib/payroll/dates';
 import { moneySatang, validateSatang } from '@/lib/payroll/money';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
+import { ensureMonthExtrasPrepared } from '@/lib/server/extra-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -233,6 +234,10 @@ export async function POST(req: NextRequest) {
 
       return responsePayload;
     });
+
+    if (Array.isArray(extraTemplates) && extraTemplates.length > 0) {
+      await ensureMonthExtrasPrepared(db, shopId, getBangkokMonth(), owner.uid).catch(() => {});
+    }
 
     return createSuccessResponse(result, requestId);
   } catch (err: unknown) {

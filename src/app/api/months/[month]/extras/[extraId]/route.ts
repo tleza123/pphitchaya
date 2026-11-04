@@ -80,6 +80,7 @@ export async function PATCH(
         if (rawAmount !== undefined) {
           updated.amountSatang = typeof rawAmount === 'number' ? rawAmount : moneySatang(String(rawAmount));
         }
+        updated.manuallyOverridden = true;
       }
 
       tx.update(extraRef, updated);

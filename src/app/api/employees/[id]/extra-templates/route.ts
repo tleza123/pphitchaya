@@ -13,6 +13,7 @@ import { getAdminFirestore } from '@/lib/firebase/admin';
 import { monthKey, getBangkokMonth } from '@/lib/payroll/dates';
 import { moneySatang, validateSatang } from '@/lib/payroll/money';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
+import { ensureMonthExtrasPrepared } from '@/lib/server/extra-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,6 +184,9 @@ export async function POST(
 
       return responsePayload;
     });
+
+    // Automatically sync updated templates into the current open month
+    await ensureMonthExtrasPrepared(db, shopId, getBangkokMonth(), owner.uid).catch(() => {});
 
     return createSuccessResponse(result, requestId);
   } catch (err: unknown) {

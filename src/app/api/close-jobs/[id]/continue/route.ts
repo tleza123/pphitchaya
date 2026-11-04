@@ -104,9 +104,13 @@ export async function POST(
       })) as RateRecord[];
 
       // Check extra review
+      // Template-derived regular extras and employees without custom/modified extras do not require manual confirmation
+      const empExtras = monthlyExtras.filter((x: any) => x.employeeId === empId);
+      const hasCustomExtras = empExtras.some((x: any) => !x.sourceTemplateId || x.manuallyOverridden);
+
       const reviewSnap = await getExtraReviewsCol(monthKey, shopId).doc(empId).get();
       const review = reviewSnap.exists ? reviewSnap.data() : null;
-      const isReviewed = review && review.confirmedAt && review.reviewedExtrasRevision === review.extrasRevision;
+      const isReviewed = !hasCustomExtras || (review && review.confirmedAt && review.reviewedExtrasRevision === review.extrasRevision);
       if (!isReviewed) {
         errors.push(`${emp.name}: ยังไม่ได้ตรวจสอบเงินพิเศษของเดือนนี้`);
       }

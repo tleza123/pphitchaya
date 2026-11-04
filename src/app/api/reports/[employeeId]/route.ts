@@ -14,6 +14,8 @@ import {
 } from '@/lib/server/repository';
 import { monthKey, getBangkokToday } from '@/lib/payroll/dates';
 import { calculateEmployeeMonth, EmployeeRecord, RateRecord } from '@/lib/payroll/engine';
+import { getAdminFirestore } from '@/lib/firebase/admin';
+import { ensureMonthExtrasPrepared } from '@/lib/server/extra-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +68,8 @@ export async function GET(
     }
 
     // Otherwise calculate dynamically
+    await ensureMonthExtrasPrepared(getAdminFirestore(), shopId, targetMonth);
+
     const empSnap = await getEmployeeRef(employeeId, shopId).get();
     if (!empSnap.exists) {
       return createErrorResponse('NOT_FOUND', 'ไม่พบข้อมูลพนักงาน', 404);

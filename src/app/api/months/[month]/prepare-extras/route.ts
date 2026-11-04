@@ -1,13 +1,9 @@
 import { NextRequest } from 'next/server';
-import crypto from 'node:crypto';
 import { verifyOwner } from '@/lib/server/auth';
 import { createSuccessResponse, createErrorResponse } from '@/lib/server/errors';
 import {
   getShopId,
   getMonthRef,
-  getEmployeesCol,
-  getExtraTemplatesCol,
-  getMonthlyExtrasCol,
   getFinanceControlRef,
   getRequestsCol,
   recordAudit
@@ -16,6 +12,7 @@ import { getAdminFirestore } from '@/lib/firebase/admin';
 import { monthKey } from '@/lib/payroll/dates';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
 import { verifyFinanceGate } from '@/lib/server/finance-gate';
+import { ensureMonthExtrasPrepared } from '@/lib/server/extra-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,66 +41,24 @@ export async function POST(
     const controlRef = getFinanceControlRef(shopId);
     const monthRef = getMonthRef(targetMonth, shopId);
 
-    const result = await db.runTransaction(async tx => {
-      const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
-      if (cached) return cached;
-
-      // Check finance gate
+    const cached = await db.runTransaction(async tx => {
+      const receipt = await checkRequestReceipt(tx, requestRef, payloadHash);
+      if (receipt) return receipt;
       await verifyFinanceGate(tx, controlRef, monthRef, targetMonth);
+      return null;
+    });
+    if (cached) return createSuccessResponse(cached, requestId);
 
-      const employeesSnap = await tx.get(getEmployeesCol(shopId));
-      const monthlyExtrasCol = getMonthlyExtrasCol(targetMonth, shopId);
-      const existingExtrasSnap = await tx.get(monthlyExtrasCol);
-      const existingTemplateIds = new Set<string>();
+    const prepResult = await ensureMonthExtrasPrepared(db, shopId, targetMonth, owner.uid);
 
-      existingExtrasSnap.docs.forEach(doc => {
-        const d = doc.data();
-        if (d.sourceTemplateId) {
-          existingTemplateIds.add(`${d.employeeId}:${d.sourceTemplateId}`);
-        }
-      });
+    const responsePayload = {
+      month: targetMonth,
+      createdCount: prepResult.createdCount,
+      updatedCount: prepResult.updatedCount
+    };
 
-      let createdCount = 0;
+    await db.runTransaction(async tx => {
       const now = new Date().toISOString();
-
-      for (const empDoc of employeesSnap.docs) {
-        const empId = empDoc.id;
-        const emp = empDoc.data();
-        // Skip employees who already ended before this month
-        if (emp.endDate && emp.endDate < `${targetMonth}-01`) continue;
-        if (emp.startDate > `${targetMonth}-31`) continue;
-        if (emp.suspended || emp.status === 'SUSPENDED') continue;
-
-        const templatesSnap = await tx.get(getExtraTemplatesCol(empId, shopId));
-        for (const tDoc of templatesSnap.docs) {
-          const t = tDoc.data();
-          // Check template effective range
-          if (t.effectiveFromMonth > targetMonth) continue;
-          if (t.effectiveToMonth && t.effectiveToMonth < targetMonth) continue;
-
-          const key = `${empId}:${t.templateId}`;
-          if (!existingTemplateIds.has(key)) {
-            const extraId = 'extra_' + crypto.randomUUID();
-            const extraRef = monthlyExtrasCol.doc(extraId);
-            const extraData = {
-              extraId,
-              employeeId: empId,
-              monthKey: targetMonth,
-              label: t.label,
-              amountSatang: t.amountSatang,
-              sourceTemplateId: t.templateId,
-              sourceTemplateVersion: t.version || 1,
-              revision: 1,
-              createdAt: now,
-              updatedAt: now
-            };
-            tx.set(extraRef, extraData);
-            createdCount++;
-            existingTemplateIds.add(key);
-          }
-        }
-      }
-
       recordAudit(
         tx,
         shopId,
@@ -111,14 +66,9 @@ export async function POST(
         'PREPARE_EXTRAS',
         targetMonth,
         null,
-        { createdCount },
+        responsePayload,
         requestId
       );
-
-      const responsePayload = {
-        month: targetMonth,
-        createdCount
-      };
 
       recordRequestReceipt(tx, requestRef, {
         requestId,
@@ -129,11 +79,9 @@ export async function POST(
         response: responsePayload,
         createdAt: now
       });
-
-      return responsePayload;
     });
 
-    return createSuccessResponse(result, requestId);
+    return createSuccessResponse(responsePayload, requestId);
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; statusCode?: number };
     if (error.message === 'MONTH_CLOSED') {

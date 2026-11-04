@@ -8,6 +8,7 @@ import { getBangkokToday } from '@/lib/payroll/dates';
 import { calculateEmployeeMonth, EmployeeRecord, RateRecord, AttendanceRecord, MonthlyExtraRecord } from '@/lib/payroll/engine';
 import { AnalyticsMonth, buildAnalytics, ReportPeriod, reportMonths } from '@/lib/payroll/analytics';
 import { CalendarVersion } from '@/lib/payroll/calendar';
+import { ensureMonthExtrasPrepared } from '@/lib/server/extra-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +66,7 @@ export async function GET(req: NextRequest) {
           }
           continue;
         }
+        await ensureMonthExtrasPrepared(db, shopId, month);
         const [attendanceSnap, extrasSnap] = await Promise.all([
           getAttendanceCol(month, shopId).get(), getMonthlyExtrasCol(month, shopId).get()
         ]);

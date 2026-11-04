@@ -15,6 +15,7 @@ import {
 import { getAdminFirestore } from '@/lib/firebase/admin';
 import { monthKey, getBangkokToday, monthDates } from '@/lib/payroll/dates';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
+import { ensureMonthExtrasPrepared } from '@/lib/server/extra-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +52,10 @@ export async function POST(
 
     const shopId = getShopId();
     const db = getAdminFirestore();
+
+    // Ensure regular extras are synced for all active employees before locking the month
+    await ensureMonthExtrasPrepared(db, shopId, targetMonth, owner.uid);
+
     const payloadHash = computePayloadHash(owner.uid, 'POST', `${targetMonth}:start-close`, {
       expectedRevision
     });
@@ -151,14 +156,14 @@ export async function POST(
       };
       tx.set(jobRef, jobData);
 
-      // 4. Create STAGING closure
+      // 4. Create empty closure record
       tx.set(closureRef, {
         closureId,
         monthKey: targetMonth,
-        status: 'STAGING',
-        sourceRevision: newMonthRev,
-        employeeIds,
-        createdAt: now
+        jobId,
+        status: 'IN_PROGRESS',
+        createdAt: now,
+        updatedAt: now
       });
 
       recordAudit(
@@ -168,16 +173,15 @@ export async function POST(
         'START_CLOSE_MONTH',
         targetMonth,
         monthData,
-        { state: 'CLOSING', jobId, closureId },
+        { state: 'CLOSING', revision: newMonthRev, jobId },
         requestId
       );
 
       const responsePayload = {
         jobId,
-        closureId,
         monthKey: targetMonth,
-        totalEmployees: employeeIds.length,
-        status: 'IN_PROGRESS'
+        status: 'IN_PROGRESS',
+        totalEmployees: employeeIds.length
       };
 
       recordRequestReceipt(tx, requestRef, {
@@ -196,14 +200,14 @@ export async function POST(
     return createSuccessResponse(result, requestId);
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; statusCode?: number };
-    if (error.message === 'CONFLICT') {
-      return createErrorResponse('CONFLICT', undefined, 409);
+    if (error.message === 'SYSTEM_BUSY') {
+      return createErrorResponse('SYSTEM_BUSY', 'ระบบกำลังปิดเดือนอื่นอยู่ กรุณารอสักครู่', 409);
     }
     if (error.message === 'MONTH_CLOSED') {
-      return createErrorResponse('MONTH_CLOSED', undefined, 409);
+      return createErrorResponse('MONTH_CLOSED', 'เดือนนี้ปิดรอบบัญชีไปแล้ว', 409);
     }
-    if (error.message === 'SYSTEM_BUSY') {
-      return createErrorResponse('BUSY', 'ระบบกำลังดำเนินการปิดเดือนอื่นอยู่', 429);
+    if (error.message === 'CONFLICT') {
+      return createErrorResponse('CONFLICT', 'ข้อมูลรอบเดือนมีการเปลี่ยนแปลง กรุณารีเฟรชแล้วลองใหม่', 409);
     }
     return createErrorResponse(
       error.code || 'INTERNAL_ERROR',

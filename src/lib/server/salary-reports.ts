@@ -4,6 +4,8 @@ import { calculateEmployeeMonth, EmployeeRecord, RateRecord, AttendanceRecord, M
 import { CalendarVersion } from '../payroll/calendar';
 import { getBangkokToday, monthKey } from '../payroll/dates';
 import { AnalyticsMonth } from '../payroll/analytics';
+import { getAdminFirestore } from '../firebase/admin';
+import { ensureMonthExtrasPrepared } from './extra-sync';
 
 /** Read-only export: closed months always use their original employee snapshots. */
 export async function loadSalaryReports(rawMonth: string, employeeId?: string): Promise<AnalyticsMonth[]> {
@@ -26,6 +28,7 @@ export async function loadSalaryReports(rawMonth: string, employeeId?: string): 
         extras: s.extras || [] } as AnalyticsMonth;
     });
   }
+  await ensureMonthExtrasPrepared(getAdminFirestore(), shop, month);
   const [people, versions, overrides, attendance, extras] = await Promise.all([
     getEmployeesCol(shop).get(), getCalendarVersionsCol(shop).get(), getCalendarOverridesCol(shop).get(),
     getAttendanceCol(month, shop).get(), getMonthlyExtrasCol(month, shop).get()
