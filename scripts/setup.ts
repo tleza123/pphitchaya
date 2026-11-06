@@ -1,5 +1,11 @@
 import { getAdminFirestore } from '../src/lib/firebase/admin';
-import { getShopId, getProfileRef, getFinanceControlRef } from '../src/lib/server/repository';
+import {
+  getShopId,
+  getProfileRef,
+  getFinanceControlRef,
+  getTruckProfileRef,
+  getLineSettingsRef
+} from '../src/lib/server/repository';
 
 try {
   (process as any).loadEnvFile?.('.env.local');
@@ -59,6 +65,41 @@ async function main() {
     console.log('[OK] เพิ่มเอกสารปฏิทิน calendarVersions/v1');
   } else {
     console.log('[SKIP] เอกสาร calendarVersions/v1 มีอยู่แล้ว');
+  }
+
+  // 4. Truck profile
+  const truckProfileRef = getTruckProfileRef(shopId);
+  const truckProfileSnap = await truckProfileRef.get();
+  if (!truckProfileSnap.exists) {
+    batch.set(truckProfileRef, {
+      companyName: 'ระบบบันทึกงานรถสิบล้อ',
+      revision: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    console.log('[OK] เพิ่มเอกสาร profile/truck');
+  } else {
+    console.log('[SKIP] เอกสาร profile/truck มีอยู่แล้ว');
+  }
+
+  // 5. LINE settings
+  const lineSettingsRef = getLineSettingsRef(shopId);
+  const lineSettingsSnap = await lineSettingsRef.get();
+  if (!lineSettingsSnap.exists) {
+    batch.set(lineSettingsRef, {
+      channelAccessToken: '',
+      defaultTargetId: '',
+      attendanceTargetId: '',
+      truckTargetId: '',
+      dailySummaryEnabled: false,
+      dailySummaryHour: 19,
+      lastSentDateKey: null,
+      revision: 1,
+      updatedAt: new Date().toISOString()
+    });
+    console.log('[OK] เพิ่มเอกสาร profile/line');
+  } else {
+    console.log('[SKIP] เอกสาร profile/line มีอยู่แล้ว');
   }
 
   await batch.commit();

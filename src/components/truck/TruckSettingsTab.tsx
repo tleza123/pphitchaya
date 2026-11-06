@@ -4,6 +4,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import settings from '@/components/settings/settings.module.css';
 import reports from '@/components/reports/reports.module.css';
 import { LineSettings } from '@/components/shared/LineSettings';
+import { useModalInteraction } from '@/components/shared/useModalInteraction';
 import { formatMoney, moneySatang, satangToDecimalString } from '@/lib/payroll/money';
 import { errMsg, getJson, saveBlob, sendJson } from './api';
 import type { TruckBoot } from './TruckShell';
@@ -12,13 +13,12 @@ import styles from './truck.module.css';
 interface Field { key: string; label: string; kind?: 'text' | 'money' | 'check'; required?: boolean }
 interface Item { id: string; title: string; sub?: string; flag?: string; values: Record<string, string> }
 
-// One list-with-inline-form used for trucks, origins and destinations (they differ only in fields).
 function MasterSection({ title, fields, items, busy, onSave, onDelete }: {
   title: string; fields: Field[]; items: Item[]; busy: boolean;
   onSave: (values: Record<string, string>, id: string | null) => Promise<void>;
   onDelete: (item: Item) => Promise<void>;
 }) {
-  const [editing, setEditing] = useState<string | null>(null); // item id | 'new'
+  const [editing, setEditing] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const open = (item?: Item) => { setEditing(item ? item.id : 'new'); setValues(item ? item.values : {}); };
 
@@ -74,11 +74,17 @@ function MasterSection({ title, fields, items, busy, onSave, onDelete }: {
   );
 }
 
-export function TruckSettingsTab({ boot, onChanged }: { active: boolean; boot: TruckBoot; onChanged: () => Promise<void> }) {
+export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean; boot: TruckBoot; onChanged: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ err: boolean; text: string } | null>(null);
   const [company, setCompany] = useState(boot.truckProfile.companyName);
+  const [pendingDelete, setPendingDelete] = useState<{ item: Item; request: Record<string, unknown>; success: string } | null>(null);
+  const [pendingRestore, setPendingRestore] = useState<File | null>(null);
   const restoreRef = useRef<HTMLInputElement>(null);
+  useModalInteraction(active && Boolean(pendingDelete || pendingRestore), () => {
+    setPendingDelete(null);
+    setPendingRestore(null);
+  });
 
   const act = async (fn: () => Promise<void>, ok: string) => {
     setBusy(true); setMsg(null);
@@ -88,7 +94,6 @@ export function TruckSettingsTab({ boot, onChanged }: { active: boolean; boot: T
   };
   const post = (body: object) => sendJson('/api/truck/settings', 'POST', body);
   const baht = (text: string) => { try { return moneySatang(text.trim()); } catch { throw new Error('จำนวนเงินไม่ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง'); } };
-  const confirmDelete = (name: string) => window.confirm(`ลบ "${name}" ใช่หรือไม่`);
 
   const trucks: Item[] = boot.trucks.map(t => ({
     id: t.truckId, title: t.plateNumber, sub: t.driverName ? `คนขับ: ${t.driverName}` : 'ไม่ระบุคนขับ',
@@ -107,8 +112,24 @@ export function TruckSettingsTab({ boot, onChanged }: { active: boolean; boot: T
   }, 'ดาวน์โหลดไฟล์สำรองแล้ว').catch(() => undefined);
 
   const restore = async (file: File | undefined) => {
-    if (!file || !window.confirm('การกู้คืนจะนำข้อมูลในไฟล์เขียนทับข้อมูลที่มีรหัสเดียวกัน ยืนยันหรือไม่')) return;
-    await act(async () => { await sendJson('/api/truck/backup', 'POST', JSON.parse(await file.text())); }, 'กู้คืนข้อมูลสำเร็จ').catch(() => undefined);
+    if (!file) return;
+    setPendingRestore(file);
+  };
+
+  const confirmDeleteAction = async () => {
+    if (!pendingDelete) return;
+    const target = pendingDelete;
+    setPendingDelete(null);
+    await act(() => post(target.request), target.success).catch(() => undefined);
+  };
+
+  const confirmRestoreAction = async () => {
+    const file = pendingRestore;
+    if (!file) return;
+    setPendingRestore(null);
+    await act(async () => {
+      await sendJson('/api/truck/backup', 'POST', JSON.parse(await file.text()));
+    }, 'กู้คืนข้อมูลสำเร็จ').catch(() => undefined);
   };
 
   return (
@@ -118,17 +139,17 @@ export function TruckSettingsTab({ boot, onChanged }: { active: boolean; boot: T
       <MasterSection title="รถสิบล้อและคนขับ" busy={busy} items={trucks}
         fields={[{ key: 'plateNumber', label: 'ทะเบียนรถ', required: true }, { key: 'driverName', label: 'คนขับประจำ' }, { key: 'suspended', label: 'พักรถชั่วคราว', kind: 'check' }]}
         onSave={(v, id) => act(() => post({ action: 'UPSERT_TRUCK', truck: { truckId: id ?? undefined, plateNumber: v.plateNumber, driverName: v.driverName || '', status: v.suspended === 'true' ? 'SUSPENDED' : 'ACTIVE' }, expectedRevision: id ? boot.trucks.find(t => t.truckId === id)?.revision : undefined }), 'บันทึกข้อมูลรถแล้ว')}
-        onDelete={item => confirmDelete(item.title) ? act(() => post({ action: 'DELETE_TRUCK', truckId: item.id }), 'ลบรถแล้ว').catch(() => undefined) : Promise.resolve()} />
+        onDelete={item => { setPendingDelete({ item, request: { action: 'DELETE_TRUCK', truckId: item.id }, success: 'ลบรถแล้ว' }); return Promise.resolve(); }} />
 
       <MasterSection title="ปลายทางและค่าเที่ยวคนขับ" busy={busy} items={dests}
         fields={[{ key: 'name', label: 'ชื่อปลายทาง', required: true }, { key: 'pay', label: 'ค่าเที่ยวคนขับ (บาท)', kind: 'money', required: true }]}
         onSave={(v, id) => act(() => post({ action: 'UPSERT_DESTINATION', destination: { destinationId: id ?? undefined, name: v.name, driverPaySatang: baht(v.pay || '0') }, expectedRevision: id ? boot.truckDestinations.find(d => d.destinationId === id)?.revision : undefined }), 'บันทึกปลายทางแล้ว')}
-        onDelete={item => confirmDelete(item.title) ? act(() => post({ action: 'DELETE_DESTINATION', destinationId: item.id }), 'ลบปลายทางแล้ว').catch(() => undefined) : Promise.resolve()} />
+        onDelete={item => { setPendingDelete({ item, request: { action: 'DELETE_DESTINATION', destinationId: item.id }, success: 'ลบปลายทางแล้ว' }); return Promise.resolve(); }} />
 
       <MasterSection title="ต้นทาง" busy={busy} items={origins}
         fields={[{ key: 'name', label: 'ชื่อต้นทาง', required: true }]}
         onSave={(v, id) => act(() => post({ action: 'UPSERT_ORIGIN', origin: { originId: id ?? undefined, name: v.name }, expectedRevision: id ? boot.truckOrigins.find(o => o.originId === id)?.revision : undefined }), 'บันทึกต้นทางแล้ว')}
-        onDelete={item => confirmDelete(item.title) ? act(() => post({ action: 'DELETE_ORIGIN', originId: item.id }), 'ลบต้นทางแล้ว').catch(() => undefined) : Promise.resolve()} />
+        onDelete={item => { setPendingDelete({ item, request: { action: 'DELETE_ORIGIN', originId: item.id }, success: 'ลบต้นทางแล้ว' }); return Promise.resolve(); }} />
 
       <div className={styles.panel}>
         <div className={styles.sectionHead}><h3>ชื่อกิจการ</h3></div>
@@ -152,6 +173,24 @@ export function TruckSettingsTab({ boot, onChanged }: { active: boolean; boot: T
           <input ref={restoreRef} type="file" accept=".json,application/json" hidden onChange={e => { void restore(e.target.files?.[0]); e.target.value = ''; }} />
         </div>
       </div>
+
+      {(pendingDelete || pendingRestore) && (
+        <div data-app-dialog role="dialog" aria-modal="true" aria-label={pendingDelete ? 'ยืนยันการลบข้อมูล' : 'ยืนยันการกู้คืนข้อมูล'} tabIndex={-1}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', zIndex: 120 }}>
+          <div style={{ width: 'min(28rem, 100%)', background: '#fff', borderRadius: 'var(--team-radius-card)', border: '1px solid var(--team-border)', padding: '1.2rem' }}>
+            <h3 style={{ margin: '0 0 .7rem', color: 'var(--team-primary-dark)' }}>{pendingDelete ? 'ยืนยันการลบข้อมูล' : 'ยืนยันการกู้คืนข้อมูล'}</h3>
+            <p style={{ margin: '0 0 1rem', color: 'var(--team-text)' }}>
+              {pendingDelete
+                ? `ต้องการลบ "${pendingDelete.item.title}" ใช่หรือไม่`
+                : 'การกู้คืนจะเขียนทับข้อมูลที่มีรหัสเดียวกันในคลังข้อมูล ต้องการดำเนินการต่อหรือไม่'}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '.6rem' }}>
+              <button type="button" className={settings.secondaryBtn} onClick={() => { setPendingDelete(null); setPendingRestore(null); }}>ยกเลิก</button>
+              <button type="button" className={settings.primaryBtn} onClick={() => { if (pendingDelete) { void confirmDeleteAction(); } else { void confirmRestoreAction(); } }}>ยืนยัน</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div role={msg?.err ? 'alert' : 'status'} className={msg?.err ? styles.error : styles.ok}>{msg?.text}</div>
     </div>

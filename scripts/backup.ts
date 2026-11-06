@@ -25,19 +25,45 @@ async function main() {
     'months',
     'closeJobs',
     'requests',
-    'audit'
+    'audit',
+    'trucks',
+    'truckOrigins',
+    'truckDestinations',
+    'truckMonths',
+    'truckPhotos'
   ];
 
   const shopDoc = getShopDocRef(shopId);
 
   for (const collName of collectionsToBackup) {
     const snap = await shopDoc.collection(collName).get();
-    backupData[collName] = snap.docs.map((doc) => ({
+
+    if (collName === 'truckMonths') {
+      const monthRecords = await Promise.all(snap.docs.map(async (doc) => {
+        const recordsSnap = await doc.ref.collection('records').get();
+        return recordsSnap.docs.map((recordDoc) => ({
+          monthKey: doc.id,
+          _id: recordDoc.id,
+          ...recordDoc.data()
+        }));
+      }));
+      backupData[collName] = snap.docs.map((doc) => ({
+        _id: doc.id,
+        ...doc.data()
+      }));
+      backupData.truckMonthRecords = monthRecords.flat();
+      totalRecords += snap.docs.length + backupData.truckMonthRecords.length;
+      console.log(`[OK] ดึงข้อมูลคอลเลกชัน ${collName}: ${snap.docs.length} เอกสาร + ${backupData.truckMonthRecords.length} records`);
+      continue;
+    }
+
+    const items = snap.docs.map((doc) => ({
       _id: doc.id,
       ...doc.data()
     }));
-    totalRecords += snap.docs.length;
-    console.log(`[OK] ดึงข้อมูลคอลเลกชัน ${collName}: ${snap.docs.length} รายการ`);
+    backupData[collName] = items;
+    totalRecords += items.length;
+    console.log(`[OK] ดึงข้อมูลคอลเลกชัน ${collName}: ${items.length} รายการ`);
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');

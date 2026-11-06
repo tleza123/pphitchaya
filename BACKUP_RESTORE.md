@@ -1,21 +1,20 @@
 # คู่มือการสำรองและตรวจสอบข้อมูล (Backup & Restore Operations)
 
-ระบบ DE TEAM มีสคริปต์สำหรับการสำรองข้อมูล (Backup) และตรวจสอบความสมบูรณ์ของไฟล์สำรอง (Restore Check) เพื่อรับประกันความปลอดภัยของข้อมูลพนักงานและยอดเงินค่าจ้าง 100%
+ระบบ DE TEAM มีสคริปต์สำหรับการสำรองข้อมูล (Backup) และตรวจสอบความสมบูรณ์ของไฟล์สำรอง (Restore Check) เพื่อสำรองข้อมูลพนักงานและระบบรถสิบล้อ
 
 ---
 
 ## 1. การสำรองข้อมูล (Backup)
 
-สคริปต์สำรองข้อมูลจะดึงเอกสารทั้งหมดใน Firestore ภายใต้ร้าน `shops/de-team/` ได้แก่:
+สคริปต์สำรองข้อมูลจะดึงเอกสารใน Firestore ภายใต้ร้านที่กำหนดด้วย `SHOP_ID` ได้แก่:
 - `profile` (ข้อมูลร้านและวันทำงาน)
 - `control` (สถานะการปิดงวดและ Lock)
-- `calendar` (ปฏิทินวันทำงานและวันหยุด)
-- `employees` (ข้อมูลพนักงานและประวัติค่าแรง)
-- `attendance` (บันทึกการเช็คชื่อรายวัน)
-- `monthlyExtras` (เงินพิเศษรายเดือน)
-- `monthSnapshots` (สแนปช็อตงวดที่ปิดแล้ว)
-- `closeJobs` (ประวัติงานปิดงวด)
-- `reopenLogs` (ประวัติการเปิดงวดแก้ไข)
+- `calendarVersions` และ `calendarOverrides` (ปฏิทินวันทำงานและวันหยุด)
+- `employees`, `months`, `closeJobs`, `requests` และ `audit` (ข้อมูลระบบเช็คชื่อและประวัติการเปลี่ยนแปลง)
+- `trucks`, `truckOrigins`, `truckDestinations` และ `truckPhotos` (ข้อมูลระบบรถสิบล้อ)
+- `truckMonths` (เอกสารสรุปรายเดือน) และ `truckMonthRecords` (ใบงานใน subcollection `truckMonths/{monthKey}/records`)
+
+รายการใน `truckMonthRecords` จะมี `monthKey` และ `_id` เพื่อระบุเดือนและรหัสเอกสารต้นทาง โดยยอด `totalRecords` นับรวมเอกสารรายเดือนและใบงานย่อยด้วย
 
 ### วิธีการรัน
 เปิด Terminal ในโฟลเดอร์ `employee-attendance` แล้วรันคำสั่ง:
