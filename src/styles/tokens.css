@@ -2,6 +2,7 @@
   --team-primary: #003566;
   --team-primary-dark: #001d3d;
   --team-accent: #ffc300;
+  --team-accent-soft: #fff9e6;
   --team-bg: #f3f6fa;
   --team-surface: #ffffff;
   --team-text: #172b43;
@@ -31,11 +32,19 @@
   --team-secondary: 1.067rem;
 
   /* Radii */
-  --team-radius-card: 1.067rem;
-  --team-radius-button: 0.8rem;
-  --team-radius-small: 0.65rem;
+  --team-radius-card: 0.65rem;
+  --team-radius-button: 0.5rem;
+  --team-radius-small: 0.375rem;
 
   /* Heights */
   --team-btn-height: 3.467rem;
   --team-btn-height-secondary: 3rem;
 }
+
+[data-app-theme="truck"] {
+  --team-primary: #0f2942;
+  --team-primary-dark: #091929;
+  --team-accent: #d97706;
+  --team-accent-soft: #fffbeb;
+}
+

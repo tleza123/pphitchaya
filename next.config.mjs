@@ -3,7 +3,10 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   serverExternalPackages: ['firebase-admin', 'sharp', 'pdfkit'],
-  outputFileTracingIncludes: { '/api/reports/export': ['./src/assets/fonts/*.ttf', './node_modules/pdfkit/js/data/**/*'] },
+  outputFileTracingIncludes: {
+    '/api/reports/export': ['./src/assets/fonts/*.ttf', './node_modules/pdfkit/js/data/**/*'],
+    '/api/truck/reports/export': ['./src/assets/fonts/*.ttf', './node_modules/pdfkit/js/data/**/*']
+  },
   async headers() {
     return [
       {

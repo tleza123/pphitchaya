@@ -185,6 +185,7 @@
 .personMeta {
   color: var(--team-text);
   font-size: var(--team-copy);
+  font-variant-numeric: tabular-nums;
   margin: 0.4rem 0;
 }
 
@@ -270,6 +271,7 @@
   border-radius: var(--team-radius-small);
   background-color: #ffffff;
   color: var(--team-text);
+  font-variant-numeric: tabular-nums;
 }
 
 .formTextarea {
@@ -298,6 +300,7 @@
   padding: 0.8rem;
   border-radius: var(--team-radius-small);
   margin-bottom: 0.8rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .formActions {

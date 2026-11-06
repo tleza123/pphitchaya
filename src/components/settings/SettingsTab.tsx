@@ -8,6 +8,7 @@ import { employeeExtraTemplates } from '@/lib/client/form-money';
 import { useModalInteraction } from '@/components/shared/useModalInteraction';
 import { MutationIntent } from '@/lib/client/mutation-intent';
 import { notifyDataChanged } from '@/lib/client/data-events';
+import { LineSettings } from '@/components/shared/LineSettings';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -1235,6 +1236,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
               </div>
             )}
           </div>
+          <LineSettings />
         </div>
       )}
 
@@ -1376,13 +1378,19 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
               }}
             >
               {suspendTargetState ? (
-                <>
-                  💡 <strong>ไม่ใช่การลาออกถาวร:</strong> ข้อมูลประวัติ ค่าแรง และเงินพิเศษทั้งหมดจะถูกคงไว้เหมือนเดิม แต่จะไม่แสดงชื่อในรายการเช็คชื่อประจำวัน และสามารถกดให้กลับมาทำงานต่อได้ตลอดเวลา
-                </>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                  <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '0.15rem' }} aria-hidden="true" />
+                  <span>
+                    <strong>ไม่ใช่การลาออกถาวร:</strong> ข้อมูลประวัติ ค่าแรง และเงินพิเศษทั้งหมดจะถูกคงไว้เหมือนเดิม แต่จะไม่แสดงชื่อในรายการเช็คชื่อประจำวัน และสามารถกดให้กลับมาทำงานต่อได้ตลอดเวลา
+                  </span>
+                </div>
               ) : (
-                <>
-                  ✅ <strong>กลับมาทำงานต่อ:</strong> พนักงานจะกลับมาแสดงชื่อในรายการเช็คชื่อประจำวันอีกครั้ง
-                </>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                  <CheckCircle2 size={18} style={{ flexShrink: 0, marginTop: '0.15rem' }} aria-hidden="true" />
+                  <span>
+                    <strong>กลับมาทำงานต่อ:</strong> พนักงานจะกลับมาแสดงชื่อในรายการเช็คชื่อประจำวันอีกครั้ง
+                  </span>
+                </div>
               )}
             </div>
             <div style={{ display: 'grid', gap: '0.6rem' }}>

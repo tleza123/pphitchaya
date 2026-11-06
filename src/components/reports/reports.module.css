@@ -168,6 +168,7 @@
   gap: 0.3rem 1rem;
   color: var(--team-muted);
   font-size: var(--team-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .pendingNotice {
@@ -222,6 +223,40 @@
 
 @media (min-width: 768px) {
   .secondaryBtn {
+    width: auto;
+    min-width: 12rem;
+    padding: 0 1.8rem;
+  }
+}
+
+.lineBtn {
+  min-height: var(--team-btn-height);
+  background-color: #06c755;
+  color: #ffffff;
+  border: 1px solid #05b34c;
+  border-radius: var(--team-radius-button);
+  font-size: var(--team-copy);
+  font-weight: 700;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.lineBtn:hover:not(:disabled) {
+  background-color: #05b34c;
+}
+
+.lineBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (min-width: 768px) {
+  .lineBtn {
     width: auto;
     min-width: 12rem;
     padding: 0 1.8rem;
@@ -298,6 +333,7 @@
   font-size: 1.5rem;
   font-weight: 700;
   color: var(--team-primary-dark);
+  font-variant-numeric: tabular-nums;
 }
 
 .sectionCard {
@@ -322,6 +358,7 @@
   padding: 0.7rem 0;
   border-bottom: 1px solid #e1e7ee;
   font-size: var(--team-copy);
+  font-variant-numeric: tabular-nums;
   gap: .75rem;
   flex-wrap: wrap;
   overflow-wrap: anywhere;

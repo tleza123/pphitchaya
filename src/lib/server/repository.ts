@@ -83,6 +83,63 @@ export function getAuditCol(shopId = getShopId()): admin.firestore.CollectionRef
   return getShopDocRef(shopId).collection('audit');
 }
 
+export function getTruckProfileRef(shopId = getShopId()): admin.firestore.DocumentReference {
+  return getShopDocRef(shopId).collection('profile').doc('truck');
+}
+
+export function getLineSettingsRef(shopId = getShopId()): admin.firestore.DocumentReference {
+  return getShopDocRef(shopId).collection('profile').doc('line');
+}
+
+export function getTrucksCol(shopId = getShopId()): admin.firestore.CollectionReference {
+  return getShopDocRef(shopId).collection('trucks');
+}
+
+export function getTruckRef(truckId: string, shopId = getShopId()): admin.firestore.DocumentReference {
+  return getTrucksCol(shopId).doc(truckId);
+}
+
+export function getTruckOriginsCol(shopId = getShopId()): admin.firestore.CollectionReference {
+  return getShopDocRef(shopId).collection('truckOrigins');
+}
+
+export function getTruckOriginRef(originId: string, shopId = getShopId()): admin.firestore.DocumentReference {
+  return getTruckOriginsCol(shopId).doc(originId);
+}
+
+export function getTruckDestinationsCol(shopId = getShopId()): admin.firestore.CollectionReference {
+  return getShopDocRef(shopId).collection('truckDestinations');
+}
+
+export function getTruckDestinationRef(destId: string, shopId = getShopId()): admin.firestore.DocumentReference {
+  return getTruckDestinationsCol(shopId).doc(destId);
+}
+
+export function getTruckMonthsCol(shopId = getShopId()): admin.firestore.CollectionReference {
+  return getShopDocRef(shopId).collection('truckMonths');
+}
+
+export function getTruckMonthRef(monthKey: string, shopId = getShopId()): admin.firestore.DocumentReference {
+  return getTruckMonthsCol(shopId).doc(monthKey);
+}
+
+export function getTruckRecordsCol(monthKey: string, shopId = getShopId()): admin.firestore.CollectionReference {
+  return getTruckMonthRef(monthKey, shopId).collection('records');
+}
+
+export function getTruckRecordRef(monthKey: string, recordId: string, shopId = getShopId()): admin.firestore.DocumentReference {
+  return getTruckRecordsCol(monthKey, shopId).doc(recordId);
+}
+
+export function getTruckPhotosCol(shopId = getShopId()): admin.firestore.CollectionReference {
+  return getShopDocRef(shopId).collection('truckPhotos');
+}
+
+export function getTruckPhotoRef(photoId: string, shopId = getShopId()): admin.firestore.DocumentReference {
+  return getTruckPhotosCol(shopId).doc(photoId);
+}
+
+
 /**
  * Record an audit entry in Firestore.
  */

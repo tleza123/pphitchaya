@@ -10,6 +10,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { formatMoney } from '@/lib/payroll/money';
 import { formatThaiDate, formatThaiMonth } from '@/lib/payroll/dates';
+import { LineSendButton } from '@/components/shared/LineSendButton';
 import styles from './reports.module.css';
 
 interface EmployeeReportSummary {
@@ -556,6 +557,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
         </button>
         {exporting && <div className="refreshStatus" role="status">กำลังจัดทำใบเงินเดือน</div>}
         {exportError && <p role="alert">{exportError}</p>}
+      <div style={{ marginTop: '1rem' }}><LineSendButton scope="attendance" className={styles.secondaryBtn} /></div>
 
         {/* Add Month Extra Modal */}
         {showExtrasModal && (
@@ -778,6 +780,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       </button>
       {exporting && <div className="refreshStatus" role="status">กำลังจัดทำ PDF แยกรายบุคคล</div>}
       {exportError && <p role="alert">{exportError}</p>}
+      <div style={{ marginTop: '1rem' }}><LineSendButton scope="attendance" className={styles.secondaryBtn} /></div>
 
       {showCloseModal && (
         <div className={styles.modalOverlay}>

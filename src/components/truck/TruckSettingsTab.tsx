@@ -1,0 +1,159 @@
+'use client';
+import { useRef, useState } from 'react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
+import settings from '@/components/settings/settings.module.css';
+import reports from '@/components/reports/reports.module.css';
+import { LineSettings } from '@/components/shared/LineSettings';
+import { formatMoney, moneySatang, satangToDecimalString } from '@/lib/payroll/money';
+import { errMsg, getJson, saveBlob, sendJson } from './api';
+import type { TruckBoot } from './TruckShell';
+import styles from './truck.module.css';
+
+interface Field { key: string; label: string; kind?: 'text' | 'money' | 'check'; required?: boolean }
+interface Item { id: string; title: string; sub?: string; flag?: string; values: Record<string, string> }
+
+// One list-with-inline-form used for trucks, origins and destinations (they differ only in fields).
+function MasterSection({ title, fields, items, busy, onSave, onDelete }: {
+  title: string; fields: Field[]; items: Item[]; busy: boolean;
+  onSave: (values: Record<string, string>, id: string | null) => Promise<void>;
+  onDelete: (item: Item) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState<string | null>(null); // item id | 'new'
+  const [values, setValues] = useState<Record<string, string>>({});
+  const open = (item?: Item) => { setEditing(item ? item.id : 'new'); setValues(item ? item.values : {}); };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try { await onSave(values, editing === 'new' ? null : editing); setEditing(null); } catch { /* error already shown; keep the form open */ }
+  };
+
+  return (
+    <div className={styles.panel}>
+      <div className={styles.sectionHead}>
+        <h3>{title}</h3>
+        <button type="button" className={styles.iconBtn} onClick={() => open()} disabled={busy}><Plus size={18} aria-hidden="true" /> เพิ่ม</button>
+      </div>
+      {items.length === 0 && editing !== 'new' && <p className={styles.empty}>ยังไม่มีข้อมูล</p>}
+      {items.map(item => (
+        <div className={styles.item} key={item.id}>
+          <div className={styles.itemText}>
+            <strong>{item.title}</strong>
+            {item.sub && <span>{item.sub}</span>}
+            {item.flag && <div className={styles.suspended}>{item.flag}</div>}
+          </div>
+          <div className={styles.itemActions}>
+            <button type="button" className={styles.iconBtn} onClick={() => open(item)} disabled={busy} aria-label={`แก้ไข ${item.title}`}><Pencil size={18} aria-hidden="true" /></button>
+            <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(item)} disabled={busy} aria-label={`ลบ ${item.title}`}><Trash2 size={18} aria-hidden="true" /></button>
+          </div>
+        </div>
+      ))}
+      {editing && (
+        <form onSubmit={submit} style={{ marginTop: '1rem' }}>
+          {fields.map(f => (
+            <div className={settings.formGroup} key={f.key}>
+              {f.kind === 'check' ? (
+                <label className={styles.checkRow}>
+                  <input type="checkbox" checked={values[f.key] === 'true'} onChange={e => setValues(v => ({ ...v, [f.key]: String(e.target.checked) }))} /> {f.label}
+                </label>
+              ) : (
+                <>
+                  <label className={settings.formLabel} htmlFor={`ms-${title}-${f.key}`}>{f.label}</label>
+                  <input id={`ms-${title}-${f.key}`} required={f.required} inputMode={f.kind === 'money' ? 'decimal' : undefined} className={settings.formInput}
+                    value={values[f.key] || ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />
+                </>
+              )}
+            </div>
+          ))}
+          <div style={{ display: 'grid', gap: '.6rem' }}>
+            <button type="submit" className={settings.primaryBtn} disabled={busy} aria-busy={busy}>บันทึก</button>
+            <button type="button" className={settings.secondaryBtn} onClick={() => setEditing(null)} disabled={busy}>ยกเลิก</button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+export function TruckSettingsTab({ boot, onChanged }: { active: boolean; boot: TruckBoot; onChanged: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ err: boolean; text: string } | null>(null);
+  const [company, setCompany] = useState(boot.truckProfile.companyName);
+  const restoreRef = useRef<HTMLInputElement>(null);
+
+  const act = async (fn: () => Promise<void>, ok: string) => {
+    setBusy(true); setMsg(null);
+    try { await fn(); await onChanged(); setMsg({ err: false, text: ok }); }
+    catch (e) { setMsg({ err: true, text: errMsg(e) }); throw e; }
+    finally { setBusy(false); }
+  };
+  const post = (body: object) => sendJson('/api/truck/settings', 'POST', body);
+  const baht = (text: string) => { try { return moneySatang(text.trim()); } catch { throw new Error('จำนวนเงินไม่ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง'); } };
+  const confirmDelete = (name: string) => window.confirm(`ลบ "${name}" ใช่หรือไม่`);
+
+  const trucks: Item[] = boot.trucks.map(t => ({
+    id: t.truckId, title: t.plateNumber, sub: t.driverName ? `คนขับ: ${t.driverName}` : 'ไม่ระบุคนขับ',
+    flag: t.status === 'SUSPENDED' ? 'พักรถ' : undefined,
+    values: { plateNumber: t.plateNumber, driverName: t.driverName, suspended: String(t.status === 'SUSPENDED') }
+  }));
+  const origins: Item[] = boot.truckOrigins.map(o => ({ id: o.originId, title: o.name, values: { name: o.name } }));
+  const dests: Item[] = boot.truckDestinations.map(d => ({
+    id: d.destinationId, title: d.name, sub: `ค่าเที่ยวคนขับ ${formatMoney(d.driverPaySatang)} บาท`,
+    values: { name: d.name, pay: satangToDecimalString(d.driverPaySatang) }
+  }));
+
+  const backup = () => act(async () => {
+    const data = await getJson('/api/truck/backup');
+    saveBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `truck-backup-${boot.serverToday}.json`);
+  }, 'ดาวน์โหลดไฟล์สำรองแล้ว').catch(() => undefined);
+
+  const restore = async (file: File | undefined) => {
+    if (!file || !window.confirm('การกู้คืนจะนำข้อมูลในไฟล์เขียนทับข้อมูลที่มีรหัสเดียวกัน ยืนยันหรือไม่')) return;
+    await act(async () => { await sendJson('/api/truck/backup', 'POST', JSON.parse(await file.text())); }, 'กู้คืนข้อมูลสำเร็จ').catch(() => undefined);
+  };
+
+  return (
+    <div className={styles.stack} aria-busy={busy}>
+      <h2 className={reports.title}>ตั้งค่าระบบรถสิบล้อ</h2>
+
+      <MasterSection title="รถสิบล้อและคนขับ" busy={busy} items={trucks}
+        fields={[{ key: 'plateNumber', label: 'ทะเบียนรถ', required: true }, { key: 'driverName', label: 'คนขับประจำ' }, { key: 'suspended', label: 'พักรถชั่วคราว', kind: 'check' }]}
+        onSave={(v, id) => act(() => post({ action: 'UPSERT_TRUCK', truck: { truckId: id ?? undefined, plateNumber: v.plateNumber, driverName: v.driverName || '', status: v.suspended === 'true' ? 'SUSPENDED' : 'ACTIVE' }, expectedRevision: id ? boot.trucks.find(t => t.truckId === id)?.revision : undefined }), 'บันทึกข้อมูลรถแล้ว')}
+        onDelete={item => confirmDelete(item.title) ? act(() => post({ action: 'DELETE_TRUCK', truckId: item.id }), 'ลบรถแล้ว').catch(() => undefined) : Promise.resolve()} />
+
+      <MasterSection title="ปลายทางและค่าเที่ยวคนขับ" busy={busy} items={dests}
+        fields={[{ key: 'name', label: 'ชื่อปลายทาง', required: true }, { key: 'pay', label: 'ค่าเที่ยวคนขับ (บาท)', kind: 'money', required: true }]}
+        onSave={(v, id) => act(() => post({ action: 'UPSERT_DESTINATION', destination: { destinationId: id ?? undefined, name: v.name, driverPaySatang: baht(v.pay || '0') }, expectedRevision: id ? boot.truckDestinations.find(d => d.destinationId === id)?.revision : undefined }), 'บันทึกปลายทางแล้ว')}
+        onDelete={item => confirmDelete(item.title) ? act(() => post({ action: 'DELETE_DESTINATION', destinationId: item.id }), 'ลบปลายทางแล้ว').catch(() => undefined) : Promise.resolve()} />
+
+      <MasterSection title="ต้นทาง" busy={busy} items={origins}
+        fields={[{ key: 'name', label: 'ชื่อต้นทาง', required: true }]}
+        onSave={(v, id) => act(() => post({ action: 'UPSERT_ORIGIN', origin: { originId: id ?? undefined, name: v.name }, expectedRevision: id ? boot.truckOrigins.find(o => o.originId === id)?.revision : undefined }), 'บันทึกต้นทางแล้ว')}
+        onDelete={item => confirmDelete(item.title) ? act(() => post({ action: 'DELETE_ORIGIN', originId: item.id }), 'ลบต้นทางแล้ว').catch(() => undefined) : Promise.resolve()} />
+
+      <div className={styles.panel}>
+        <div className={styles.sectionHead}><h3>ชื่อกิจการ</h3></div>
+        <div className={settings.formGroup}>
+          <label className={settings.formLabel} htmlFor="tr-company">ชื่อกิจการรถสิบล้อ</label>
+          <input id="tr-company" className={settings.formInput} value={company} maxLength={100} onChange={e => setCompany(e.target.value)} />
+        </div>
+        <button type="button" className={settings.primaryBtn} disabled={busy || !company.trim()}
+          onClick={() => act(async () => { await post({ action: 'UPDATE_PROFILE', companyName: company, expectedRevision: boot.truckProfile.revision }); }, 'บันทึกชื่อกิจการแล้ว').catch(() => undefined)}>
+          บันทึกชื่อกิจการ
+        </button>
+      </div>
+
+      <LineSettings />
+
+      <div className={styles.panel}>
+        <div className={styles.sectionHead}><h3>สำรองและกู้คืนข้อมูล</h3></div>
+        <div style={{ display: 'grid', gap: '.6rem' }}>
+          <button type="button" className={settings.secondaryBtn} onClick={backup} disabled={busy}>ดาวน์โหลดไฟล์สำรอง (JSON)</button>
+          <button type="button" className={settings.secondaryBtn} onClick={() => restoreRef.current?.click()} disabled={busy}>กู้คืนจากไฟล์สำรอง</button>
+          <input ref={restoreRef} type="file" accept=".json,application/json" hidden onChange={e => { void restore(e.target.files?.[0]); e.target.value = ''; }} />
+        </div>
+      </div>
+
+      <div role={msg?.err ? 'alert' : 'status'} className={msg?.err ? styles.error : styles.ok}>{msg?.text}</div>
+    </div>
+  );
+}

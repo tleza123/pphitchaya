@@ -6,6 +6,7 @@ import { DATA_CHANGED_EVENT } from '@/lib/client/data-events';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { formatThaiDate } from '@/lib/payroll/dates';
+import { LineSendButton } from '@/components/shared/LineSendButton';
 import styles from './attendance.module.css';
 
 interface AttendanceItem {
@@ -595,6 +596,7 @@ export function AttendanceTab({
         })}
         </div>
       )}
+      <div style={{ marginTop: '1.5rem' }}><LineSendButton scope="attendance" className={styles.noticeBtn} /></div>
     </div>
   );
 }
