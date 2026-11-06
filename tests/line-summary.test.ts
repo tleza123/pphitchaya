@@ -15,6 +15,7 @@ import {
   type AttendanceDailySummaryData,
   type TruckDailySummaryData
 } from '../src/lib/line/flex-templates';
+import { fetchAttendanceDailySummary } from '../src/lib/line/daily-summary';
 import { GET as getLineSettings, PATCH as patchLineSettings } from '../src/app/api/line/settings/route';
 import { POST as postLineNotify } from '../src/app/api/line/notify/route';
 import { POST as postLineWebhook } from '../src/app/api/line/webhook/route';
@@ -591,5 +592,49 @@ test('GET /api/cron/daily-summary enforces CRON_SECRET and dispatches summaries'
     globals.adminDb = prevDb;
     process.env = prevEnv;
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('fetchAttendanceDailySummary counts unmarked employees as present (FULL) with full daily wage', async () => {
+  const globals = globalThis as unknown as { adminDb?: unknown };
+  const prevDb = globals.adminDb;
+
+  try {
+    const shopId = 'unmarked_default_full_shop';
+    const targetDate = '2026-11-06'; // Friday (workday)
+    const monthKey = '2026-11';
+    const docs = new Map<string, any>([
+      [`shops/${shopId}/profile/main`, { name: 'พชรพาณิชย์', workDays: [1, 2, 3, 4, 5, 6] }],
+      // Employee 1: No attendance record at all -> should count as FULL (60,000 satang)
+      [`shops/${shopId}/employees/emp_1`, { name: 'สมชาย', status: 'ACTIVE', startDate: '2026-11-06' }],
+      [`shops/${shopId}/employees/emp_1/rates/initial`, { dailySatang: 60000, effectiveFrom: '2025-01-01' }],
+      // Employee 2: Explicit UNMARKED record with advance -> should count as FULL (50,000 satang) + advance
+      [`shops/${shopId}/employees/emp_2`, { name: 'สมศักดิ์', status: 'ACTIVE', startDate: '2026-11-06' }],
+      [`shops/${shopId}/employees/emp_2/rates/initial`, { dailySatang: 50000, effectiveFrom: '2025-01-01' }],
+      [
+        `shops/${shopId}/months/${monthKey}/attendance/${targetDate}_emp_2`,
+        { dateKey: targetDate, employeeId: 'emp_2', status: 'UNMARKED', advanceSatang: 10000 }
+      ],
+      // Employee 3: Explicit HALF record -> should count as HALF (22,500 satang)
+      [`shops/${shopId}/employees/emp_3`, { name: 'วิชัย', status: 'ACTIVE', startDate: '2026-11-06' }],
+      [`shops/${shopId}/employees/emp_3/rates/initial`, { dailySatang: 45000, effectiveFrom: '2025-01-01' }],
+      [
+        `shops/${shopId}/months/${monthKey}/attendance/${targetDate}_emp_3`,
+        { dateKey: targetDate, employeeId: 'emp_3', status: 'HALF' }
+      ]
+    ]);
+
+    globals.adminDb = createMockDb(docs).db;
+    const summary = await fetchAttendanceDailySummary(shopId, targetDate);
+
+    assert.equal(summary.totalStaff, 3);
+    assert.equal(summary.presentFull, 2); // emp_1 + emp_2
+    assert.equal(summary.presentHalf, 1); // emp_3
+    assert.equal(summary.absent, 0);
+    assert.equal(summary.dailyWagesSatang, 60000 + 50000 + 22500);
+    assert.equal(summary.dailyAdvanceSatang, 10000);
+    assert.equal(summary.monthlyNetPayrollSatang, 132500 - 10000);
+  } finally {
+    globals.adminDb = prevDb;
   }
 });
