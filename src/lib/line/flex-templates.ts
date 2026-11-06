@@ -1,4 +1,4 @@
-import { formatMoney } from '../payroll/money';
+﻿import { formatMoney } from '../payroll/money';
 import { formatThaiDate } from '../payroll/dates';
 
 export interface AttendanceDailySummaryData {
@@ -301,17 +301,6 @@ export function buildTruckDailyFlex(data: TruckDailySummaryData) {
                 color: '#9CA3AF',
                 margin: 'xs'
               }
-            : null,
-          t.fuelCostSatang > 0
-            ? {
-                type: 'box',
-                layout: 'horizontal',
-                margin: 'xs',
-                contents: [
-                  { type: 'text', text: 'ค่าน้ำมัน', size: 'xxs', color: '#9CA3AF' },
-                  { type: 'text', text: `${formatMoney(t.fuelCostSatang)} บ.`, size: 'xxs', color: '#B45309', align: 'end' }
-                ]
-              }
             : null
         ].filter(Boolean) as any[]
       });
@@ -352,14 +341,6 @@ export function buildTruckDailyFlex(data: TruckDailySummaryData) {
               { type: 'text', text: `${formatMoney(data.monthDriverPaySatang || 0)} บาท`, size: 'xs', weight: 'bold', color: '#0F2942', align: 'end' }
             ]
           },
-          {
-            type: 'box',
-            layout: 'horizontal',
-            contents: [
-              { type: 'text', text: 'ค่าน้ำมันสะสม', size: 'xs', color: '#6B7280' },
-              { type: 'text', text: `${formatMoney(data.monthFuelCostSatang || 0)} บาท`, size: 'xs', color: '#D97706', align: 'end' }
-            ]
-          }
         ]
       }
     );
@@ -457,14 +438,6 @@ export function buildTruckDailyFlex(data: TruckDailySummaryData) {
                   { type: 'text', text: `${formatMoney(data.totalDriverPaySatang)} บาท`, size: 'sm', weight: 'bold', color: '#0F2942', align: 'end' }
                 ]
               },
-              {
-                type: 'box',
-                layout: 'horizontal',
-                contents: [
-                  { type: 'text', text: 'ค่าน้ำมันรวมวันนี้', size: 'xs', color: '#64748B' },
-                  { type: 'text', text: `${formatMoney(data.totalFuelCostSatang)} บาท`, size: 'xs', weight: 'bold', color: '#D97706', align: 'end' }
-                ]
-              }
             ]
           },
           ...truckRows,

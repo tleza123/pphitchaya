@@ -1,0 +1,34 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { NextRequest } from 'next/server';
+import { POST } from '../src/app/api/truck/billing/route';
+
+test('billing locks a trip atomically and receipts and partial payments cannot duplicate money', async () => {
+  process.env.TRUCK_BILLING_ENABLED = 'true';
+  const docs = new Map<string, any>(); let n=0; let queue=Promise.resolve();
+  const ref=(path:string):any=>({path,id:path.split('/').pop(),collection:(name:string)=>col(`${path}/${name}`)});
+  const col=(path:string):any=>({doc:(id?:string)=>ref(`${path}/${id || `generated${++n}`}`)});
+  const snap=(r:any)=>({id:r.id,exists:docs.has(r.path),data:()=>docs.get(r.path)});
+  (globalThis as any).adminDb={collection:col,runTransaction:async(fn:any)=>{let release!:()=>void;const previous=queue;queue=new Promise<void>(r=>{release=r;});await previous;try {const writes:(()=>void)[]=[];const tx={get:async(r:any)=>snap(r),getAll:async(...refs:any[])=>refs.map(snap),create:(r:any,v:any)=>writes.push(()=>{if(docs.has(r.path))throw Error('ALREADY_EXISTS');docs.set(r.path,v);}),set:(r:any,v:any)=>writes.push(()=>docs.set(r.path,v)),update:(r:any,v:any)=>writes.push(()=>docs.set(r.path,{...docs.get(r.path),...v}))};const result=await fn(tx);writes.forEach(w=>w());return result;}finally{release();}}};
+  const base=`shops/${process.env.SHOP_ID||'main'}`;
+  docs.set(`${base}/truckTrips/t1`,{status:'COMPLETED',customerId:'c1',customerName:'ลูกค้า',billingSatang:100000,billingExtraSatang:5000,departureDate:'2026-11-30',arrivalDate:'2026-12-02'});
+  const post=(body:any)=>POST(new NextRequest('http://localhost/api/truck/billing',{method:'POST',body:JSON.stringify(body)}));
+  const [a,b]=await Promise.all([post({action:'INVOICE',requestId:'request-a',tripIds:['t1'],issueDate:'2026-12-03'}),post({action:'INVOICE',requestId:'request-b',tripIds:['t1'],issueDate:'2026-12-03'})]);
+  assert.deepEqual([a.status,b.status].sort(),[200,409]); const inv=(await a.json()).data;
+  assert.equal(inv.totalSatang,105000); assert.equal(docs.get(`${base}/truckTrips/t1`).invoiceId,inv.invoiceId);
+  const pay={action:'PAYMENT',requestId:'request-pay',invoiceId:inv.invoiceId,expectedRevision:1,amountSatang:50000,paidDate:'2026-12-05'};
+  const firstPayment=await post(pay); assert.equal(firstPayment.status,200); const payment=(await firstPayment.json()).data; assert.equal((await post(pay)).status,200);
+  assert.equal(docs.get(`${base}/truckInvoices/${inv.invoiceId}`).paidSatang,50000);
+  assert.equal((await post({...pay,requestId:'request-over',expectedRevision:2,amountSatang:55001})).status,422);
+  const cancel={action:'VOID_PAYMENT',requestId:'request-void',invoiceId:inv.invoiceId,paymentId:payment.paymentId,expectedRevision:2,reason:'บันทึกผิด'};
+  assert.equal((await post(cancel)).status,200); assert.equal((await post(cancel)).status,200);
+  assert.equal(docs.get(`${base}/truckInvoices/${inv.invoiceId}`).paidSatang,0);
+  assert.equal((await post({...cancel,requestId:'request-void-again',expectedRevision:3})).status,409);
+  const voidInvoice={action:'VOID_INVOICE',invoiceId:inv.invoiceId,expectedRevision:3,reason:'แก้ไขบิล',requestId:'void-invoice'};
+  assert.equal((await post(voidInvoice)).status,200);
+  assert.equal((await post(voidInvoice)).status,200);
+  assert.equal(docs.get(`${base}/truckTrips/t1`).invoiceId,null);
+  assert.equal(docs.get(`${base}/truckInvoices/${inv.invoiceId}`).status,'VOID');
+  assert.equal((await post({action:'INVOICE',requestId:'invoice-reissued',tripIds:['t1'],issueDate:'2026-12-03'})).status,200);
+  delete process.env.TRUCK_BILLING_ENABLED;
+});

@@ -1,3 +1,4 @@
+import { loadTruckReportRecords } from '@/lib/server/truck-report-data';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
 import { createErrorResponse } from '@/lib/server/errors';
@@ -5,12 +6,14 @@ import {
   getShopId,
   getTruckProfileRef,
   getTrucksCol,
-  getTruckRecordsCol
+  getTruckRecordsCol,
+  getTruckMonthsCol
 } from '@/lib/server/repository';
 import { buildTruckMonthlyReport } from '@/lib/truck/engine';
 import { createTruckReportPdf } from '@/lib/server/truck-pdf';
 import { formatMoney } from '@/lib/payroll/money';
 import { TruckDoc, TruckDailyRecordDoc } from '@/lib/truck/types';
+import { recordsForAccountingMonths } from '@/lib/truck/report-records';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,7 +21,8 @@ export const maxDuration = 60;
 
 function escapeCsvField(val: string | number | undefined | null): string {
   if (val === undefined || val === null) return '""';
-  const str = String(val);
+  const raw = String(val);
+  const str = /^[\s\u0000-\u001f]*[=+@-]/.test(raw) ? `'${raw}` : raw;
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
@@ -43,10 +47,9 @@ export async function GET(req: NextRequest) {
     const truckId = searchParams.get('truckId') || undefined;
     const shopId = getShopId();
 
-    const [profileSnap, trucksSnap, recordsSnap] = await Promise.all([
+    const [profileSnap, trucksSnap] = await Promise.all([
       getTruckProfileRef(shopId).get(),
-      getTrucksCol(shopId).get(),
-      getTruckRecordsCol(rawMonth, shopId).get()
+      getTrucksCol(shopId).get()
     ]);
 
     const companyName = profileSnap.exists && profileSnap.data()?.companyName
@@ -58,10 +61,7 @@ export async function GET(req: NextRequest) {
       ...doc.data()
     })) as TruckDoc[];
 
-    let records = recordsSnap.docs.map(doc => ({
-      recordId: doc.id,
-      ...doc.data()
-    })) as TruckDailyRecordDoc[];
+    let records = await loadTruckReportRecords(shopId, [rawMonth]);
 
     if (truckId) {
       records = records.filter(r => r.truckId === truckId);
@@ -91,7 +91,6 @@ export async function GET(req: NextRequest) {
       'ต้นทาง',
       'ปลายทาง',
       'ค่าเที่ยว (บาท)',
-      'ค่าน้ำมัน (บาท)',
       'หมายเหตุ'
     ];
 
@@ -106,19 +105,17 @@ export async function GET(req: NextRequest) {
           const tripNo = trip.tripIndex ?? index + 1;
           const origin = trip.fromLocation || '';
           const destination = trip.destinationName || '';
-          const driverPay = formatMoney(trip.driverPaySatang);
-          const fuel = index === 0 ? formatMoney(record.fuelCostSatang) : formatMoney(0);
+          const driverPay = formatMoney(trip.driverPaySatang ?? 0);
           const note = trip.note || '';
 
           rows.push([
-            record.dateKey,
+            trip.departureDate || record.dateKey,
             plate,
             driver,
             String(tripNo),
             origin,
             destination,
             driverPay,
-            fuel,
             note
           ]);
         });
@@ -132,7 +129,6 @@ export async function GET(req: NextRequest) {
           '',
           '',
           formatMoney(0),
-          formatMoney(record.fuelCostSatang),
           ''
         ]);
       }

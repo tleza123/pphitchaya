@@ -12,7 +12,6 @@ type Metric = 'tripCount' | 'driverPaySatang' | 'fuelCostSatang' | 'totalCostSat
 const METRICS: { key: Metric; label: string }[] = [
   { key: 'tripCount', label: 'เที่ยววิ่ง' },
   { key: 'driverPaySatang', label: 'ค่าเที่ยว' },
-  { key: 'fuelCostSatang', label: 'ค่าน้ำมัน' },
   { key: 'totalCostSatang', label: 'ต้นทุนรวม' }
 ];
 const PERIODS: { key: TruckReportPeriod; label: string }[] = [{ key: 'day', label: 'รายวัน' }, { key: 'month', label: 'รายเดือน' }, { key: 'year', label: 'รายปี' }];
@@ -118,7 +117,6 @@ export function TruckDetailedReports({ active, boot, onBack }: { active: boolean
           <div className={styles.figures}>
             <div className={styles.fig}><small>เที่ยววิ่ง</small><strong>{totals.tripCount}</strong></div>
             <div className={styles.fig}><small>ค่าเที่ยว (บาท)</small><strong>{formatMoney(totals.driverPaySatang)}</strong></div>
-            <div className={styles.fig}><small>ค่าน้ำมัน (บาท)</small><strong>{formatMoney(totals.fuelCostSatang)}</strong></div>
             <div className={styles.fig}><small>ต้นทุนรวม (บาท)</small><strong>{formatMoney(totals.totalCostSatang)}</strong></div>
           </div>
         </div>
@@ -129,7 +127,7 @@ export function TruckDetailedReports({ active, boot, onBack }: { active: boolean
             <Chart rows={rows} metric={metric} />
             <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="ตารางข้อมูล">
               <table className={styles.table}>
-                <thead><tr><th>ช่วง</th><th className={styles.num}>เที่ยว</th><th className={styles.num}>ค่าเที่ยว</th><th className={styles.num}>ค่าน้ำมัน</th><th className={styles.num}>ต้นทุนรวม</th></tr></thead>
+                <thead><tr><th>ช่วง</th><th className={styles.num}>เที่ยว</th><th className={styles.num}>ค่าเที่ยว</th><th className={styles.num}>ต้นทุนรวม</th></tr></thead>
                 <tbody>
                   {rows.map(r => (
                     <tr key={r.key}>

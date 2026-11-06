@@ -1,5 +1,5 @@
-import AppShell from '@/components/shell/AppShell';
+import { redirect } from 'next/navigation';
 
 export default function SettingsPage() {
-  return <AppShell initialTab="settings" />;
+  redirect('/attendance/settings');
 }

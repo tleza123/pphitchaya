@@ -31,13 +31,32 @@ export interface TruckDestinationDoc {
 }
 
 export interface TruckTripItem {
+  tripId?: string;
+  originId?: string | null;
+  departureDate?: string;
+  arrivalDate?: string | null;
+  departureTime?: string | null;
+  arrivalTime?: string | null;
+  billable?: boolean;
+  driverExtraNote?: string;
+  billingExtraNote?: string;
+  overrideReason?: string;
   tripIndex: number;
   fromLocation: string;
   destinationMode: string; // 'DEST_<id>' | '__OTHER__'
   destinationId?: string | null;
   destinationName: string;
-  driverPaySatang: number; // Integer satang
+  driverPaySatang: number | null; // null means price pending
   note: string;
+  departedAt?: string;
+  arrivedAt?: string | null;
+  status?: 'OPEN' | 'COMPLETED' | 'CANCELLED';
+  customerName?: string;
+  customerId?: string | null;
+  billingSatang?: number | null;
+  billingExtraSatang?: number;
+  driverExtraSatang?: number;
+  accountingMonth?: string;
 }
 
 export interface TruckPhotoMeta {
@@ -50,7 +69,9 @@ export interface TruckPhotoMeta {
 }
 
 export interface TruckDailyRecordDoc {
+  driverId?: string | null;
   recordId: string; // `${dateKey}_${truckId}`
+  sourceDateKey?: string; // Source record date for edits
   dateKey: string;  // YYYY-MM-DD
   monthKey: string; // YYYY-MM
   truckId: string;

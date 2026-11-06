@@ -4,6 +4,8 @@ import { verifyOwner } from '@/lib/server/auth';
 import { createSuccessResponse, createErrorResponse } from '@/lib/server/errors';
 import { getShopId, getTruckPhotoRef } from '@/lib/server/repository';
 import { TruckPhotoDoc, TruckPhotoMeta } from '@/lib/truck/types';
+import { getAdminFirestore } from '@/lib/firebase/admin';
+import { assertTruckWritable } from '@/lib/server/truck-control';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,7 +97,10 @@ export async function POST(req: NextRequest) {
     };
 
     const shopId = getShopId();
-    await getTruckPhotoRef(photoId, shopId).set(photoDoc);
+    await getAdminFirestore().runTransaction(async tx => {
+      await assertTruckWritable(tx, shopId);
+      tx.set(getTruckPhotoRef(photoId, shopId), photoDoc);
+    });
 
     const result: TruckPhotoMeta = {
       photoId,

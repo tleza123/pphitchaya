@@ -10,7 +10,7 @@ import { errMsg, getJson, saveBlob, sendJson } from './api';
 import type { TruckBoot } from './TruckShell';
 import styles from './truck.module.css';
 
-interface Field { key: string; label: string; kind?: 'text' | 'money' | 'check'; required?: boolean }
+interface Field { key: string; label: string; kind?: 'text' | 'money' | 'check' | 'select'; required?: boolean; options?: { value: string; label: string }[] }
 interface Item { id: string; title: string; sub?: string; flag?: string; values: Record<string, string> }
 
 function MasterSection({ title, fields, items, busy, onSave, onDelete }: {
@@ -58,8 +58,8 @@ function MasterSection({ title, fields, items, busy, onSave, onDelete }: {
               ) : (
                 <>
                   <label className={settings.formLabel} htmlFor={`ms-${title}-${f.key}`}>{f.label}</label>
-                  <input id={`ms-${title}-${f.key}`} required={f.required} inputMode={f.kind === 'money' ? 'decimal' : undefined} className={settings.formInput}
-                    value={values[f.key] || ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />
+                  {f.kind === 'select' ? <select id={`ms-${title}-${f.key}`} required={f.required} className={settings.formInput} value={values[f.key] || ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}><option value="">เลือก{f.label}</option>{f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select> : <input id={`ms-${title}-${f.key}`} required={f.required} inputMode={f.kind === 'money' ? 'decimal' : undefined} className={settings.formInput}
+                    value={values[f.key] || ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />}
                 </>
               )}
             </div>
@@ -78,6 +78,9 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ err: boolean; text: string } | null>(null);
   const [company, setCompany] = useState(boot.truckProfile.companyName);
+  const [address,setAddress]=useState(boot.truckProfile.address||'');
+  const [phone,setPhone]=useState(boot.truckProfile.phone||'');
+  const [taxId,setTaxId]=useState(boot.truckProfile.taxId||'');
   const [pendingDelete, setPendingDelete] = useState<{ item: Item; request: Record<string, unknown>; success: string } | null>(null);
   const [pendingRestore, setPendingRestore] = useState<File | null>(null);
   const restoreRef = useRef<HTMLInputElement>(null);
@@ -105,6 +108,10 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
     id: d.destinationId, title: d.name, sub: `ค่าเที่ยวคนขับ ${formatMoney(d.driverPaySatang)} บาท`,
     values: { name: d.name, pay: satangToDecimalString(d.driverPaySatang) }
   }));
+  const drivers: Item[] = ((boot as any).truckDrivers || []).filter((d:any) => d.status !== 'SUSPENDED').map((d: any) => ({ id: d.driverId, title: d.name, sub: `ค่าแรงฐาน ${formatMoney(d.baseWageSatang ?? 30000)} บาท/วัน`, values: { name: d.name, base: String((d.baseWageSatang ?? 30000) / 100), revision: String(d.revision) } }));
+  const customers: Item[] = ((boot as any).truckCustomers || []).filter((d:any) => d.status !== 'SUSPENDED').map((d: any) => ({ id: d.customerId, title: d.name, values: { name: d.name, revision: String(d.revision) } }));
+  const locations: Item[] = ((boot as any).truckLocations || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.locationId,title:`${d.code} — ${d.name}`,values:{code:d.code,name:d.name,detail:d.detail||'',revision:String(d.revision)}}));
+  const tariffs: Item[] = ((boot as any).truckTariffs || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.tariffId,title:`${locations.find(x=>x.id===d.originId)?.title || d.originId} → ${locations.find(x=>x.id===d.destinationId)?.title || d.destinationId}`,sub:`ค่าเที่ยว ${formatMoney(d.driverPaySatang)} บาท`,values:{originId:d.originId,destinationId:d.destinationId,customerId:d.customerId||'',pay:satangToDecimalString(d.driverPaySatang),billing:d.customerRateSatang==null?'':satangToDecimalString(d.customerRateSatang),revision:String(d.revision)}}));
 
   const backup = () => act(async () => {
     const data = await getJson('/api/truck/backup');
@@ -136,10 +143,29 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
     <div className={styles.stack} aria-busy={busy}>
       <h2 className={reports.title}>ตั้งค่าระบบรถสิบล้อ</h2>
 
+      <MasterSection title="จุดรับ–ส่ง" busy={busy} items={locations}
+        fields={[{key:'code',label:'รหัสจุด เช่น A',required:true},{key:'name',label:'ชื่อสถานที่',required:true},{key:'detail',label:'ที่อยู่หรือรายละเอียด'}]}
+        onSave={(v,id)=>act(()=>post({action:'UPSERT_LOCATION',location:{id:id||undefined,code:v.code,name:v.name,detail:v.detail},expectedRevision:id?Number(v.revision):0}),'บันทึกจุดแล้ว')}
+        onDelete={item=>{setPendingDelete({item,request:{action:'DISABLE_LOCATION',id:item.id,expectedRevision:Number(item.values.revision)},success:'ปิดใช้งานจุดแล้ว'});return Promise.resolve();}} />
+      <MasterSection title="ราคาต้นทาง–ปลายทาง" busy={busy} items={tariffs}
+        fields={[{key:'originId',label:'ต้นทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'destinationId',label:'ปลายทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'pay',label:'ค่าเที่ยวคนขับ (บาท)',kind:'money',required:true},{key:'customerId',label:'ลูกค้า (ถ้ามี)',kind:'select',options:customers.map(c=>({value:c.id,label:c.title}))},{key:'billing',label:'ค่าขนส่งลูกค้า (บาท)',kind:'money'}]}
+        onSave={(v,id)=>act(()=>post({action:'UPSERT_TARIFF',tariff:{id:id||undefined,originId:v.originId,destinationId:v.destinationId,customerId:v.customerId||null,driverPaySatang:baht(v.pay),customerRateSatang:v.billing?baht(v.billing):null},expectedRevision:id?Number(v.revision):0}),'บันทึกราคาแล้ว')}
+        onDelete={item=>{setPendingDelete({item,request:{action:'DISABLE_TARIFF',id:item.id,expectedRevision:Number(item.values.revision)},success:'ปิดใช้งานราคาแล้ว'});return Promise.resolve();}} />
+
       <MasterSection title="รถสิบล้อและคนขับ" busy={busy} items={trucks}
         fields={[{ key: 'plateNumber', label: 'ทะเบียนรถ', required: true }, { key: 'driverName', label: 'คนขับประจำ' }, { key: 'suspended', label: 'พักรถชั่วคราว', kind: 'check' }]}
         onSave={(v, id) => act(() => post({ action: 'UPSERT_TRUCK', truck: { truckId: id ?? undefined, plateNumber: v.plateNumber, driverName: v.driverName || '', status: v.suspended === 'true' ? 'SUSPENDED' : 'ACTIVE' }, expectedRevision: id ? boot.trucks.find(t => t.truckId === id)?.revision : undefined }), 'บันทึกข้อมูลรถแล้ว')}
         onDelete={item => { setPendingDelete({ item, request: { action: 'DELETE_TRUCK', truckId: item.id }, success: 'ลบรถแล้ว' }); return Promise.resolve(); }} />
+
+      <MasterSection title="คนขับและค่าแรงฐานรายวัน" busy={busy} items={drivers}
+        fields={[{ key: 'name', label: 'ชื่อคนขับ', required: true }, { key: 'base', label: 'ค่าแรงฐานต่อวัน (บาท)', kind: 'money', required: true }]}
+        onSave={(v, id) => act(() => post({ action: 'UPSERT_DRIVER', driver: { driverId: id || undefined, name: v.name, baseWageSatang: baht(v.base || '300') }, expectedRevision: id ? Number(v.revision) : 0 }), 'บันทึกคนขับแล้ว')}
+        onDelete={item => { setPendingDelete({ item, request: { action: 'DELETE_DRIVER', driverId: item.id, expectedRevision: Number(item.values.revision) }, success: 'ปิดใช้งานคนขับแล้ว' }); return Promise.resolve(); }} />
+
+      <MasterSection title="ลูกค้า" busy={busy} items={customers}
+        fields={[{ key: 'name', label: 'ชื่อลูกค้า', required: true }]}
+        onSave={(v, id) => act(() => post({ action: 'UPSERT_CUSTOMER', customer: { customerId: id || undefined, name: v.name }, expectedRevision: id ? Number(v.revision) : 0 }), 'บันทึกลูกค้าแล้ว')}
+        onDelete={item => { setPendingDelete({ item, request: { action: 'DELETE_CUSTOMER', customerId: item.id, expectedRevision: Number(item.values.revision) }, success: 'ปิดใช้งานลูกค้าแล้ว' }); return Promise.resolve(); }} />
 
       <MasterSection title="ปลายทางและค่าเที่ยวคนขับ" busy={busy} items={dests}
         fields={[{ key: 'name', label: 'ชื่อปลายทาง', required: true }, { key: 'pay', label: 'ค่าเที่ยวคนขับ (บาท)', kind: 'money', required: true }]}
@@ -156,9 +182,12 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
         <div className={settings.formGroup}>
           <label className={settings.formLabel} htmlFor="tr-company">ชื่อกิจการรถสิบล้อ</label>
           <input id="tr-company" className={settings.formInput} value={company} maxLength={100} onChange={e => setCompany(e.target.value)} />
+          <label className={settings.formLabel}>ที่อยู่กิจการ<textarea className={settings.formInput} value={address} onChange={e=>setAddress(e.target.value)} /></label>
+          <label className={settings.formLabel}>โทรศัพท์<input className={settings.formInput} value={phone} onChange={e=>setPhone(e.target.value)} /></label>
+          <label className={settings.formLabel}>เลขประจำตัวผู้เสียภาษี<input className={settings.formInput} value={taxId} onChange={e=>setTaxId(e.target.value)} /></label>
         </div>
         <button type="button" className={settings.primaryBtn} disabled={busy || !company.trim()}
-          onClick={() => act(async () => { await post({ action: 'UPDATE_PROFILE', companyName: company, expectedRevision: boot.truckProfile.revision }); }, 'บันทึกชื่อกิจการแล้ว').catch(() => undefined)}>
+          onClick={() => act(async () => { await post({ action: 'UPDATE_PROFILE', companyName: company,address,phone,taxId, expectedRevision: boot.truckProfile.revision }); }, 'บันทึกข้อมูลกิจการแล้ว').catch(() => undefined)}>
           บันทึกชื่อกิจการ
         </button>
       </div>
@@ -169,7 +198,7 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
         <div className={styles.sectionHead}><h3>สำรองและกู้คืนข้อมูล</h3></div>
         <div style={{ display: 'grid', gap: '.6rem' }}>
           <button type="button" className={settings.secondaryBtn} onClick={backup} disabled={busy}>ดาวน์โหลดไฟล์สำรอง (JSON)</button>
-          <button type="button" className={settings.secondaryBtn} onClick={() => restoreRef.current?.click()} disabled={busy}>กู้คืนจากไฟล์สำรอง</button>
+          <p className={styles.hint}>กู้คืนข้อมูลผ่านเครื่องมือของผู้ดูแล ตามคู่มือ TRUCK_MIGRATION_RUNBOOK.md เพื่อป้องกันการเขียนทับเอกสารการเงิน</p>
           <input ref={restoreRef} type="file" accept=".json,application/json" hidden onChange={e => { void restore(e.target.files?.[0]); e.target.value = ''; }} />
         </div>
       </div>

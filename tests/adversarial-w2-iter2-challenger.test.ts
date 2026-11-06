@@ -36,6 +36,7 @@ function setupMockDb(): MockStore {
         }
         return { exists: docs.has(path), id: path.split('/').pop()!, data: () => docs.get(path), ref: self };
       },
+      where: (field: string, _op: string, value: any) => ({ path, queryField: field, queryValue: value }),
       set: async (data: any, options?: any) => {
         if (options?.merge && docs.has(path)) {
           docs.set(path, { ...docs.get(path), ...data });
@@ -67,7 +68,7 @@ function setupMockDb(): MockStore {
       };
 
       const result = await run({
-        get: async (r: any) => read(r),
+        get: async (r: any) => { if (r.queryField) { const prefix = r.path + '/'; const matched = [...docs.entries()].filter(([k,v]) => k.startsWith(prefix) && !k.slice(prefix.length).includes('/') && v?.[r.queryField] === r.queryValue).map(([k,v]) => ({id:k.split('/').pop(),data:()=>v})); return {empty: matched.length === 0,docs:matched}; } return read(r); },
         getAll: async (...refs: any[]) => refs.map(read),
         set: (r: any, value: any, options?: any) => {
           stagedWrites.push({

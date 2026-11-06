@@ -1,9 +1,11 @@
+import { loadTruckReportRecords } from '@/lib/server/truck-report-data';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
 import { createSuccessResponse, createErrorResponse } from '@/lib/server/errors';
-import { getShopId, getTrucksCol, getTruckRecordsCol } from '@/lib/server/repository';
+import { getShopId, getTrucksCol, getTruckMonthsCol, getTruckRecordsCol } from '@/lib/server/repository';
 import { buildTruckMonthlyReport } from '@/lib/truck/engine';
 import { TruckDoc, TruckDailyRecordDoc } from '@/lib/truck/types';
+import { recordsForAccountingMonths } from '@/lib/truck/report-records';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,31 +47,8 @@ export async function GET(req: NextRequest) {
       ...doc.data()
     })) as TruckDoc[];
 
-    // Read monthly records using bounded concurrency (at most 4 simultaneous month queries)
-    const allRecords: TruckDailyRecordDoc[] = [];
-    let cursor = 0;
-    const concurrency = Math.min(4, months.length);
-
-    await Promise.all(
-      Array.from({ length: concurrency }, async () => {
-        while (cursor < months.length) {
-          const index = cursor++;
-          const m = months[index];
-          const recordsSnap = await getTruckRecordsCol(m, shopId).get();
-          for (const doc of recordsSnap.docs) {
-            allRecords.push({
-              recordId: doc.id,
-              ...doc.data()
-            } as TruckDailyRecordDoc);
-          }
-        }
-      })
-    );
-
-    // Apply truckId filter if specified
-    const targetRecords = truckId
-      ? allRecords.filter(r => r.truckId === truckId)
-      : allRecords;
+    const allRecords = await loadTruckReportRecords(shopId, months);
+    const targetRecords = truckId ? allRecords.filter(r => r.truckId === truckId) : allRecords;
 
     const reportMonth = months[0];
     const report = buildTruckMonthlyReport(targetRecords, trucks, reportMonth);

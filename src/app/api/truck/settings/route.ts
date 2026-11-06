@@ -1,3 +1,4 @@
+import { assertTruckWritable } from '@/lib/server/truck-control';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
 import { createSuccessResponse, createErrorResponse } from '@/lib/server/errors';
@@ -11,6 +12,10 @@ import {
   getTruckOriginRef,
   getTruckDestinationsCol,
   getTruckDestinationRef,
+  getTruckDriversCol,
+  getTruckCustomersCol,
+  getTruckTariffsCol,
+  getTruckLocationsCol,
   getRequestsCol,
   recordAudit
 } from '@/lib/server/repository';
@@ -34,17 +39,18 @@ export async function GET(req: NextRequest) {
     await verifyOwner(req);
     const shopId = getShopId();
 
-    const [profileSnap, lineSnap, trucksSnap, originsSnap, destinationsSnap] = await Promise.all([
+    const [profileSnap, lineSnap, trucksSnap, originsSnap, destinationsSnap, driversSnap, customersSnap, tariffsSnap, locationsSnap] = await Promise.all([
       getTruckProfileRef(shopId).get(),
       getLineSettingsRef(shopId).get(),
       getTrucksCol(shopId).get(),
       getTruckOriginsCol(shopId).get(),
-      getTruckDestinationsCol(shopId).get()
+      getTruckDestinationsCol(shopId).get(), getTruckDriversCol(shopId).get(), getTruckCustomersCol(shopId).get(), getTruckTariffsCol(shopId).get(), getTruckLocationsCol(shopId).get()
     ]);
 
     const rawProfile = profileSnap.exists ? profileSnap.data() : null;
     const truckProfile = {
       companyName: rawProfile?.companyName || 'ระบบบันทึกงานรถสิบล้อ',
+      address: rawProfile?.address || '', phone:rawProfile?.phone || '', taxId:rawProfile?.taxId || '',
       revision: rawProfile?.revision || 1
     };
 
@@ -110,6 +116,7 @@ export async function GET(req: NextRequest) {
       trucks,
       truckOrigins,
       truckDestinations
+      , truckDrivers: driversSnap.docs.map(d=>({driverId:d.id,...d.data()})), truckCustomers: customersSnap.docs.map(d=>({customerId:d.id,...d.data()})), truckTariffs: tariffsSnap.docs.map(d=>({tariffId:d.id,...d.data()})), truckLocations: locationsSnap.docs.map(d=>({locationId:d.id,...d.data()}))
     });
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; statusCode?: number };
@@ -132,6 +139,68 @@ export async function POST(req: NextRequest) {
     const db = getAdminFirestore();
     const requestRef = getRequestsCol(shopId).doc(requestId);
 
+    if (['UPSERT_LOCATION','DISABLE_LOCATION','UPSERT_TARIFF','DISABLE_TARIFF'].includes(action)) {
+      const location = action.endsWith('LOCATION'); const disable = action.startsWith('DISABLE');
+      const input = location ? body.location : body.tariff;
+      const id = disable ? body.id : input?.id;
+      if (id != null && (typeof id !== 'string' || !id || id.includes('/'))) return createErrorResponse('INVALID_INPUT', undefined, 422);
+      const ref = id ? (location ? getTruckLocationsCol(shopId) : getTruckTariffsCol(shopId)).doc(id) : (location ? getTruckLocationsCol(shopId) : getTruckTariffsCol(shopId)).doc();
+      if (!disable && location && (!input?.code?.trim() || !input?.name?.trim())) return createErrorResponse('INVALID_INPUT', 'ระบุรหัสและชื่อจุด', 422);
+      if (!disable && !location) {
+        if (!input?.originId || !input?.destinationId || input.originId === input.destinationId) return createErrorResponse('INVALID_INPUT', 'เลือกต้นทางและปลายทาง', 422);
+        try { validateSatang(input.driverPaySatang); if (input.customerRateSatang != null) validateSatang(input.customerRateSatang); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); }
+      }
+      const hash = computePayloadHash(owner.uid, 'POST', action, body);
+      const result = await db.runTransaction(async tx => {
+      await assertTruckWritable(tx, shopId);
+        const cached = await checkRequestReceipt(tx, requestRef, hash); if (cached) return cached;
+        const snap = await tx.get(ref); const current = snap.exists ? snap.data() : null;
+        if (disable && !current) throw new Error('NOT_FOUND');
+        if ((current?.revision || 0) !== body.expectedRevision) throw new Error('CONFLICT');
+        if (!disable) {
+          const peers = await tx.get(location ? getTruckLocationsCol(shopId) : getTruckTariffsCol(shopId));
+          const duplicate = peers.docs.some(d => { const x=d.data(); return d.id!==ref.id && x.status==='ACTIVE' && (location ? x.code.toUpperCase()===input.code.trim().toUpperCase() : x.originId===input.originId && x.destinationId===input.destinationId && (x.customerId||null)===(input.customerId||null)); });
+          if (duplicate) throw new Error('DUPLICATE_MASTER');
+          if (!location) {
+            const refs = [getTruckLocationsCol(shopId).doc(input.originId),getTruckLocationsCol(shopId).doc(input.destinationId),...(input.customerId?[getTruckCustomersCol(shopId).doc(input.customerId)]:[])];
+            const linked = await tx.getAll(...refs);
+            if (linked.some(s=>!s.exists || s.data()?.status!=='ACTIVE')) throw new Error('INVALID_REFERENCE');
+          }
+        }
+        const now = new Date().toISOString();
+        const data = disable ? { ...current, status:'SUSPENDED', revision:current!.revision+1, updatedAt:now } : location ? { locationId:ref.id, code:input.code.trim(), name:input.name.trim(), detail:String(input.detail || '').trim(), status:'ACTIVE', revision:(current?.revision||0)+1, createdAt:current?.createdAt||now, updatedAt:now } : { tariffId:ref.id, originId:input.originId, destinationId:input.destinationId, customerId:input.customerId || null, driverPaySatang:input.driverPaySatang, customerRateSatang:input.customerRateSatang ?? null, status:'ACTIVE', revision:(current?.revision||0)+1, createdAt:current?.createdAt||now, updatedAt:now };
+        tx.set(ref,data); recordAudit(tx,shopId,owner.uid,action,ref.id,current,data,requestId); recordRequestReceipt(tx,requestRef,{requestId,actorUid:owner.uid,method:'POST',entityKey:ref.id,payloadHash:hash,response:data,createdAt:now}); return data;
+      });
+      return createSuccessResponse(result, requestId);
+    }
+
+    if (['UPSERT_DRIVER', 'DELETE_DRIVER', 'UPSERT_CUSTOMER', 'DELETE_CUSTOMER'].includes(action)) {
+      const isDriver = action.endsWith('DRIVER');
+      const deleting = action.startsWith('DELETE');
+      const item = isDriver ? body.driver : body.customer;
+      const key = isDriver ? 'driverId' : 'customerId';
+      const collection = isDriver ? getTruckDriversCol(shopId) : getTruckCustomersCol(shopId);
+      const id = deleting ? body[key] : item?.[key];
+      if (id !== undefined && (typeof id !== 'string' || !id || id.includes('/'))) return createErrorResponse('INVALID_INPUT', undefined, 422);
+      const ref = id ? collection.doc(id) : collection.doc();
+      const name = typeof item?.name === 'string' ? item.name.trim() : '';
+      if (!deleting && (!name || name.length > 100)) return createErrorResponse('INVALID_INPUT', 'กรุณาระบุชื่อ', 422);
+      if (isDriver && !deleting) { try { validateSatang(item.baseWageSatang); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); } }
+      const payloadHash = computePayloadHash(owner.uid, 'POST', action, body);
+      const result = await db.runTransaction(async tx => {
+      await assertTruckWritable(tx, shopId);
+        const cached = await checkRequestReceipt(tx, requestRef, payloadHash); if (cached) return cached;
+        const snap = await tx.get(ref); const current = snap.exists ? snap.data() : null;
+        if (deleting && !current) throw new Error('NOT_FOUND');
+        if (current && body.expectedRevision !== current.revision) throw new Error('CONFLICT');
+        const now = new Date().toISOString();
+        const value = deleting ? { ...current, status: 'SUSPENDED', revision: current!.revision + 1, updatedAt: now } : { [key]: ref.id, name, ...(isDriver ? { baseWageSatang: item.baseWageSatang } : {}), status: 'ACTIVE', revision: (current?.revision || 0) + 1, createdAt: current?.createdAt || now, updatedAt: now };
+        tx.set(ref, value); recordAudit(tx, shopId, owner.uid, action, ref.id, current, value, requestId);
+        recordRequestReceipt(tx, requestRef, { requestId, actorUid: owner.uid, method: 'POST', entityKey: ref.id, payloadHash, response: value, createdAt: now }); return value;
+      });
+      return createSuccessResponse(result, requestId);
+    }
+
     // 1. UPDATE_PROFILE
     if (action === 'UPDATE_PROFILE' || body.companyName) {
       const targetName = String(body.companyName || '').trim();
@@ -142,12 +211,14 @@ export async function POST(req: NextRequest) {
 
       const payloadHash = computePayloadHash(owner.uid, 'POST', 'truckProfile', {
         companyName: targetName,
+        address:body.address||'', phone:body.phone||'', taxId:body.taxId||'',
         expectedRevision
       });
 
       const profileRef = getTruckProfileRef(shopId);
 
       const result = await db.runTransaction(async tx => {
+      await assertTruckWritable(tx, shopId);
         // Read phase
         const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
         if (cached) return cached;
@@ -163,6 +234,7 @@ export async function POST(req: NextRequest) {
         const newRevision = (current?.revision || 1) + 1;
         const updated = {
           companyName: targetName,
+          address:String(body.address ?? current?.address ?? '').slice(0,1000), phone:String(body.phone ?? current?.phone ?? '').slice(0,100), taxId:String(body.taxId ?? current?.taxId ?? '').slice(0,50),
           revision: newRevision,
           updatedAt: now
         };
@@ -221,6 +293,7 @@ export async function POST(req: NextRequest) {
       const truckRef = getTruckRef(truckId, shopId);
 
       const result = await db.runTransaction(async tx => {
+      await assertTruckWritable(tx, shopId);
         // Read phase
         const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
         if (cached) return cached;
@@ -287,6 +360,7 @@ export async function POST(req: NextRequest) {
       const truckRef = getTruckRef(truckId, shopId);
 
       const result = await db.runTransaction(async tx => {
+      await assertTruckWritable(tx, shopId);
         // Read phase
         const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
         if (cached) return cached;
@@ -298,7 +372,7 @@ export async function POST(req: NextRequest) {
         const current = snap.data();
 
         // Write phase
-        tx.delete(truckRef);
+        tx.set(truckRef, { ...current, status:'SUSPENDED', revision:(current?.revision||0)+1, updatedAt:new Date().toISOString() });
 
         recordAudit(
           tx,
@@ -348,6 +422,7 @@ export async function POST(req: NextRequest) {
       const originRef = getTruckOriginRef(originId, shopId);
 
       const result = await db.runTransaction(async tx => {
+      await assertTruckWritable(tx, shopId);
         // Read phase
         const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
         if (cached) return cached;
@@ -411,6 +486,7 @@ export async function POST(req: NextRequest) {
       const originRef = getTruckOriginRef(originId, shopId);
 
       const result = await db.runTransaction(async tx => {
+      await assertTruckWritable(tx, shopId);
         // Read phase
         const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
         if (cached) return cached;
@@ -422,7 +498,7 @@ export async function POST(req: NextRequest) {
         const current = snap.data();
 
         // Write phase
-        tx.delete(originRef);
+        tx.set(originRef, { ...current, status:'SUSPENDED', revision:(current?.revision||0)+1, updatedAt:new Date().toISOString() });
 
         recordAudit(
           tx,
@@ -480,6 +556,7 @@ export async function POST(req: NextRequest) {
       const destRef = getTruckDestinationRef(destinationId, shopId);
 
       const result = await db.runTransaction(async tx => {
+      await assertTruckWritable(tx, shopId);
         // Read phase
         const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
         if (cached) return cached;
@@ -544,6 +621,7 @@ export async function POST(req: NextRequest) {
       const destRef = getTruckDestinationRef(destinationId, shopId);
 
       const result = await db.runTransaction(async tx => {
+      await assertTruckWritable(tx, shopId);
         // Read phase
         const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
         if (cached) return cached;
@@ -555,7 +633,7 @@ export async function POST(req: NextRequest) {
         const current = snap.data();
 
         // Write phase
-        tx.delete(destRef);
+        tx.set(destRef, { ...current, status:'SUSPENDED', revision:(current?.revision||0)+1, updatedAt:new Date().toISOString() });
 
         recordAudit(
           tx,

@@ -1,8 +1,15 @@
+import { assertTruckWritable } from '@/lib/server/truck-control';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
 import { createSuccessResponse, createErrorResponse } from '@/lib/server/errors';
 import {
   getShopId,
+  getShopDocRef,
+  getTruckTripsCol,
+  getTruckDriversCol,
+  getTruckCustomersCol,
+  getTruckLocationsCol,
+  getTruckTariffsCol,
   getTruckRef,
   getTruckRecordRef,
   getTruckRecordsCol,
@@ -12,9 +19,11 @@ import {
 } from '@/lib/server/repository';
 import { getAdminFirestore } from '@/lib/firebase/admin';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
-import { getBangkokToday, getBangkokMonth } from '@/lib/payroll/dates';
+import { getBangkokToday, getBangkokMonth, dateKey as validateDate } from '@/lib/payroll/dates';
 import { calculateTruckRecordTotals } from '@/lib/truck/engine';
+import { validateSatang } from '@/lib/payroll/money';
 import { TruckDailyRecordDoc } from '@/lib/truck/types';
+import { randomUUID } from 'node:crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,6 +59,7 @@ export async function GET(req: NextRequest) {
         truckId: d.truckId,
         plateNumberSnapshot: d.plateNumberSnapshot || '',
         driverNameSnapshot: d.driverNameSnapshot || '',
+        driverId: d.driverId || null,
         fuelCostSatang: d.fuelCostSatang || 0,
         totalDriverPaySatang: d.totalDriverPaySatang || 0,
         tripCount: d.tripCount || 0,
@@ -68,6 +78,8 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; statusCode?: number };
+    if (error.message === 'TRUCK_MAINTENANCE') return createErrorResponse('TRUCK_MAINTENANCE', 'ระบบกำลังบำรุงรักษา กรุณาลองใหม่ภายหลัง', 503);
+    if (['INVALID_TRIP_ID','INVALID_LOCATION','INVALID_INPUT','INVALID_DATE','INVALID_TIME','EXTRA_NOTE_REQUIRED','BILLING_INCOMPLETE','DRIVER_REQUIRED','CUSTOMER_NOT_ACTIVE','DRIVER_NOT_ACTIVE','TRUCK_NOT_ACTIVE','MISSING_PRICE'].includes(error.message || '')) return createErrorResponse(error.message!, undefined, 422);
     return createErrorResponse(error.code || 'INTERNAL_ERROR', error.message, error.statusCode || 500);
   }
 }
@@ -79,6 +91,7 @@ export async function POST(req: NextRequest) {
     const {
       dateKey,
       truckId,
+      driverId,
       trips,
       fuelCostSatang,
       photos,
@@ -89,7 +102,7 @@ export async function POST(req: NextRequest) {
     if (!requestId || typeof requestId !== 'string' || requestId.length < 5) {
       return createErrorResponse('INVALID_INPUT', 'กรุณาระบุ requestId ให้ถูกต้อง', 422);
     }
-    if (typeof expectedRevision !== 'number' || expectedRevision < 0) {
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
       return createErrorResponse('INVALID_INPUT', 'กรุณาระบุ expectedRevision ให้ถูกต้อง', 422);
     }
     if (!dateKey || typeof dateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
@@ -98,7 +111,7 @@ export async function POST(req: NextRequest) {
     if (!truckId || typeof truckId !== 'string') {
       return createErrorResponse('INVALID_INPUT', 'กรุณาระบุเลือกรถสิบล้อ', 422);
     }
-    if (!Array.isArray(trips)) {
+    if (!Array.isArray(trips) || trips.length > 100) {
       return createErrorResponse('INVALID_INPUT', 'รายการเที่ยววิ่งไม่ถูกต้อง', 422);
     }
     if (photos !== undefined && !Array.isArray(photos)) {
@@ -116,6 +129,40 @@ export async function POST(req: NextRequest) {
     }
 
     const monthKey = dateKey.slice(0, 7);
+    validateDate(dateKey);
+    for (const trip of trips as any[]) {
+      if (trip.departureDate) {
+        try { validateDate(trip.departureDate); if (trip.arrivalDate) validateDate(trip.arrivalDate); } catch { return createErrorResponse('INVALID_DATE', undefined, 422); }
+        if (trip.arrivalDate && trip.arrivalDate < trip.departureDate) return createErrorResponse('INVALID_DATE', 'วันถึงต้องไม่ก่อนวันออก', 422);
+        trip.accountingDate = trip.departureDate;
+        trip.accountingMonth = trip.departureDate.slice(0, 7);
+        trip.status = trip.status === 'CANCELLED' ? 'CANCELLED' : trip.arrivalDate ? 'COMPLETED' : 'OPEN';
+        for (const time of [trip.departureTime, trip.arrivalTime]) if (time != null && time !== '' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return createErrorResponse('INVALID_TIME', undefined, 422);
+        if (trip.arrivalTime && !trip.arrivalDate) return createErrorResponse('INVALID_TIME', undefined, 422);
+        trip.departedAt = trip.departureTime ? new Date(`${trip.departureDate}T${trip.departureTime}:00+07:00`).toISOString() : null;
+        trip.arrivedAt = trip.arrivalDate && trip.arrivalTime ? new Date(`${trip.arrivalDate}T${trip.arrivalTime}:00+07:00`).toISOString() : null;
+        if (trip.status === 'COMPLETED' && trip.driverPaySatang == null) return createErrorResponse('MISSING_PRICE', 'ระบุค่าเที่ยวก่อนปิดเที่ยว', 422);
+        if (trip.departedAt && trip.arrivedAt && trip.arrivedAt < trip.departedAt) return createErrorResponse('INVALID_TIME', 'เวลาถึงต้องไม่ก่อนเวลาออก', 422);
+        if (trip.billingSatang != null) { try { validateSatang(trip.billingSatang); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); } }
+        for (const amount of [trip.driverExtraSatang ?? 0, trip.billingExtraSatang ?? 0]) { try { validateSatang(amount); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); } }
+        continue;
+      }
+      const start = typeof trip.departedAt === 'string' ? trip.departedAt : `${dateKey}T12:00:00+07:00`;
+      const d = new Date(start);
+      if (Number.isNaN(d.getTime())) return createErrorResponse('INVALID_DATE', undefined, 422);
+      const accountingDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+      trip.departedAt = d.toISOString();
+      trip.accountingDate = accountingDate;
+      trip.accountingMonth = accountingDate.slice(0, 7);
+      trip.status = trip.arrivedAt ? 'COMPLETED' : (trip.status || 'COMPLETED');
+      if (trip.arrivedAt) trip.arrivedAt = new Date(trip.arrivedAt).toISOString();
+      if (trip.billingSatang !== undefined && trip.billingSatang !== null) {
+        try { validateSatang(trip.billingSatang); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); }
+      }
+      for (const amount of [trip.driverExtraSatang || 0, trip.billingExtraSatang || 0]) {
+        try { validateSatang(amount); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); }
+      }
+    }
     const recordId = `${dateKey}_${truckId}`;
     const shopId = getShopId();
     const db = getAdminFirestore();
@@ -123,6 +170,7 @@ export async function POST(req: NextRequest) {
     const payloadHash = computePayloadHash(owner.uid, 'POST', recordId, {
       dateKey,
       truckId,
+      driverId: driverId || null,
       trips,
       fuelCostSatang: Number(fuelCostSatang ?? 0),
       expectedRevision,
@@ -135,6 +183,7 @@ export async function POST(req: NextRequest) {
     const monthRef = getTruckMonthRef(monthKey, shopId);
 
     const result = await db.runTransaction(async tx => {
+      await assertTruckWritable(tx, shopId);
       // 1. Strict Read phase (All reads must precede writes)
       const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
       if (cached) return cached;
@@ -149,26 +198,75 @@ export async function POST(req: NextRequest) {
         throw new Error('CONFLICT');
       }
 
+      // A record can contain legs from different months. Lock every affected
+      // month, including old values when a departure date is changed.
+      const affectedMonths = [...new Set<string>([monthKey, ...trips.map((t: any) => t.accountingMonth), ...(current?.trips || []).map((t: any) => t.accountingMonth || current?.monthKey)])].filter(m => /^\d{4}-\d{2}$/.test(m));
+      const lockRefs = affectedMonths.map(m => getShopDocRef(shopId).collection('truckPayrollMonths').doc(m));
+      const locks = await tx.getAll(...lockRefs);
+      if (locks.some(lock => lock.data()?.state === 'CLOSED')) throw new Error('MONTH_CLOSED');
+      // Migrated trips are independent financial records. Prevent the legacy
+      // editor from changing their source while they are being reviewed or billed.
+      const migrated = await tx.get(getTruckTripsCol(shopId).where('legacyRecordId', '==', recordId));
+      if (!migrated.empty) throw new Error('RECORD_MIGRATED');
+
+      const oldTrips: any[] = current?.trips || [];
+      if (oldTrips.some(t => !t.tripId)) throw new Error('LEGACY_REVIEW_REQUIRED');
+      const oldIds = oldTrips.map(t => t.tripId as string);
+      const suppliedIds = trips.map((t: any) => t.tripId).filter(Boolean);
+      if (new Set(suppliedIds).size !== suppliedIds.length || suppliedIds.some((id: string) => !oldIds.includes(id))) throw new Error('INVALID_TRIP_ID');
+      const oldRefs = oldIds.map(id => getTruckTripsCol(shopId).doc(id));
+      const oldSnaps = oldRefs.length ? await tx.getAll(...oldRefs) : [];
+      if (oldSnaps.some(s => !s.exists)) throw new Error('TRIP_NOT_FOUND');
+      if (oldSnaps.some(s => s.data()?.invoiceId)) throw new Error('TRIP_BILLED');
+      if (oldSnaps.some(s => s.data()?.recordId !== recordId)) throw new Error('INVALID_TRIP_ID');
+      const modern = trips.some((t: any) => !!t.departureDate);
+      if (modern && (!driverId || typeof driverId !== 'string')) throw new Error('DRIVER_REQUIRED');
+      const locationIds = [...new Set<string>(trips.filter((t:any)=>t.departureDate).flatMap((t:any)=>[t.originId,t.destinationId]))];
+      if (locationIds.some(id=>typeof id !== 'string' || !id || id.includes('/'))) throw new Error('INVALID_LOCATION');
+      const locationSnaps = locationIds.length ? await tx.getAll(...locationIds.map(id=>getTruckLocationsCol(shopId).doc(id))) : [];
+      const locations = new Map(locationSnaps.map(s=>[s.id,s.data()]));
+      if (locationSnaps.some(s=>!s.exists)) throw new Error('INVALID_LOCATION');
+
+      const customerIds = [...new Set<string>(trips.map((t: any) => t.customerId).filter((id: unknown): id is string => typeof id === 'string' && id.length > 0))];
+      if ((driverId && (typeof driverId !== 'string' || driverId.includes('/'))) || customerIds.some(id => id.includes('/'))) throw new Error('INVALID_INPUT');
+      const masterRefs = [...(driverId ? [getTruckDriversCol(shopId).doc(driverId)] : []), ...customerIds.map(id => getTruckCustomersCol(shopId).doc(id))];
+      const masterSnaps = masterRefs.length ? await tx.getAll(...masterRefs) : [];
+      const driverSnap = driverId ? masterSnaps[0] : undefined;
+      if (driverId && (!driverSnap?.exists || driverSnap.data()?.status !== 'ACTIVE')) throw new Error('DRIVER_NOT_ACTIVE');
+      const customerSnaps = masterSnaps.slice(driverId ? 1 : 0);
+      if (customerSnaps.some(s => !s.exists || s.data()?.status !== 'ACTIVE')) throw new Error('CUSTOMER_NOT_ACTIVE');
+      const customers = new Map(customerSnaps.map(s => [s.id, s.data()?.name]));
+
       const truckData = truckSnap.exists ? truckSnap.data() : null;
+      if (modern && (!truckData || truckData.status !== 'ACTIVE')) throw new Error('TRUCK_NOT_ACTIVE');
       const plateNumberSnapshot = truckData?.plateNumber || current?.plateNumberSnapshot || truckId;
-      const driverNameSnapshot = truckData?.driverName || current?.driverNameSnapshot || '';
+      const driverNameSnapshot = driverSnap?.data()?.name || truckData?.driverName || current?.driverNameSnapshot || '';
 
       // 2. Write phase
       const now = new Date().toISOString();
       const newRevision = currentRevision + 1;
       const finalPhotos = Array.isArray(photos) ? photos : (current?.photos || []);
+      const finalTrips = trips.map((t: any) => {
+        const origin=locations.get(t.originId), destination=locations.get(t.destinationId);
+        if (t.departureDate && (t.originId===t.destinationId || origin?.status !== 'ACTIVE' || destination?.status !== 'ACTIVE')) throw new Error('INVALID_LOCATION');
+        if (t.billable !== false && t.status === 'COMPLETED' && t.departureDate && (!t.customerId || t.billingSatang == null)) throw new Error('BILLING_INCOMPLETE');
+        if ((t.driverExtraSatang || 0)>0 && !String(t.driverExtraNote||'').trim()) throw new Error('EXTRA_NOTE_REQUIRED');
+        if ((t.billingExtraSatang || 0)>0 && !String(t.billingExtraNote||'').trim()) throw new Error('EXTRA_NOTE_REQUIRED');
+        return { ...t, fromLocation: origin ? `${origin.code} — ${origin.name}` : t.fromLocation, destinationName: destination ? `${destination.code} — ${destination.name}` : t.destinationName, customerName: t.customerId ? customers.get(t.customerId) : '', tripId: t.tripId || randomUUID() };
+      });
 
       const recordData: TruckDailyRecordDoc = {
         recordId,
         dateKey,
         monthKey,
         truckId,
+        driverId: driverId || null,
         plateNumberSnapshot,
         driverNameSnapshot,
-        fuelCostSatang: Number(fuelCostSatang ?? 0),
+        fuelCostSatang: modern ? 0 : Number(fuelCostSatang ?? 0),
         totalDriverPaySatang: totals.totalDriverPaySatang,
         tripCount: totals.tripCount,
-        trips,
+        trips: finalTrips,
         photos: finalPhotos,
         revision: newRevision,
         createdAt: current?.createdAt || now,
@@ -178,6 +276,13 @@ export async function POST(req: NextRequest) {
 
       tx.set(recordRef, recordData);
       tx.set(monthRef, { monthKey, updatedAt: now }, { merge: true });
+      const retained = new Set(finalTrips.map((t: any) => t.tripId));
+      const existingTrips = new Map(oldSnaps.map(s => [s.id, s.data()]));
+      for (const ref of oldRefs) if (!retained.has(ref.id)) tx.delete(ref);
+      for (const trip of finalTrips) {
+        const prior = existingTrips.get(trip.tripId);
+        tx.set(getTruckTripsCol(shopId).doc(trip.tripId), { ...prior, ...trip, recordId, truckId, plateNumberSnapshot, driverNameSnapshot, driverId: driverId || null, invoiceId: null, photos: finalPhotos, updatedAt: now });
+      }
 
       recordAudit(
         tx,
@@ -206,9 +311,14 @@ export async function POST(req: NextRequest) {
     return createSuccessResponse(result, requestId);
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; statusCode?: number };
+    if (error.message === 'TRUCK_MAINTENANCE') return createErrorResponse('TRUCK_MAINTENANCE', 'ระบบกำลังบำรุงรักษา กรุณาลองใหม่ภายหลัง', 503);
+    if (['INVALID_TRIP_ID','INVALID_LOCATION','INVALID_INPUT','INVALID_DATE','INVALID_TIME','EXTRA_NOTE_REQUIRED','BILLING_INCOMPLETE','DRIVER_REQUIRED','CUSTOMER_NOT_ACTIVE','DRIVER_NOT_ACTIVE','TRUCK_NOT_ACTIVE','MISSING_PRICE'].includes(error.message || '')) return createErrorResponse(error.message!, undefined, 422);
     if (error.message === 'CONFLICT') {
       return createErrorResponse('CONFLICT', undefined, 409);
     }
+    if (error.message === 'MONTH_CLOSED') return createErrorResponse('MONTH_CLOSED', 'รอบค่าแรงปิดแล้ว กรุณาเปิดรอบก่อนแก้ไข', 409);
+    if (error.message === 'RECORD_MIGRATED') return createErrorResponse('RECORD_MIGRATED', 'ใบงานนี้ย้ายเป็นเที่ยวแยกแล้ว ไม่สามารถแก้ไขผ่านใบงานเดิม', 409);
+    if (error.message === 'TRIP_BILLED') return createErrorResponse('TRIP_BILLED', 'เที่ยวในใบงานนี้วางบิลแล้ว ไม่สามารถแก้ไขได้', 409);
     if (error.message === 'REQUEST_ID_REUSED') {
       return createErrorResponse('REQUEST_ID_REUSED', undefined, 422);
     }

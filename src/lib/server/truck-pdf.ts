@@ -30,8 +30,6 @@ export async function createTruckReportPdf(
 
   const totalTrips = records.reduce((sum, r) => sum + r.tripCount, 0);
   const totalDriverPaySatang = records.reduce((sum, r) => sum + r.totalDriverPaySatang, 0);
-  const totalFuelCostSatang = records.reduce((sum, r) => sum + r.fuelCostSatang, 0);
-  const totalCostSatang = totalDriverPaySatang + totalFuelCostSatang;
 
   const doc = new PDFDocument({
     size: 'A4',
@@ -94,7 +92,7 @@ export async function createTruckReportPdf(
       ? '(ต่อ)'
       : filteredTruck
       ? `สรุปเฉพาะคัน: ${filteredTruck.plateNumber} (คนขับ: ${filteredTruck.driverName})`
-      : 'สรุปภาพรวมการวิ่งงานและค่าน้ำมันทุกคัน';
+      : 'สรุปภาพรวมการวิ่งงานทุกคัน';
     text(sub, left, y, width, 13, false, 'left', muted);
     y += 18;
     line(y);
@@ -114,14 +112,12 @@ export async function createTruckReportPdf(
 
   // KPI Summary Strip (4 cards)
   const cardGap = 8;
-  const cardWidth = (width - cardGap * 3) / 4;
+  const cardWidth = (width - cardGap) / 2;
   const cardHeight = 48;
 
   const kpis = [
     { label: 'เที่ยววิ่งทั้งหมด', value: `${totalTrips.toLocaleString('th-TH')} เที่ยว` },
     { label: 'ค่าเที่ยวคนขับรวม', value: `${formatMoney(totalDriverPaySatang)} บ.` },
-    { label: 'ค่าน้ำมันรวม', value: `${formatMoney(totalFuelCostSatang)} บ.` },
-    { label: 'รวมต้นทุนทั้งสิ้น', value: `${formatMoney(totalCostSatang)} บ.` }
   ];
 
   kpis.forEach((kpi, idx) => {
@@ -145,7 +141,6 @@ export async function createTruckReportPdf(
     text('คนขับประจำ', left + 105, y + 4, 120, 12, true, 'left', muted);
     text('เที่ยววิ่ง', left + 230, y + 4, 55, 12, true, 'right', muted);
     text('ค่าเที่ยว (บาท)', left + 295, y + 4, 100, 12, true, 'right', muted);
-    text('ค่าน้ำมัน (บาท)', right - 105, y + 4, 100, 12, true, 'right', muted);
     y += 22;
 
     for (const tr of perTruckRows) {
@@ -154,7 +149,6 @@ export async function createTruckReportPdf(
       text(tr.driverName, left + 105, y + 3, 120, 12, false);
       text(`${tr.tripCount}`, left + 230, y + 3, 55, 12, false, 'right');
       text(formatMoney(tr.totalDriverPaySatang), left + 295, y + 3, 100, 12, false, 'right');
-      text(formatMoney(tr.totalFuelCostSatang), right - 105, y + 3, 100, 12, false, 'right');
       y += 18;
       line(y);
     }
@@ -173,7 +167,6 @@ export async function createTruckReportPdf(
   text('ทะเบียนรถ / คนขับ', left + 88, y + 4, 115, 12, true, 'left', muted);
   text('เส้นทาง / หมายเหตุ', left + 208, y + 4, 140, 12, true, 'left', muted);
   text('ค่าเที่ยว (บาท)', left + 352, y + 4, 75, 12, true, 'right', muted);
-  text('ค่าน้ำมัน (บาท)', right - 75, y + 4, 70, 12, true, 'right', muted);
   y += 22;
 
   if (records.length === 0) {
@@ -195,7 +188,6 @@ export async function createTruckReportPdf(
       text(`${rec.plateNumberSnapshot}\n${rec.driverNameSnapshot}`, left + 88, y + 4, 115, 11);
       text(tripsSummary, left + 208, y + 4, 140, 11);
       text(formatMoney(rec.totalDriverPaySatang), left + 352, y + 4, 75, 12, false, 'right');
-      text(formatMoney(rec.fuelCostSatang), right - 75, y + 4, 70, 12, false, 'right');
 
       y += rowHeight;
       line(y);

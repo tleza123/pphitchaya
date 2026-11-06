@@ -392,7 +392,7 @@ test('Stress-test: Truck Flex with 20 trucks, multiple trips and custom origins/
   assert.match(jsonStr, /70-001/);
   assert.match(jsonStr, /70-020/);
   assert.match(jsonStr, /32,500\.00/);
-  assert.match(jsonStr, /48,000\.00/);
+  assert.doesNotMatch(jsonStr, /48,000\.00/);
   assert.match(jsonStr, /546,000\.00/);
   assert.match(jsonStr, /806,400\.00/);
   assert.match(jsonStr, /ท่าทราย A \(บางบ่อ\)/);
@@ -773,9 +773,9 @@ test('Stress-test: fetchTruckDailySummary aggregates daily and monthly records c
       totalDriverPaySatang: 195000, // 1,950.00 THB
       fuelCostSatang: 250000, // 2,500.00 THB
       trips: [
-        { fromLocation: 'บ่อดิน A', destinationName: 'โรงงาน B' },
-        { fromLocation: 'โรงงาน B', destinationName: 'ท่าทราย C' },
-        { fromLocation: 'ท่าทราย C', destinationName: 'แคมป์ D' }
+        { fromLocation: 'บ่อดิน A', destinationName: 'โรงงาน B', driverPaySatang: 65000 },
+        { fromLocation: 'โรงงาน B', destinationName: 'ท่าทราย C', driverPaySatang: 65000 },
+        { fromLocation: 'ท่าทราย C', destinationName: 'แคมป์ D', driverPaySatang: 65000 }
       ]
     });
   }
@@ -787,7 +787,8 @@ test('Stress-test: fetchTruckDailySummary aggregates daily and monthly records c
       truckId: `truck_${i}`,
       tripCount: 2,
       totalDriverPaySatang: 130000,
-      fuelCostSatang: 150000
+      fuelCostSatang: 150000,
+      trips: [{driverPaySatang: 65000}, {driverPaySatang: 65000}]
     });
   }
 
@@ -801,13 +802,13 @@ test('Stress-test: fetchTruckDailySummary aggregates daily and monthly records c
     assert.equal(summary.activeTruckCount, 15);
     assert.equal(summary.totalTrips, 15 * 3); // 45 trips
     assert.equal(summary.totalDriverPaySatang, 15 * 195000); // 2,925,000 satang
-    assert.equal(summary.totalFuelCostSatang, 15 * 250000); // 3,750,000 satang
+    assert.equal(summary.totalFuelCostSatang, 0); // 3,750,000 satang
     assert.equal(summary.trucks.length, 15);
 
     // Monthly totals (15 daily + 5 earlier = 20 records)
     assert.equal(summary.monthTotalTrips, 45 + 5 * 2); // 55 trips
     assert.equal(summary.monthDriverPaySatang, 15 * 195000 + 5 * 130000); // 2,925,000 + 650,000 = 3,575,000 satang
-    assert.equal(summary.monthFuelCostSatang, 15 * 250000 + 5 * 150000); // 3,750,000 + 750,000 = 4,500,000 satang
+    assert.equal(summary.monthFuelCostSatang, 0); // 3,750,000 + 750,000 = 4,500,000 satang
 
     // Verify route summary formatted
     assert.equal(summary.trucks[0].routesSummary, 'บ่อดิน A -> โรงงาน B, โรงงาน B -> ท่าทราย C, ท่าทราย C -> แคมป์ D');

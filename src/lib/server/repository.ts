@@ -135,6 +135,34 @@ export function getTruckPhotosCol(shopId = getShopId()): admin.firestore.Collect
   return getShopDocRef(shopId).collection('truckPhotos');
 }
 
+export function getTruckDriversCol(shopId = getShopId()): admin.firestore.CollectionReference {
+  return getShopDocRef(shopId).collection('truckDrivers');
+}
+export function getTruckCustomersCol(shopId = getShopId()): admin.firestore.CollectionReference {
+  return getShopDocRef(shopId).collection('truckCustomers');
+}
+export function getTruckTariffsCol(shopId = getShopId()): admin.firestore.CollectionReference {
+  return getShopDocRef(shopId).collection('truckTariffs');
+}
+export function getTruckLocationsCol(shopId = getShopId()): admin.firestore.CollectionReference {
+  return getShopDocRef(shopId).collection('truckLocations');
+}
+export function getTruckWorkDaysCol(monthKey: string, shopId = getShopId()): admin.firestore.CollectionReference {
+  return getTruckMonthRef(monthKey, shopId).collection('workDays');
+}
+export function getTruckTripsCol(shopId = getShopId()): admin.firestore.CollectionReference {
+  return getShopDocRef(shopId).collection('truckTrips');
+}
+export function getTruckPayrollCol(monthKey: string, shopId = getShopId()): admin.firestore.CollectionReference {
+  return getTruckMonthRef(monthKey, shopId).collection('payroll');
+}
+export function getTruckInvoicesCol(shopId = getShopId()): admin.firestore.CollectionReference {
+  return getShopDocRef(shopId).collection('truckInvoices');
+}
+export function getTruckPaymentsCol(shopId = getShopId()): admin.firestore.CollectionReference {
+  return getShopDocRef(shopId).collection('truckPayments');
+}
+
 export function getTruckPhotoRef(photoId: string, shopId = getShopId()): admin.firestore.DocumentReference {
   return getTruckPhotosCol(shopId).doc(photoId);
 }

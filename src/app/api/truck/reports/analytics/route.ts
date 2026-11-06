@@ -1,3 +1,4 @@
+import { loadTruckReportRecords } from '@/lib/server/truck-report-data';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
 import { createSuccessResponse, createErrorResponse } from '@/lib/server/errors';
@@ -73,26 +74,9 @@ export async function GET(req: NextRequest) {
       ...doc.data()
     })) as TruckDoc[];
 
-    // Fetch records by month with bounded concurrency (at most 4 simultaneous month queries)
+    const records = await loadTruckReportRecords(shopId, months);
     const recordsByMonth = new Map<string, TruckDailyRecordDoc[]>();
-    let cursor = 0;
-    const concurrency = Math.min(4, months.length);
-
-    await Promise.all(
-      Array.from({ length: concurrency }, async () => {
-        while (cursor < months.length) {
-          const index = cursor++;
-          const monthKey = months[index];
-          const snap = await getTruckRecordsCol(monthKey, shopId).get();
-          const docs = snap.docs || [];
-          const records = docs.map(doc => ({
-            recordId: doc.id,
-            ...doc.data()
-          } as TruckDailyRecordDoc));
-          recordsByMonth.set(monthKey, records);
-        }
-      })
-    );
+    for (const month of months) recordsByMonth.set(month, records.filter(r => r.monthKey === month));
 
     const result = buildTruckAnalytics(recordsByMonth, trucks, period, today, months);
 

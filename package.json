@@ -12,7 +12,10 @@
     "setup": "tsx scripts/setup.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "backup": "tsx scripts/backup.ts",
-    "restore:check": "tsx scripts/restore-check.ts"
+    "restore:check": "tsx scripts/restore-check.ts",
+    "truck:migration:preview": "tsx scripts/truck-migration-preview.ts",
+    "truck:migration:import": "tsx scripts/truck-migration-import.ts",
+    "truck:restore": "tsx scripts/truck-restore.ts"
   },
   "dependencies": {
     "fflate": "^0.8.3",

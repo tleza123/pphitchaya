@@ -13,11 +13,11 @@ import { PhotoLightbox } from './PhotoLightbox';
 import type { TruckBoot } from './TruckShell';
 import styles from './truck.module.css';
 
-interface TripForm { fromLocation: string; destinationMode: string; customName: string; customPay: string; paySatang: number; note: string }
+interface TripForm { tripId: string; fromLocation: string; originId: string; destinationMode: string; customName: string; customPay: string; paySatang: number; note: string; startTime: string; endTime: string; billing: string; customer: string; customerId:string; billable:boolean; departureTime:string; arrivalTime:string; driverExtra:string; billingExtra:string; driverExtraNote:string; billingExtraNote:string; cancelled:boolean }
 const OTHER = '__OTHER__';
 const MAX_PHOTOS = 5;
 
-const blankTrip = (from: string): TripForm => ({ fromLocation: from, destinationMode: '', customName: '', customPay: '', paySatang: 0, note: '' });
+const blankTrip = (from: string): TripForm => ({ tripId: '', fromLocation: from, originId: '', destinationMode: '', customName: '', customPay: '', paySatang: 0, note: '', startTime: '', endTime: '', billing: '', customer: '', customerId:'', billable:true, departureTime:'', arrivalTime:'', driverExtra:'', billingExtra:'', driverExtraNote:'', billingExtraNote:'', cancelled:false });
 
 function toWebp(file: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -53,8 +53,8 @@ interface Props {
 export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
   const [date, setDate] = useState(boot.serverToday);
   const [truckId, setTruckId] = useState('');
+  const [driverId, setDriverId] = useState('');
   const [trips, setTrips] = useState<TripForm[]>([blankTrip('')]);
-  const [fuel, setFuel] = useState('');
   const [photos, setPhotos] = useState<TruckPhotoMeta[]>([]);
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -88,20 +88,21 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
         if (stale) return;
         const b = bootRef.current;
         const rec = d.records?.[0];
+        setDriverId(rec?.driverId || '');
         if (!rec) {
           setTrips([blankTrip(b.truckOrigins[0]?.name || '')]);
-          setFuel(''); setPhotos([]); setRevision(0);
+          setPhotos([]); setRevision(0);
           return;
         }
         setTrips((rec.trips as TruckTripItem[]).map(t => {
           const known = t.destinationMode !== OTHER && b.truckDestinations.some(x => `DEST_${x.destinationId}` === t.destinationMode);
           return {
-            fromLocation: t.fromLocation, destinationMode: known ? t.destinationMode : OTHER,
-            customName: known ? '' : t.destinationName, customPay: known ? '' : satangToDecimalString(t.driverPaySatang),
-            paySatang: t.driverPaySatang, note: t.note || ''
+            ...blankTrip(t.fromLocation), billable:t.billable!==false, departureTime:t.departureTime||'', arrivalTime:t.arrivalTime||'', driverExtra:satangToDecimalString(t.driverExtraSatang||0), billingExtra:satangToDecimalString(t.billingExtraSatang||0), driverExtraNote:t.driverExtraNote||'', billingExtraNote:t.billingExtraNote||'', cancelled:t.status==='CANCELLED',
+            tripId: t.tripId || '', fromLocation: t.fromLocation, originId: t.originId || '', destinationMode: t.originId ? `LOC_${t.destinationId}` : known ? t.destinationMode : OTHER,
+            customName: known ? '' : t.destinationName, customPay: known || t.driverPaySatang == null ? '' : satangToDecimalString(t.driverPaySatang),
+            paySatang: t.driverPaySatang ?? 0, note: t.note || '', startTime: t.departureDate || (t.departedAt ? new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(t.departedAt)) : date), endTime: t.arrivalDate || (t.arrivedAt ? new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(t.arrivedAt)) : ''), billing: t.billingSatang == null ? '' : satangToDecimalString(t.billingSatang), customer: t.customerName || '', customerId:t.customerId || ''
           };
         }));
-        setFuel(rec.fuelCostSatang ? satangToDecimalString(rec.fuelCostSatang) : '');
         setPhotos(rec.photos || []);
         setRevision(rec.revision);
       })
@@ -112,16 +113,15 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
 
   const patchTrip = (i: number, patch: Partial<TripForm>) => setTrips(ts => ts.map((t, j) => (j === i ? { ...t, ...patch } : t)));
   const pickDestination = (i: number, mode: string) => {
+    if (mode.startsWith('LOC_')) { const rates=boot.truckTariffs?.filter(x=>x.status==='ACTIVE' && x.originId===trips[i].originId && x.destinationId===mode.slice(4)) || []; const tariff=rates.find(x=>!x.customerId); const customerRate=rates.find(x=>x.customerId && x.customerId===trips[i].customerId); patchTrip(i, { destinationMode:mode, paySatang:tariff?.driverPaySatang ?? 0, customPay:tariff ? satangToDecimalString(tariff.driverPaySatang) : '', billing: customerRate?.customerRateSatang == null ? '' : satangToDecimalString(customerRate.customerRateSatang) }); return; }
     const dest = boot.truckDestinations.find(d => `DEST_${d.destinationId}` === mode);
     patchTrip(i, { destinationMode: mode, paySatang: dest?.driverPaySatang ?? 0 });
   };
   const tripPay = (t: TripForm) => {
-    if (t.destinationMode !== OTHER) return t.paySatang;
+    if (t.destinationMode !== OTHER && !t.destinationMode.startsWith('LOC_')) return t.paySatang;
     try { return optionalMoney(t.customPay); } catch { return 0; }
   };
   const totalPay = trips.reduce((s, t) => s + tripPay(t), 0);
-  let fuelSatang = 0;
-  try { fuelSatang = optionalMoney(fuel); } catch { /* shown on save */ }
 
   const addPhotos = async (files: FileList | null) => {
     if (!files?.length || uploading) return;
@@ -150,23 +150,27 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
     setMsg(null);
     try {
       if (!truckId) throw new Error('กรุณาเลือกรถสิบล้อ');
+      if (!driverId) throw new Error('กรุณาเลือกคนขับ');
       const items: TruckTripItem[] = trips.map((t, i) => {
         const label = `เที่ยวที่ ${i + 1}`;
         if (!t.destinationMode) throw new Error(`${label}: กรุณาเลือกปลายทาง`);
         const other = t.destinationMode === OTHER;
         if (other && !t.customName.trim()) throw new Error(`${label}: กรุณาระบุชื่อปลายทาง`);
+        const loc = t.destinationMode.startsWith('LOC_') ? boot.truckLocations?.find(d => d.locationId === t.destinationMode.slice(4)) : undefined;
         const dest = other ? undefined : boot.truckDestinations.find(d => `DEST_${d.destinationId}` === t.destinationMode);
+        if (loc && !t.customPay.trim() && t.endTime && !t.cancelled) throw new Error(`${label}: ยังไม่ได้ตั้งค่าเที่ยวเส้นทางนี้`);
         return {
-          tripIndex: i + 1, fromLocation: t.fromLocation.trim(), destinationMode: t.destinationMode,
-          destinationId: dest?.destinationId ?? null, destinationName: other ? t.customName.trim() : dest?.name ?? '',
-          driverPaySatang: other ? money(t.customPay, label) : t.paySatang, note: t.note.trim()
+          ...(t.tripId ? {tripId:t.tripId} : {}), tripIndex: i + 1, fromLocation: t.fromLocation.trim(), destinationMode: t.destinationMode,
+          originId: t.originId || null, destinationId: loc?.locationId ?? dest?.destinationId ?? null, destinationName: loc ? `${loc.code} — ${loc.name}` : other ? t.customName.trim() : dest?.name ?? '',
+          driverPaySatang: other || loc ? (t.customPay.trim() ? money(t.customPay,label) : null) : t.paySatang, note: t.note.trim(), departureDate: t.startTime || date, arrivalDate: t.endTime || null, departureTime:t.departureTime||null, arrivalTime:t.arrivalTime||null, status: t.cancelled ? 'CANCELLED' : t.endTime ? 'COMPLETED' : 'OPEN', customerId:t.customerId || null, customerName: t.customer.trim(), billable:t.billable, billingSatang: t.billable ? (t.billing.trim() ? money(t.billing, label) : null) : 0, billingExtraSatang: t.billable?money(t.billingExtra,label):0, driverExtraSatang: money(t.driverExtra,label), driverExtraNote:t.driverExtraNote, billingExtraNote:t.billingExtraNote
         };
       });
-      const payload = { dateKey: date, truckId, trips: items, fuelCostSatang: money(fuel, 'ค่าน้ำมัน'), photos, expectedRevision: revision };
+      const payload = { dateKey: date, truckId, driverId, trips: items, fuelCostSatang: 0, photos, expectedRevision: revision };
       setSaving(true);
       const rec = await sendJson('/api/truck/records', 'POST', payload, intent.current.requestId(payload));
       intent.current.complete();
       setRevision(rec.revision);
+      setTrips(current => current.map((trip, i) => ({ ...trip, tripId: rec.trips?.[i]?.tripId || trip.tripId })));
       setPhotos(rec.photos || []);
       setMsg({ err: false, text: 'บันทึกใบงานเรียบร้อยแล้ว' });
       onSaved();
@@ -191,7 +195,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
               <input id="tr-date" type="date" className={settings.formInput} value={date} onChange={e => e.target.value && setDate(e.target.value)} />
               <button type="button" className={styles.iconBtn} onClick={() => setDate(boot.serverToday)}>วันนี้</button>
             </div>
-            <p className={styles.hint}>{formatThaiDate(date)}</p>
+            <p className={styles.hint}>{formatThaiDate(date)} · รอบค่าเที่ยวตามวันเริ่มเดินทาง {date.slice(0, 7)}</p>
           </div>
           <div className={settings.formGroup}>
             <label className={settings.formLabel} htmlFor="tr-truck">รถสิบล้อ</label>
@@ -203,6 +207,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
           </div>
         </div>
         {revision > 0 && <div className={styles.editing} role="status">กำลังแก้ไขใบงานที่บันทึกไว้ของวันนี้ แก้ไขหรือเพิ่มเที่ยววิ่งแล้วกดบันทึกเพื่อทับข้อมูลเดิม</div>}
+        <div className={settings.formGroup}><label className={settings.formLabel} htmlFor="tr-driver">คนขับ</label><select id="tr-driver" className={settings.formInput} value={driverId} onChange={e=>setDriverId(e.target.value)}><option value="">เลือกคนขับ</option>{boot.truckDrivers?.filter(d=>d.status==='ACTIVE').map(d=><option key={d.driverId} value={d.driverId}>{d.name}</option>)}</select></div>
       </div>
 
       <div className={styles.panel}>
@@ -211,6 +216,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
           <div className={styles.trip} key={i}>
             <div className={styles.tripHead}>
               <span>เที่ยวที่ {i + 1}</span>
+              <label><input type="checkbox" checked={t.cancelled} onChange={e=>patchTrip(i,{cancelled:e.target.checked})} /> ยกเลิกเที่ยว</label>
               {trips.length > 1 && (
                 <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => setTrips(ts => ts.filter((_, j) => j !== i))} aria-label={`ลบเที่ยวที่ ${i + 1}`}>
                   <Trash2 size={18} aria-hidden="true" />
@@ -218,16 +224,29 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
               )}
             </div>
             <div className={styles.row2}>
+              <div className={settings.formGroup}><label className={settings.formLabel}>วันที่ออก</label><input type="date" className={settings.formInput} value={t.startTime || date} onChange={e => patchTrip(i, { startTime: e.target.value })} /></div>
+              <div className={settings.formGroup}><label className={settings.formLabel}>วันที่ถึง (เว้นว่างถ้ายังค้าง)</label><input type="date" className={settings.formInput} value={t.endTime} onChange={e => patchTrip(i, { endTime: e.target.value })} /></div>
+            </div>
+            <p className={styles.hint}>รอบค่าเที่ยว: {(t.startTime || date).slice(0,7)} — ตามวันที่ออก</p>
+            <div className={styles.row2}>
+              <label>เวลาออก (ถ้าทราบ)<input type="time" className={settings.formInput} value={t.departureTime} onChange={e=>patchTrip(i,{departureTime:e.target.value})} /></label>
+              <label>เวลาถึง (ถ้าทราบ)<input type="time" className={settings.formInput} value={t.arrivalTime} onChange={e=>patchTrip(i,{arrivalTime:e.target.value})} /></label>
+            </div>
+            <label><input type="checkbox" checked={t.billable} onChange={e=>patchTrip(i,{billable:e.target.checked})} /> เรียกเก็บลูกค้า (ปิดสำหรับเที่ยวกลับอู่/รถเปล่า)</label>
+            <div className={styles.row2}>
+              <div className={settings.formGroup}><label className={settings.formLabel}>ลูกค้า</label><select className={settings.formInput} value={t.customerId} onChange={e => {const c=boot.truckCustomers?.find(x=>x.customerId===e.target.value); const rate=boot.truckTariffs?.find(x=>x.status==='ACTIVE' && x.originId===t.originId && `LOC_${x.destinationId}`===t.destinationMode && x.customerId===e.target.value); patchTrip(i,{customerId:e.target.value,customer:c?.name||'',billing:rate?.customerRateSatang == null ? '' : satangToDecimalString(rate.customerRateSatang)});}}><option value="">ไม่เรียกเก็บลูกค้า / ยังไม่ระบุ</option>{boot.truckCustomers?.filter(c=>c.status==='ACTIVE').map(c=><option key={c.customerId} value={c.customerId}>{c.name}</option>)}</select></div>
+              <div className={settings.formGroup}><label className={settings.formLabel}>ค่าขนส่งเที่ยวนี้ (บาท)</label><input inputMode="decimal" className={settings.formInput} value={t.billing} onChange={e => patchTrip(i, { billing: e.target.value })} placeholder="เว้นว่างถ้ายังไม่ทราบ" /></div>
+            </div>
+            <div className={styles.row2}>
               <div className={settings.formGroup}>
                 <label className={settings.formLabel} htmlFor={`tr-from-${i}`}>ต้นทาง</label>
-                <input id={`tr-from-${i}`} list="tr-origins" className={settings.formInput} value={t.fromLocation} onChange={e => patchTrip(i, { fromLocation: e.target.value })} />
+                <select id={`tr-from-${i}`} className={settings.formInput} value={t.originId} onChange={e => { const l=boot.truckLocations?.find(x=>x.locationId===e.target.value); patchTrip(i,{originId:e.target.value,fromLocation:l?`${l.code} — ${l.name}`:'', destinationMode:'',customPay:''}); }}><option value="">เลือกต้นทาง</option>{boot.truckLocations?.filter(x=>x.status==='ACTIVE').map(l=><option key={l.locationId} value={l.locationId}>{l.code} — {l.name}</option>)}</select>
               </div>
               <div className={settings.formGroup}>
                 <label className={settings.formLabel} htmlFor={`tr-dest-${i}`}>ปลายทาง</label>
                 <select id={`tr-dest-${i}`} className={settings.formInput} value={t.destinationMode} onChange={e => pickDestination(i, e.target.value)}>
                   <option value="" disabled>เลือกปลายทาง</option>
-                  {boot.truckDestinations.map(d => <option key={d.destinationId} value={`DEST_${d.destinationId}`}>{d.name}</option>)}
-                  <option value={OTHER}>อื่น ๆ (ระบุปลายทางและค่าเที่ยวเอง)</option>
+                  {boot.truckLocations?.filter(x=>x.status==='ACTIVE' && x.locationId!==t.originId).map(l=><option key={l.locationId} value={`LOC_${l.locationId}`}>{l.code} — {l.name}</option>)}
                 </select>
               </div>
             </div>
@@ -242,25 +261,25 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
                   <input id={`tr-cp-${i}`} inputMode="decimal" className={settings.formInput} value={t.customPay} onChange={e => patchTrip(i, { customPay: e.target.value })} />
                 </div>
               </div>
-            ) : t.destinationMode ? (
+            ) : t.destinationMode.startsWith('LOC_') ? <div className={settings.formGroup}><label className={settings.formLabel}>ค่าเที่ยวคนขับ (บาท)</label><input className={settings.formInput} inputMode="decimal" value={t.customPay} placeholder="ยังไม่ได้ตั้งราคา" onChange={e=>patchTrip(i,{customPay:e.target.value})} /></div> : t.destinationMode ? (
               <p className={styles.pay}>ค่าเที่ยวคนขับ {formatMoney(t.paySatang)} บาท</p>
             ) : null}
             <div className={settings.formGroup}>
               <label className={settings.formLabel} htmlFor={`tr-note-${i}`}>หมายเหตุ</label>
               <input id={`tr-note-${i}`} className={settings.formInput} value={t.note} placeholder="เช่น เลขใบส่งของ น้ำหนักบรรทุก" onChange={e => patchTrip(i, { note: e.target.value })} />
             </div>
+            <div className={styles.row2}>
+              <label>เงินเพิ่มคนขับ (บาท)<input inputMode="decimal" className={settings.formInput} value={t.driverExtra} onChange={e=>patchTrip(i,{driverExtra:e.target.value})} /><input className={settings.formInput} placeholder="คำอธิบายเงินเพิ่มคนขับ" value={t.driverExtraNote} onChange={e=>patchTrip(i,{driverExtraNote:e.target.value})} /></label>
+              <label>ค่าบริการเพิ่มลูกค้า (บาท)<input inputMode="decimal" disabled={!t.billable} className={settings.formInput} value={t.billingExtra} onChange={e=>patchTrip(i,{billingExtra:e.target.value})} /><input className={settings.formInput} placeholder="คำอธิบายค่าบริการเพิ่ม" value={t.billingExtraNote} onChange={e=>patchTrip(i,{billingExtraNote:e.target.value})} /></label>
+            </div>
           </div>
         ))}
-        <button type="button" className={styles.addBtn} onClick={() => setTrips(ts => [...ts, blankTrip(ts[ts.length - 1]?.fromLocation || '')])}>
+        <button type="button" className={styles.addBtn} onClick={() => setTrips(ts => { const previous=ts[ts.length-1]; const location=previous?.destinationMode.startsWith('LOC_') ? boot.truckLocations?.find(l=>l.locationId===previous.destinationMode.slice(4)) : undefined; return [...ts, {...blankTrip(location ? `${location.code} — ${location.name}` : ''), originId:location?.locationId || ''}]; })}>
           <Plus size={20} aria-hidden="true" /> เพิ่มเที่ยววิ่งที่ {trips.length + 1}
         </button>
       </div>
 
       <div className={styles.panel}>
-        <div className={settings.formGroup}>
-          <label className={settings.formLabel} htmlFor="tr-fuel">ค่าน้ำมันวันนี้ (บาท)</label>
-          <input id="tr-fuel" inputMode="decimal" className={settings.formInput} value={fuel} placeholder="0.00" onChange={e => setFuel(e.target.value)} />
-        </div>
         <label className={styles.fileLabel}>
           <Camera size={20} aria-hidden="true" />
           {uploading ? 'กำลังอัปโหลด...' : 'แนบรูปบิล / ใบส่งของ'}
@@ -288,7 +307,6 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
           <div className={styles.totalFigs}>
             <div className={styles.fig}><small>จำนวนเที่ยว</small><strong>{trips.length}</strong></div>
             <div className={styles.fig}><small>ค่าเที่ยวคนขับ (บาท)</small><strong>{formatMoney(totalPay)}</strong></div>
-            <div className={styles.fig}><small>ค่าน้ำมัน (บาท)</small><strong>{formatMoney(fuelSatang)}</strong></div>
           </div>
         </div>
         <div className={styles.actions}>

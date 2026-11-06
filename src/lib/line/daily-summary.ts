@@ -1,3 +1,4 @@
+import { loadTruckReportRecords } from '../server/truck-report-data';
 import { getAdminFirestore } from '../firebase/admin';
 import { isWorkday, resolveWeekdaysForDate, type CalendarVersion } from '../payroll/calendar';
 import { monthDates } from '../payroll/dates';
@@ -284,70 +285,23 @@ export async function fetchTruckDailySummary(
   const shopRef = db.collection('shops').doc(shopId);
   const monthKey = dateKey.slice(0, 7);
 
-  const [truckProfileSnap, recordsSnap] = await Promise.all([
-    shopRef.collection('profile').doc('truck').get().catch(() => ({ exists: false, data: () => null })),
-    shopRef.collection('truckMonths').doc(monthKey).collection('records').get().catch(() => ({ docs: [] }))
+  const [truckProfileSnap, records] = await Promise.all([
+    shopRef.collection('profile').doc('truck').get(), loadTruckReportRecords(shopId, [monthKey])
   ]);
-
-  const truckProfileData = truckProfileSnap && typeof truckProfileSnap.data === 'function' && truckProfileSnap.exists
-    ? truckProfileSnap.data()
-    : null;
+  const truckProfileData = truckProfileSnap.exists ? truckProfileSnap.data() : null;
   const companyName = truckProfileData?.companyName || 'ระบบบันทึกงานรถสิบล้อ';
-
-  let totalTrips = 0;
-  let totalDriverPaySatang = 0;
-  let totalFuelCostSatang = 0;
-  let activeTruckCount = 0;
-
-  let monthTotalTrips = 0;
-  let monthDriverPaySatang = 0;
-  let monthFuelCostSatang = 0;
-
-  const trucksList: Array<{
-    plateNumber: string;
-    driverName: string;
-    tripCount: number;
-    routesSummary?: string;
-    driverPaySatang: number;
-    fuelCostSatang: number;
-  }> = [];
-
-  const recordDocs: any[] = Array.isArray((recordsSnap as any)?.docs) ? (recordsSnap as any).docs : [];
-  recordDocs.forEach((doc: any) => {
-    const r = typeof doc.data === 'function' ? doc.data() : doc;
-    if (!r) return;
-
-    const rDateKey = r.dateKey || (typeof doc.id === 'string' ? doc.id.split('_')[0] : '');
-    const tripCount = Number(r.tripCount || r.trips?.length || 0);
-    const driverPaySatang = Number(r.totalDriverPaySatang || 0);
-    const fuelCostSatang = Number(r.fuelCostSatang || 0);
-
-    monthTotalTrips += tripCount;
-    monthDriverPaySatang += driverPaySatang;
-    monthFuelCostSatang += fuelCostSatang;
-
-    if (rDateKey === dateKey) {
-      activeTruckCount++;
-      totalTrips += tripCount;
-      totalDriverPaySatang += driverPaySatang;
-      totalFuelCostSatang += fuelCostSatang;
-
-      const trips = Array.isArray(r.trips) ? r.trips : [];
-      const routesSummary = trips
-        .map((t: any) => `${t.fromLocation || 'ต้นทาง'} -> ${t.destinationName || 'ปลายทาง'}`)
-        .slice(0, 3)
-        .join(', ');
-
-      trucksList.push({
-        plateNumber: r.plateNumberSnapshot || r.truckId || doc.id,
-        driverName: r.driverNameSnapshot || 'คนขับ',
-        tripCount,
-        routesSummary: routesSummary || undefined,
-        driverPaySatang,
-        fuelCostSatang
-      });
-    }
-  });
+  const monthTotalTrips = records.reduce((sum, r) => sum + r.tripCount, 0);
+  const monthDriverPaySatang = records.reduce((sum, r) => sum + r.totalDriverPaySatang, 0);
+  const todayRecords = records.filter(r => r.dateKey === dateKey);
+  const totalTrips = todayRecords.reduce((sum, r) => sum + r.tripCount, 0);
+  const totalDriverPaySatang = todayRecords.reduce((sum, r) => sum + r.totalDriverPaySatang, 0);
+  const activeTruckCount = new Set(todayRecords.map(r => r.truckId)).size;
+  const trucksList = todayRecords.map(r => ({
+    plateNumber: r.plateNumberSnapshot || r.truckId, driverName: r.driverNameSnapshot || 'คนขับ',
+    tripCount: r.tripCount, routesSummary: r.trips.map(t => (t.fromLocation || 'ต้นทาง') + ' -> ' + (t.destinationName || 'ปลายทาง')).slice(0, 3).join(', '),
+    driverPaySatang: r.totalDriverPaySatang, fuelCostSatang: 0
+  }));
+  const totalFuelCostSatang = 0, monthFuelCostSatang = 0;
 
   return {
     dateKey,

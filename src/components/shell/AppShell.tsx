@@ -26,14 +26,14 @@ const SettingsTab = React.memo(dynamic(loadSettings, { loading: TabLoading }));
 const TAB_LOADERS = { attendance: loadAttendance, reports: loadReports, settings: loadSettings };
 
 const TAB_PATHS: Record<TabType, string> = {
-  attendance: '/',
-  reports: '/reports',
-  settings: '/settings'
+  attendance: '/attendance',
+  reports: '/attendance/reports',
+  settings: '/attendance/settings'
 };
 
 function tabFromPath(path: string): TabType {
-  if (path === '/reports' || path === '/reports/detailed') return 'reports';
-  if (path === '/settings') return 'settings';
+  if (path === '/attendance/reports' || path === '/attendance/reports/detailed') return 'reports';
+  if (path === '/attendance/settings') return 'settings';
   return 'attendance';
 }
 
@@ -87,12 +87,12 @@ export default function AppShell({ initialTab, initialDetailedReports = false }:
     return () => window.removeEventListener(DATA_CHANGED_EVENT, notifyAttendanceChanged);
   }, [notifyAttendanceChanged]);
   const openDetailedReports = useCallback(() => {
-    if (window.location.pathname !== '/reports/detailed') window.history.pushState({ attendanceParent: window.location.pathname }, '', '/reports/detailed');
+    if (window.location.pathname !== '/attendance/reports/detailed') window.history.pushState({ attendanceParent: window.location.pathname }, '', '/attendance/reports/detailed');
     window.dispatchEvent(new Event('attendance-navigation'));
     showTab('reports', true);
   }, [showTab]);
   const backToReports = useCallback(() => {
-    if (window.history.state?.attendanceParent === '/reports') window.history.back();
+    if (window.history.state?.attendanceParent === '/attendance/reports') window.history.back();
     else changeTab('reports');
   }, [changeTab]);
 
@@ -100,7 +100,7 @@ export default function AppShell({ initialTab, initialDetailedReports = false }:
     // Transient forms cannot be restored on reload without their in-memory drafts.
     window.history.replaceState({ ...window.history.state, attendanceNavigation: {} }, '');
     window.dispatchEvent(new Event('attendance-navigation'));
-    const restoreTab = () => showTab(tabFromPath(window.location.pathname), window.location.pathname === '/reports/detailed');
+    const restoreTab = () => showTab(tabFromPath(window.location.pathname), window.location.pathname === '/attendance/reports/detailed');
     window.addEventListener('popstate', restoreTab);
     return () => window.removeEventListener('popstate', restoreTab);
   }, [showTab]);

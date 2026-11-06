@@ -13,10 +13,14 @@ import { TruckSettingsTab } from './TruckSettingsTab';
 export type TruckTab = 'record' | 'reports' | 'settings';
 
 export interface TruckBoot {
-  truckProfile: { companyName: string; revision: number };
+  truckProfile: { companyName: string; revision: number; address?:string; phone?:string; taxId?:string };
   trucks: TruckDoc[];
   truckOrigins: TruckOriginDoc[];
   truckDestinations: TruckDestinationDoc[];
+  truckDrivers: {driverId:string; name:string; status:string}[];
+  truckCustomers: {customerId:string; name:string; status:string}[];
+  truckLocations: { locationId: string; code: string; name: string; status: string }[];
+  truckTariffs: { tariffId: string; originId: string; destinationId: string; customerId: string | null; driverPaySatang: number; customerRateSatang: number | null; status: string }[];
   serverToday: string;
   monthKey: string;
 }
@@ -39,7 +43,7 @@ export default function TruckShell({ initialTab, initialDetailed = false }: { in
   const [editTarget, setEditTarget] = useState<{ dateKey: string; truckId: string; nonce: number } | null>(null);
 
   const loadBoot = useCallback(async () => {
-    try { setBoot(await getJson('/api/truck/bootstrap')); setError(null); } catch (e) { setError(errMsg(e)); }
+    try { const b=await getJson('/api/truck/bootstrap'); const s=await getJson('/api/truck/settings'); setBoot({...b, ...s}); setError(null); } catch (e) { setError(errMsg(e)); }
   }, []);
   useEffect(() => { void loadBoot(); }, [loadBoot]);
 
@@ -69,6 +73,7 @@ export default function TruckShell({ initialTab, initialDetailed = false }: { in
       <TruckHeader name={name} activeTab={tab} onChangeTab={next => go(next)} />
 
       <main className={styles.mainContent}>
+        <nav style={{display:'flex',gap:16,flexWrap:'wrap',marginBottom:16}} aria-label="เอกสารรถบรรทุก"><a href="/">เลือกระบบ</a><a href="/truck/payroll">วันทำงานและปิดรอบค่าแรง</a><a href="/truck/billing">วางบิลและรับเงิน</a><a href="/truck/review">ตรวจข้อมูลที่ย้ายมา</a></nav>
         {error && <div role="alert" style={{ color: 'var(--team-absent)' }}>{error} <button type="button" onClick={() => void loadBoot()}>ลองใหม่</button></div>}
         {!boot && !error && (
           <div aria-busy="true" aria-label="กำลังเปิดหน้า" className="tabLoading">

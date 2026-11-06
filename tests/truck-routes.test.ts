@@ -37,6 +37,7 @@ function setupMockDb(): MockStore {
         return { exists: docs.has(path), id: path.split('/').pop()!, data: () => docs.get(path), ref: self };
       },
       where: (field: string, op: string, val: any) => ({
+        path, queryField: field, queryValue: val,
         get: async () => {
           const prefix = `${path}/`;
           const matched = Array.from(docs.entries())
@@ -78,7 +79,7 @@ function setupMockDb(): MockStore {
       };
 
       const result = await run({
-        get: async (r: any) => read(r),
+        get: async (r: any) => { if (r.queryField) { const prefix = r.path + '/'; const matched = [...docs.entries()].filter(([k,v]) => k.startsWith(prefix) && !k.slice(prefix.length).includes('/') && v?.[r.queryField] === r.queryValue).map(([k,v]) => ({id:k.split('/').pop(),data:()=>v})); return {empty: matched.length === 0,docs:matched}; } return read(r); },
         getAll: async (...refs: any[]) => refs.map(read),
         set: (r: any, value: any, options?: any) => {
           stagedWrites.push({
@@ -252,7 +253,8 @@ test('Truck Routes: Settings manages fleet, origins, destinations, and companyNa
     })
   );
   assert.equal((await delTruckRes.json()).ok, true);
-  assert.equal(store.docs.has(`${shop}/trucks/truck_101`), false);
+  assert.equal(store.docs.has(`${shop}/trucks/truck_101`), true, 'historical master records are retained');
+  assert.equal(store.docs.get(`${shop}/trucks/truck_101`).status, 'SUSPENDED');
 });
 
 test('Truck Routes: POST /api/truck/records creates, updates in-place, and enforces Read-Before-Write and Idempotency', async () => {

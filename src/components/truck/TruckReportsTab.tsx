@@ -100,7 +100,6 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
           <div className={styles.figures}>
             <div className={styles.fig}><small>เที่ยววิ่งรวม</small><strong>{totals.totalTrips}</strong></div>
             <div className={styles.fig}><small>ค่าเที่ยวคนขับ (บาท)</small><strong>{formatMoney(totals.totalDriverPaySatang)}</strong></div>
-            <div className={styles.fig}><small>ค่าน้ำมัน (บาท)</small><strong>{formatMoney(totals.totalFuelCostSatang)}</strong></div>
             <div className={styles.fig}><small>ต้นทุนรวม (บาท)</small><strong>{formatMoney(totals.totalCostSatang)}</strong></div>
           </div>
         </div>
@@ -111,7 +110,7 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
           <h3 className={reports.sectionTitle}>สรุปแยกตามรถ</h3>
           <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="สรุปแยกตามรถ">
             <table className={styles.table}>
-              <thead><tr><th>ทะเบียน</th><th>คนขับ</th><th className={styles.num}>เที่ยว</th><th className={styles.num}>ค่าเที่ยว</th><th className={styles.num}>ค่าน้ำมัน</th></tr></thead>
+              <thead><tr><th>ทะเบียน</th><th>คนขับ</th><th className={styles.num}>เที่ยว</th><th className={styles.num}>ค่าเที่ยว</th></tr></thead>
               <tbody>
                 {report.perTruck.map(r => (
                   <tr key={r.truckId}>
@@ -131,21 +130,21 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
         <h3 className={reports.sectionTitle}>ประวัติใบงานรายวัน</h3>
         {report && report.records.length === 0 && <p className={styles.empty}>ไม่มีใบงานในเดือนที่เลือก</p>}
         {report?.records.map(r => (
-          <div className={styles.rec} key={r.recordId}>
+          <div className={styles.rec} key={`${r.recordId}-${r.dateKey}-${r.trips[0]?.tripId || "legacy"}`}>
             <div className={styles.recHead}>
               <span>{formatThaiDate(r.dateKey)} - {r.plateNumberSnapshot}</span>
               <span className={styles.itemActions}>
-                <button type="button" className={styles.iconBtn} onClick={() => onEdit(r.dateKey, r.truckId)} aria-label={`แก้ไขใบงาน ${r.dateKey} ${r.plateNumberSnapshot}`}><Pencil size={18} aria-hidden="true" /> แก้ไข</button>
+                <button type="button" className={styles.iconBtn} onClick={() => onEdit(r.sourceDateKey || r.dateKey, r.truckId)} aria-label={`แก้ไขใบงาน ${r.dateKey} ${r.plateNumberSnapshot}`}><Pencil size={18} aria-hidden="true" /> แก้ไข</button>
                 <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => setToDelete(r)} aria-label={`ลบใบงาน ${r.dateKey} ${r.plateNumberSnapshot}`}><Trash2 size={18} aria-hidden="true" /></button>
               </span>
             </div>
             {r.trips.map(t => (
               <div className={styles.recTrip} key={t.tripIndex}>
                 <span>{t.tripIndex}. {t.fromLocation || 'ไม่ระบุต้นทาง'} - {t.destinationName}{t.note ? ` (${t.note})` : ''}</span>
-                <span className={styles.pay}>{formatMoney(t.driverPaySatang)}</span>
+                <span className={styles.pay}>{formatMoney(t.driverPaySatang ?? 0)}</span>
               </div>
             ))}
-            <div className={styles.recMeta}>ค่าน้ำมัน {formatMoney(r.fuelCostSatang)} บาท · รวมค่าเที่ยว {formatMoney(r.totalDriverPaySatang)} บาท</div>
+            <div className={styles.recMeta}>รวมค่าเที่ยว {formatMoney(r.totalDriverPaySatang)} บาท</div>
             {r.photos.length > 0 && (
               <div className={styles.thumbs}>
                 {r.photos.map(p => (

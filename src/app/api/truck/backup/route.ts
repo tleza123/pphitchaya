@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
 import { createSuccessResponse, createErrorResponse } from '@/lib/server/errors';
 import {
@@ -14,6 +14,7 @@ import {
   getTruckMonthRef,
   getTruckRecordRef,
   getRequestsCol
+  ,getShopDocRef
 } from '@/lib/server/repository';
 import { getAdminFirestore } from '@/lib/firebase/admin';
 import { TruckDailyRecordDoc } from '@/lib/truck/types';
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
 
     const truckProfile = profileSnap.exists
       ? profileSnap.data()
-      : { companyName: 'ระบบบันทึกงานรถสิบล้อ', revision: 1 };
+      : null;
 
     const trucks = trucksSnap.docs.map(doc => ({ truckId: doc.id, ...doc.data() }));
     const truckOrigins = originsSnap.docs.map(doc => ({ originId: doc.id, ...doc.data() }));
@@ -45,11 +46,26 @@ export async function GET(req: NextRequest) {
     const monthDocs = monthsSnap.docs;
     const recordsPromises = monthDocs.map(async mDoc => {
       const recordsSnap = await mDoc.ref.collection('records').get();
-      return recordsSnap.docs.map(d => ({ recordId: d.id, ...d.data() }));
+      return recordsSnap.docs.map(d => ({ ...d.data(), recordId: d.id, monthKey: mDoc.id }));
     });
 
     const monthRecordArrays = await Promise.all(recordsPromises);
     const records: TruckDailyRecordDoc[] = monthRecordArrays.flat() as any[];
+
+    const extraNames = ['truckLocations','truckDrivers','truckCustomers','truckTariffs','truckTrips','truckRuns','truckPayrollMonths','truckInvoices','truckPayments','truckPhotos'];
+    const shopRef = getShopDocRef(shopId);
+    const extraSnaps = await Promise.all(extraNames.map(name => shopRef.collection(name).get()));
+    const extraDocuments: {path:string;data:FirebaseFirestore.DocumentData}[] = [];
+    for (let i=0;i<extraNames.length;i++) for (const doc of extraSnaps[i].docs) {
+      extraDocuments.push({path:`${extraNames[i]}/${doc.id}`,data:doc.data()});
+      const sub = extraNames[i] === 'truckInvoices' ? 'payments' : extraNames[i] === 'truckPayrollMonths' ? 'versions' : null;
+      if (sub) { const children=await doc.ref.collection(sub).get(); for (const child of children.docs) extraDocuments.push({path:`${extraNames[i]}/${doc.id}/${sub}/${child.id}`,data:child.data()}); }
+    }
+    for (const month of monthDocs) extraDocuments.push({path:`truckMonths/${month.id}`,data:month.data()});
+    for (const month of monthDocs) for (const sub of ['workDays','payroll']) {
+      const children=await month.ref.collection(sub).get();
+      for (const child of children.docs) extraDocuments.push({path:`truckMonths/${month.id}/${sub}/${child.id}`,data:child.data()});
+    }
 
     const backupPayload = {
       version: 1,
@@ -59,7 +75,8 @@ export async function GET(req: NextRequest) {
       trucks,
       truckOrigins,
       truckDestinations,
-      records
+      records,
+      extraDocuments
     };
 
     return createSuccessResponse(backupPayload);
@@ -72,90 +89,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     await verifyOwner(req);
-    const body = await req.json();
-    const { truckProfile, trucks, truckOrigins, truckDestinations, records, requestId } = body;
-
-    const shopId = getShopId();
-    const db = getAdminFirestore();
-    const now = new Date().toISOString();
-
-    if (truckProfile && typeof truckProfile.companyName === 'string') {
-      await getTruckProfileRef(shopId).set(
-        {
-          companyName: truckProfile.companyName,
-          revision: (truckProfile.revision || 1) + 1,
-          updatedAt: now
-        },
-        { merge: true }
-      );
-    }
-
-    if (Array.isArray(trucks)) {
-      for (const t of trucks) {
-        if (t.truckId && t.plateNumber) {
-          await getTruckRef(t.truckId, shopId).set({
-            truckId: t.truckId,
-            plateNumber: t.plateNumber,
-            driverName: t.driverName || '',
-            notes: t.notes || '',
-            status: t.status || 'ACTIVE',
-            revision: t.revision || 1,
-            createdAt: t.createdAt || now,
-            updatedAt: now
-          });
-        }
-      }
-    }
-
-    if (Array.isArray(truckOrigins)) {
-      for (const o of truckOrigins) {
-        if (o.originId && o.name) {
-          await getTruckOriginRef(o.originId, shopId).set({
-            originId: o.originId,
-            name: o.name,
-            revision: o.revision || 1,
-            createdAt: o.createdAt || now,
-            updatedAt: now
-          });
-        }
-      }
-    }
-
-    if (Array.isArray(truckDestinations)) {
-      for (const d of truckDestinations) {
-        if (d.destinationId && d.name) {
-          await getTruckDestinationRef(d.destinationId, shopId).set({
-            destinationId: d.destinationId,
-            name: d.name,
-            driverPaySatang: typeof d.driverPaySatang === 'number' ? d.driverPaySatang : 0,
-            revision: d.revision || 1,
-            createdAt: d.createdAt || now,
-            updatedAt: now
-          });
-        }
-      }
-    }
-
-    if (Array.isArray(records)) {
-      for (const r of records) {
-        if (r.dateKey && r.truckId) {
-          const mKey = r.monthKey || r.dateKey.slice(0, 7);
-          const rId = r.recordId || `${r.dateKey}_${r.truckId}`;
-          await getTruckMonthRef(mKey, shopId).set(
-            { monthKey: mKey, updatedAt: now },
-            { merge: true }
-          );
-          await getTruckRecordRef(mKey, rId, shopId).set({
-            ...r,
-            recordId: rId,
-            monthKey: mKey,
-            updatedAt: now
-          });
-        }
-      }
-    }
-
-    return createSuccessResponse({ restored: true }, requestId);
+    return createErrorResponse('RESTORE_OFFLINE_ONLY', 'Restore must use the maintenance-gated truck:restore command.', 409);
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; statusCode?: number };
     return createErrorResponse(error.code || 'INTERNAL_ERROR', error.message, error.statusCode || 500);

@@ -151,8 +151,8 @@ test('GET /api/truck/reports?month=YYYY-MM returns monthly totals, perTruck metr
   // Verify monthly totals
   assert.equal(json.data.totals.totalTrips, 3);
   assert.equal(json.data.totals.totalDriverPaySatang, 190000); // 50000 + 140000
-  assert.equal(json.data.totals.totalFuelCostSatang, 200000); // 120000 + 80000
-  assert.equal(json.data.totals.totalCostSatang, 390000); // 190000 + 200000
+  assert.equal(json.data.totals.totalFuelCostSatang, 0);
+  assert.equal(json.data.totals.totalCostSatang, 190000);
   assert.equal(json.data.totals.activeTruckCount, 2);
 
   // Verify perTruck metrics
@@ -161,13 +161,13 @@ test('GET /api/truck/reports?month=YYYY-MM returns monthly totals, perTruck metr
   assert.ok(row1);
   assert.equal(row1.tripCount, 1);
   assert.equal(row1.totalDriverPaySatang, 50000);
-  assert.equal(row1.totalFuelCostSatang, 120000);
+  assert.equal(row1.totalFuelCostSatang, 0);
 
   const row2 = json.data.perTruck.find((r: any) => r.truckId === 'truck-2');
   assert.ok(row2);
   assert.equal(row2.tripCount, 2);
   assert.equal(row2.totalDriverPaySatang, 140000);
-  assert.equal(row2.totalFuelCostSatang, 80000);
+  assert.equal(row2.totalFuelCostSatang, 0);
 
   // Verify records sorted descending by dateKey
   assert.equal(json.data.records.length, 2);
@@ -256,8 +256,8 @@ test('GET /api/truck/reports/analytics returns time series buckets for period=da
   assert.equal(dayJson.data.period, 'day');
   assert.equal(dayJson.data.totals.tripCount, 2);
   assert.equal(dayJson.data.totals.driverPaySatang, 90000);
-  assert.equal(dayJson.data.totals.fuelCostSatang, 150000);
-  assert.equal(dayJson.data.totals.totalCostSatang, 240000);
+  assert.equal(dayJson.data.totals.fuelCostSatang, 0);
+  assert.equal(dayJson.data.totals.totalCostSatang, 90000);
   const dayBucket = dayJson.data.buckets.find((b: any) => b.key === '2026-10-05');
   assert.ok(dayBucket);
   assert.equal(dayBucket.tripCount, 2);
@@ -271,8 +271,8 @@ test('GET /api/truck/reports/analytics returns time series buckets for period=da
   assert.equal(monthJson.data.period, 'month');
   assert.equal(monthJson.data.totals.tripCount, 3);
   assert.equal(monthJson.data.totals.driverPaySatang, 150000);
-  assert.equal(monthJson.data.totals.fuelCostSatang, 250000);
-  assert.equal(monthJson.data.totals.totalCostSatang, 400000);
+  assert.equal(monthJson.data.totals.fuelCostSatang, 0);
+  assert.equal(monthJson.data.totals.totalCostSatang, 150000);
   const bucketSep = monthJson.data.buckets.find((b: any) => b.key === '2026-09');
   assert.ok(bucketSep);
   assert.equal(bucketSep.tripCount, 1);
@@ -290,7 +290,7 @@ test('GET /api/truck/reports/analytics returns time series buckets for period=da
   const yearBucket2026 = yearJson.data.buckets.find((b: any) => b.key === '2026');
   assert.ok(yearBucket2026);
   assert.equal(yearBucket2026.tripCount, 3);
-  assert.equal(yearBucket2026.totalCostSatang, 400000);
+  assert.equal(yearBucket2026.totalCostSatang, 150000);
 });
 
 test('GET /api/truck/reports/export?month=YYYY-MM&format=pdf returns valid binary with %PDF header', async () => {
@@ -413,12 +413,12 @@ test('GET /api/truck/reports/export?month=YYYY-MM&format=csv returns UTF-8 BOM C
   assert.ok(text.includes('ต้นทาง'));
   assert.ok(text.includes('ปลายทาง'));
   assert.ok(text.includes('ค่าเที่ยว (บาท)'));
-  assert.ok(text.includes('ค่าน้ำมัน (บาท)'));
+  assert.ok(!text.includes('ค่าน้ำมัน (บาท)'));
   assert.ok(text.includes('หมายเหตุ'));
 
   // Verify satang converted to formatted Baht (65050 satang -> "650.50", 125050 satang -> "1,250.50")
   assert.ok(text.includes('650.50'), 'Satang 65050 must be converted to 650.50 Baht');
-  assert.ok(text.includes('1,250.50'), 'Satang 125050 must be converted to 1,250.50 Baht');
+  assert.ok(!text.includes('1,250.50'), 'Fuel is excluded');
   assert.ok(!text.includes('65050'), 'Raw satang 65050 must not appear in exported CSV');
   assert.ok(!text.includes('125050'), 'Raw satang 125050 must not appear in exported CSV');
 
@@ -541,7 +541,7 @@ test('GET /api/truck/reports?month=YYYY-MM&truckId=xxx filters report to specifi
   assert.equal(json.data.records[0].truckId, 'truck-1');
   assert.equal(json.data.totals.totalTrips, 1);
   assert.equal(json.data.totals.totalDriverPaySatang, 50000);
-  assert.equal(json.data.totals.totalFuelCostSatang, 120000);
+  assert.equal(json.data.totals.totalFuelCostSatang, 0);
 });
 
 test('GET /api/truck/reports?months=YYYY-MM,YYYY-MM reads multiple months concurrently', async () => {
@@ -707,9 +707,9 @@ test('GET /api/truck/reports/export?month=YYYY-MM&format=csv handles zero-trip f
   assert.equal(buffer.subarray(0, 3).toString('hex'), 'efbbbf');
 
   const text = buffer.toString('utf-8');
-  assert.ok(text.includes('70-2222'));
-  assert.ok(text.includes('วิชัย มั่นคง'));
-  assert.ok(text.includes('500.00'));
+  assert.ok(!text.includes('70-2222'));
+  assert.ok(!text.includes('วิชัย มั่นคง'));
+  assert.ok(!text.includes('500.00'));
   assert.ok(!text.includes('70-1111'));
   assert.ok(!text.includes('สมชาย ใจดี'));
 });

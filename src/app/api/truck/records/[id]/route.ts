@@ -1,8 +1,11 @@
+import { assertTruckWritable } from '@/lib/server/truck-control';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
 import { createSuccessResponse, createErrorResponse } from '@/lib/server/errors';
 import {
   getShopId,
+  getShopDocRef,
+  getTruckTripsCol,
   getTruckRecordRef,
   getRequestsCol,
   recordAudit
@@ -91,6 +94,7 @@ export async function DELETE(
     const recordRef = getTruckRecordRef(monthKey, recordId, shopId);
 
     const result = await db.runTransaction(async tx => {
+      await assertTruckWritable(tx, shopId);
       // 1. Strict Read phase (All reads must precede writes)
       const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
       if (cached) return cached;
@@ -105,8 +109,21 @@ export async function DELETE(
         throw new Error('CONFLICT');
       }
 
+      const months = [...new Set<string>([monthKey, ...(current?.trips || []).map((t: {accountingMonth?: string}) => t.accountingMonth || monthKey)])].filter(m => /^\d{4}-\d{2}$/.test(m));
+      const locks = await tx.getAll(...months.map(m => getShopDocRef(shopId).collection('truckPayrollMonths').doc(m)));
+      if (locks.some(lock => lock.data()?.state === 'CLOSED')) throw new Error('MONTH_CLOSED');
+      const migrated = await tx.get(getTruckTripsCol(shopId).where('legacyRecordId', '==', recordId));
+      if (!migrated.empty) throw new Error('RECORD_MIGRATED');
+      const trips: {tripId?: string}[] = current?.trips || [];
+      if (trips.some(t => !t.tripId)) throw new Error('LEGACY_REVIEW_REQUIRED');
+      const refs = trips.map(t => getTruckTripsCol(shopId).doc(t.tripId!));
+      const tripSnaps = refs.length ? await tx.getAll(...refs) : [];
+      if (tripSnaps.some(s => !s.exists)) throw new Error('TRIP_NOT_FOUND');
+      if (tripSnaps.some(s => s.data()?.invoiceId)) throw new Error('TRIP_BILLED');
+
       // 2. Write phase
       tx.delete(recordRef);
+      for (const ref of refs) tx.delete(ref);
 
       recordAudit(
         tx,
@@ -139,6 +156,9 @@ export async function DELETE(
     if (error.message === 'CONFLICT') {
       return createErrorResponse('CONFLICT', undefined, 409);
     }
+    if (error.message === 'MONTH_CLOSED') return createErrorResponse('MONTH_CLOSED', 'รอบค่าแรงปิดแล้ว กรุณาเปิดรอบก่อนลบ', 409);
+    if (error.message === 'RECORD_MIGRATED') return createErrorResponse('RECORD_MIGRATED', 'ใบงานนี้ย้ายเป็นเที่ยวแยกแล้ว ไม่สามารถลบผ่านใบงานเดิม', 409);
+    if (error.message === 'TRIP_BILLED') return createErrorResponse('TRIP_BILLED', 'เที่ยวในใบงานนี้วางบิลแล้ว ไม่สามารถลบได้', 409);
     if (error.message === 'REQUEST_ID_REUSED') {
       return createErrorResponse('REQUEST_ID_REUSED', undefined, 422);
     }

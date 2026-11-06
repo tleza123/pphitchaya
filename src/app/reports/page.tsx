@@ -1,5 +1,5 @@
-import AppShell from '@/components/shell/AppShell';
+import { redirect } from 'next/navigation';
 
 export default function ReportsPage() {
-  return <AppShell initialTab="reports" />;
+  redirect('/attendance/reports');
 }

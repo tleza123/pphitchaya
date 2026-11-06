@@ -229,13 +229,12 @@ test('CSV Adversarial: Complex characters (quotes, commas, newlines, Thai script
     'ต้นทาง',
     'ปลายทาง',
     'ค่าเที่ยว (บาท)',
-    'ค่าน้ำมัน (บาท)',
     'หมายเหตุ'
   ]);
 
   // Verify row columns
   const dataRow = parsedRows[1];
-  assert.equal(dataRow.length, 9, 'Data row must have exactly 9 columns');
+  assert.equal(dataRow.length, 8, 'Data row must have exactly 8 columns');
   assert.equal(dataRow[0], '2026-10-05', 'Date key mismatch');
   assert.equal(dataRow[1], '70-9999', 'Plate number mismatch');
   assert.equal(dataRow[2], 'สมชาย "ฉายาสิงห์รถบรรทุก" ใจดี', 'Driver name quotes corrupted');
@@ -243,8 +242,7 @@ test('CSV Adversarial: Complex characters (quotes, commas, newlines, Thai script
   assert.equal(dataRow[4], testOrigin, 'Origin location with quotes and commas corrupted');
   assert.equal(dataRow[5], testDestination, 'Destination with newline and Thai digits corrupted');
   assert.equal(dataRow[6], '1,250.50', 'Driver pay satang conversion to formatted Baht corrupted');
-  assert.equal(dataRow[7], '2,450.75', 'Fuel satang conversion to formatted Baht corrupted');
-  assert.equal(dataRow[8], testNote, 'Note with multi-line CRLF/LF corrupted');
+  assert.equal(dataRow[7], testNote, 'Note with multi-line CRLF/LF corrupted');
 
   // Verify raw satangs do not appear
   assert.ok(!decodedCsv.includes('125050'));
@@ -307,16 +305,16 @@ test('CSV Adversarial: Formula injection payloads are safely quoted and parsed w
 
   assert.equal(rows.length, 2);
   const row = rows[1];
-  assert.equal(row[1], '=1+1');
-  assert.equal(row[2], '@SUM(A1:A10)');
-  assert.equal(row[4], '-100+500');
-  assert.equal(row[5], '+66812345678');
-  assert.equal(row[8], '=cmd|\' /C calc\'!A0');
+  assert.equal(row[1], "'=1+1");
+  assert.equal(row[2], "'@SUM(A1:A10)");
+  assert.equal(row[4], "'-100+500");
+  assert.equal(row[5], "'+66812345678");
+  assert.equal(row[7], "'=cmd|' /C calc'!A0");
 
   // Verify that all fields in raw CSV are wrapped in double quotes
   // e.g. "=""=1+1""" or `"=1+1"`
-  assert.ok(csvText.includes('"=1+1"'));
-  assert.ok(csvText.includes('"@SUM(A1:A10)"'));
+  assert.ok(csvText.includes(""'=1+1""));
+  assert.ok(csvText.includes(""'@SUM(A1:A10)""));
 });
 
 test('CSV Adversarial: Mixed trips and zero-trip records format satang and assign fuel cost only to trip 1', async () => {
@@ -396,17 +394,8 @@ test('CSV Adversarial: Mixed trips and zero-trip records format satang and assig
   const rawBuf = Buffer.from(await res.arrayBuffer());
   const rows = parseRfc4180Csv(rawBuf.toString('utf-8'));
 
-  // 1 header + 2 trips from 2026-10-10 + 1 row from 2026-10-11 = 4 rows
-  assert.equal(rows.length, 4);
-
-  // Row 1 (2026-10-11 zero-trip, sorted descending):
-  const rowOct11 = rows.find(r => r[0] === '2026-10-11')!;
-  assert.ok(rowOct11);
-  assert.equal(rowOct11[3], '1', 'Trip index defaults to 1 for zero-trip fuel record');
-  assert.equal(rowOct11[4], '', 'Origin empty');
-  assert.equal(rowOct11[5], '', 'Destination empty');
-  assert.equal(rowOct11[6], '0.00', 'Driver pay 0.00');
-  assert.equal(rowOct11[7], '800.00', 'Fuel cost 800.00');
+  assert.equal(rows.length, 3);
+  assert.ok(!rows.some(r => r[0] === '2026-10-11'));
 
   // Row 2 & 3 (2026-10-10):
   const trip1 = rows.find(r => r[0] === '2026-10-10' && r[3] === '1')!;
@@ -415,10 +404,8 @@ test('CSV Adversarial: Mixed trips and zero-trip records format satang and assig
   assert.ok(trip2);
 
   assert.equal(trip1[6], '600.00');
-  assert.equal(trip1[7], '1,500.00', 'Fuel cost must be displayed on trip 1');
 
   assert.equal(trip2[6], '600.00');
-  assert.equal(trip2[7], '0.00', 'Fuel cost must be 0.00 on trip 2 to avoid double counting');
 });
 
 // ============================================================================
@@ -494,7 +481,7 @@ test('Concurrency Stress: GET /api/truck/reports with 12 months queries with bou
   assert.equal(json.data.records.length, 12);
   assert.equal(json.data.totals.totalTrips, 12);
   assert.equal(json.data.totals.totalDriverPaySatang, 600000);
-  assert.equal(json.data.totals.totalFuelCostSatang, 1200000);
+  assert.equal(json.data.totals.totalFuelCostSatang, 0);
 });
 
 test('Concurrency Stress: GET /api/truck/reports/analytics (period=month) queries 12 months with bounded concurrency (peak active <= 4)', async () => {
@@ -556,7 +543,7 @@ test('Concurrency Stress: GET /api/truck/reports/analytics (period=month) querie
   assert.equal(json.data.buckets.length, 12);
   assert.equal(json.data.totals.tripCount, 24); // 2 trips * 12 months
   assert.equal(json.data.totals.driverPaySatang, 960000); // 80,000 * 12
-  assert.equal(json.data.totals.fuelCostSatang, 1800000); // 150,000 * 12
+  assert.equal(json.data.totals.fuelCostSatang, 0);
 });
 
 test('Concurrency Stress: GET /api/truck/reports/analytics (period=year) across 3 years (36 months) maintains peak active <= 4', async () => {
@@ -618,7 +605,7 @@ test('Concurrency Stress: GET /api/truck/reports/analytics (period=year) across 
   assert.equal(json.data.buckets.length, 3);
   assert.equal(json.data.totals.tripCount, 6);
   assert.equal(json.data.totals.driverPaySatang, 300000);
-  assert.equal(json.data.totals.fuelCostSatang, 600000);
+  assert.equal(json.data.totals.fuelCostSatang, 0);
 });
 
 test('Concurrency Boundaries: Dynamic concurrency scales accurately for N = 1, 2, 3, 5 months', async () => {
@@ -1033,8 +1020,7 @@ test('CSV Adversarial: Null, undefined, and missing optional trip fields export 
   assert.equal(row[4], '', 'fromLocation undefined becomes empty string');
   assert.equal(row[5], '', 'destinationName undefined becomes empty string');
   assert.equal(row[6], '0.00', 'driver pay 0 satang formatted to 0.00');
-  assert.equal(row[7], '0.00', 'fuel cost 0 satang formatted to 0.00');
-  assert.equal(row[8], '', 'note undefined becomes empty string');
+  assert.equal(row[7], '', 'note undefined becomes empty string');
   assert.ok(!rawBuf.toString('utf-8').includes('undefined'));
   assert.ok(!rawBuf.toString('utf-8').includes('null'));
 });
