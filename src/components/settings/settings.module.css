@@ -315,10 +315,17 @@
   min-height: var(--team-btn-height);
   background-color: var(--team-primary);
   color: #ffffff;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--team-radius-button);
   font-size: var(--team-copy);
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  line-height: 1.2;
+  padding: 0 1.25rem;
+  cursor: pointer;
 }
 
 .secondaryBtn {
@@ -330,6 +337,13 @@
   border-radius: var(--team-radius-button);
   font-size: var(--team-copy);
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  line-height: 1.2;
+  padding: 0 1.25rem;
+  cursor: pointer;
 }
 
 .endWorkBtn {

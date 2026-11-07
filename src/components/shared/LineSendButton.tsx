@@ -24,13 +24,22 @@ export function LineSendButton({ scope, className }: { scope: 'attendance' | 'tr
 
   return (
     <div>
-      <button type="button" className={className} onClick={send} disabled={busy} aria-busy={busy}>
-        <Send size={18} aria-hidden="true" style={{ marginRight: '.5rem', verticalAlign: '-3px' }} />
-        {busy ? 'กำลังส่ง...' : 'ส่งสรุปวันนี้เข้า LINE'}
+      <button
+        type="button"
+        className={className}
+        onClick={send}
+        disabled={busy}
+        aria-busy={busy}
+        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <Send size={18} aria-hidden="true" style={{ marginRight: '.5rem', flexShrink: 0 }} />
+        <span>{busy ? 'กำลังส่ง...' : 'ส่งสรุปวันนี้เข้า LINE'}</span>
       </button>
-      <div role="status" style={{ minHeight: '1.5rem', fontSize: 'var(--team-secondary)', color: status?.err ? 'var(--team-absent)' : 'var(--team-full)' }}>
-        {status?.text}
-      </div>
+      {status?.text && (
+        <div role="status" style={{ fontSize: 'var(--team-secondary)', color: status.err ? 'var(--team-absent)' : 'var(--team-full)', marginTop: '.35rem' }}>
+          {status.text}
+        </div>
+      )}
     </div>
   );
 }

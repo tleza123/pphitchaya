@@ -88,9 +88,9 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
         <div className={styles.toolbar}>
           <button type="button" className={settings.secondaryBtn} disabled={busy} onClick={() => exportFile('pdf')}><FileDown size={18} aria-hidden="true" style={{ marginRight: '.4rem', verticalAlign: '-3px' }} />ดาวน์โหลด PDF</button>
           <button type="button" className={settings.secondaryBtn} disabled={busy} onClick={() => exportFile('csv')}><FileSpreadsheet size={18} aria-hidden="true" style={{ marginRight: '.4rem', verticalAlign: '-3px' }} />ส่งออก Excel (CSV)</button>
-          <button type="button" className={settings.secondaryBtn} onClick={onOpenDetailed}><ChartNoAxesCombined size={18} aria-hidden="true" style={{ marginRight: '.4rem', verticalAlign: '-3px' }} />รายงานละเอียดและกราฟ</button>
+          <button type="button" className={settings.secondaryBtn} onClick={onOpenDetailed}><ChartNoAxesCombined size={18} aria-hidden="true" style={{ marginRight: '.4rem', verticalAlign: '-3px' }} />รายละเอียดและกราฟ</button>
+          <LineSendButton scope="truck" className={settings.secondaryBtn} />
         </div>
-        <LineSendButton scope="truck" className={settings.secondaryBtn} />
       </div>
 
       {error && <div className={styles.error} role="alert">{error}</div>}

@@ -16,7 +16,7 @@ import styles from './truck.module.css';
 
 interface TripForm { tripId: string; fromLocation: string; originId: string; destinationMode: string; paySatang: number | null; note: string; departureDate: string; arrivalDate: string; billing: string; weight: string; customer: string; customerId:string; billable:boolean; cancelled:boolean }
 
-const blankTrip = (from: string): TripForm => ({ tripId: '', fromLocation: from, originId: '', destinationMode: '', paySatang: null, note: '', departureDate: '', arrivalDate: '', billing: '', weight: '', customer: '', customerId:'', billable:true, cancelled:false });
+const blankTrip = (from: string): TripForm => ({ tripId: '', fromLocation: from, originId: '', destinationMode: '', paySatang: null, note: '', departureDate: '', arrivalDate: '', billing: '', weight: '', customer: '', customerId:'', billable:false, cancelled:false });
 
 function money(text: string, label: string): number {
   try { return optionalMoney(text); } catch { throw new Error(`${label}: จำนวนเงินไม่ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง`); }
@@ -74,10 +74,12 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
         }
         setLegacyFeeReviewRequired((rec.trips as TruckTripItem[]).some(needsLegacyPricingReview));
         setTrips((rec.trips as TruckTripItem[]).map(t => {
+          const custId = t.billable === false ? '' : (t.customerId || '');
+          const isBillable = Boolean(custId);
           return {
-            ...blankTrip(t.fromLocation), weight:t.weightKg == null ? '' : formatWeightTons(t.weightKg), billable:t.billable!==false, cancelled:t.status==='CANCELLED',
+            ...blankTrip(t.fromLocation), weight:t.weightKg == null ? '' : formatWeightTons(t.weightKg), billable:isBillable, cancelled:t.status==='CANCELLED',
             tripId: t.tripId || '', fromLocation: t.fromLocation, originId: t.originId || '', destinationMode: t.originId && t.destinationId ? `LOC_${t.destinationId}` : '',
-            paySatang: t.driverPaySatang ?? null, note: t.note || '', departureDate: t.departureDate || (t.departedAt ? new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(t.departedAt)) : date), arrivalDate: t.arrivalDate || (t.arrivedAt ? new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(t.arrivedAt)) : ''), billing: t.billingSatang == null ? '' : satangToDecimalString(t.billingSatang), customer: t.customerName || '', customerId:t.customerId || ''
+            paySatang: t.driverPaySatang ?? null, note: t.note || '', departureDate: t.departureDate || (t.departedAt ? new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(t.departedAt)) : date), arrivalDate: t.arrivalDate || (t.arrivedAt ? new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(t.arrivedAt)) : ''), billing: isBillable && t.billingSatang != null ? satangToDecimalString(t.billingSatang) : '', customer: isBillable ? (t.customerName || '') : '', customerId: custId
           };
         }));
         setPhotos(rec.photos || []);
@@ -107,10 +109,11 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
         if (!t.destinationMode) throw new Error(`${label}: กรุณาเลือกปลายทาง`);
         const loc = t.destinationMode.startsWith('LOC_') ? boot.truckLocations?.find(d => d.locationId === t.destinationMode.slice(4)) : undefined;
         if (!loc) throw new Error(`${label}: กรุณาเลือกปลายทางจากจุดที่ตั้งไว้`);
+        const isBillable = Boolean(t.customerId);
         return {
           ...(t.tripId ? {tripId:t.tripId} : {}), tripIndex: i + 1, fromLocation: t.fromLocation.trim(), destinationMode: t.destinationMode,
           originId: t.originId || null, destinationId: loc.locationId, destinationName: `${loc.code} — ${loc.name}`,
-          pricingVersion: 3, billingPricingMode: 'PER_TRIP', weightKg: parseTonsToKg(t.weight), note: t.note.trim(), departureDate: t.departureDate || date, arrivalDate: t.arrivalDate || null, status: t.cancelled ? 'CANCELLED' : t.arrivalDate ? 'COMPLETED' : 'OPEN', customerId:t.customerId || null, customerName: t.customer.trim(), billable:t.billable, billingSatang: t.billable ? (t.billing.trim() ? money(t.billing, label) : null) : null
+          pricingVersion: 3, billingPricingMode: 'PER_TRIP', weightKg: parseTonsToKg(t.weight), note: t.note.trim(), departureDate: t.departureDate || date, arrivalDate: t.arrivalDate || null, status: t.cancelled ? 'CANCELLED' : t.arrivalDate ? 'COMPLETED' : 'OPEN', customerId: isBillable ? t.customerId : null, customerName: isBillable ? t.customer.trim() : '', billable: isBillable, billingSatang: isBillable ? (t.billing.trim() ? money(t.billing, label) : null) : null
         };
       });
       const payload = { dateKey: date, truckId, driverId, trips: items, fuelCostSatang: 0, photos, expectedRevision: revision };
@@ -166,7 +169,6 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
           <div className={styles.trip} key={i}>
             <div className={styles.tripHead}>
               <span>เที่ยวที่ {i + 1}</span>
-              <label><input type="checkbox" checked={t.cancelled} onChange={e=>patchTrip(i,{cancelled:e.target.checked})} /> ยกเลิกเที่ยว</label>
               {trips.length > 1 && (
                 <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => setTrips(ts => ts.filter((_, j) => j !== i))} aria-label={`ลบเที่ยวที่ ${i + 1}`}>
                   <Trash2 size={18} aria-hidden="true" />
@@ -191,15 +193,54 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
               <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-arrival-${i}`}>วันที่ถึง (เว้นว่างถ้ายังค้าง)</label><input id={`tr-arrival-${i}`} type="date" className={settings.formInput} value={t.arrivalDate} onChange={e => patchTrip(i, { arrivalDate: e.target.value })} /></div>
             </div>
             <p className={styles.hint}>รอบค่าเที่ยว: {(t.departureDate || date).slice(0,7)} — ตามวันที่ออก</p>
-            <label><input type="checkbox" checked={t.billable} onChange={e=>patchTrip(i,{billable:e.target.checked})} /> เรียกเก็บลูกค้า (ปิดสำหรับเที่ยวกลับอู่/รถเปล่า)</label>
-            <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-customer-${i}`}>ลูกค้า</label><select id={`tr-customer-${i}`} className={settings.formInput} value={t.customerId} onChange={e => {const c=boot.truckCustomers?.find(x=>x.customerId===e.target.value); const rate=boot.truckTariffs?.find(x=>x.status==='ACTIVE' && x.originId===t.originId && `LOC_${x.destinationId}`===t.destinationMode && x.customerId===e.target.value); patchTrip(i,{customerId:e.target.value,customer:c?.name||'',billing:rate?.customerRateSatang == null ? '' : satangToDecimalString(rate.customerRateSatang)});}}><option value="">ไม่เรียกเก็บลูกค้า / ยังไม่ระบุ</option>{boot.truckCustomers?.filter(c=>c.status==='ACTIVE').map(c=><option key={c.customerId} value={c.customerId}>{c.name}</option>)}</select></div>
+            <div className={settings.formGroup}>
+              <label className={settings.formLabel} htmlFor={`tr-customer-${i}`}>ลูกค้า</label>
+              <select
+                id={`tr-customer-${i}`}
+                className={settings.formInput}
+                value={t.customerId}
+                onChange={e => {
+                  const custId = e.target.value;
+                  const isBillable = Boolean(custId);
+                  const c = boot.truckCustomers?.find(x => x.customerId === custId);
+                  const rate = isBillable ? boot.truckTariffs?.find(x => x.status === 'ACTIVE' && x.originId === t.originId && `LOC_${x.destinationId}` === t.destinationMode && x.customerId === custId) : undefined;
+                  patchTrip(i, {
+                    customerId: custId,
+                    customer: c?.name || '',
+                    billable: isBillable,
+                    billing: rate?.customerRateSatang == null ? (isBillable ? t.billing : '') : satangToDecimalString(rate.customerRateSatang)
+                  });
+                }}
+              >
+                <option value="">ไม่เรียกเก็บลูกค้า / รถเปล่า</option>
+                {boot.truckCustomers?.filter(c => c.status === 'ACTIVE').map(c => (
+                  <option key={c.customerId} value={c.customerId}>{c.name}</option>
+                ))}
+              </select>
+            </div>
             <label>น้ำหนักบรรทุก (ตัน)<input inputMode="decimal" className={settings.formInput} value={t.weight} onChange={e=>patchTrip(i,{weight:e.target.value})} placeholder="ยังไม่ระบุ" /></label>
-            <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-billing-${i}`}>ราคาขนส่งเหมาต่อเที่ยว (บาท)</label><input id={`tr-billing-${i}`} inputMode="decimal" className={settings.formInput} value={t.billing} onChange={e => patchTrip(i, { billing: e.target.value })} placeholder="ยังไม่ระบุราคา" /><p>จำนวนเงินเที่ยวนี้: {t.billable ? (t.billing.trim() ? (()=>{try{return `${formatMoney(money(t.billing,'ราคา'))} บาท`;}catch{return 'จำนวนเงินไม่ถูกต้อง';}})() : 'ยังไม่ระบุราคา') : 'ไม่เรียกเก็บลูกค้า'}</p></div>
+            <div className={settings.formGroup}>
+              <label className={settings.formLabel} htmlFor={`tr-billing-${i}`}>ราคาขนส่งเหมาต่อเที่ยว (บาท)</label>
+              <input
+                id={`tr-billing-${i}`}
+                inputMode="decimal"
+                className={settings.formInput}
+                value={t.billable ? t.billing : ''}
+                disabled={!t.billable}
+                onChange={e => patchTrip(i, { billing: e.target.value })}
+                placeholder={t.billable ? 'ยังไม่ระบุราคา' : 'ไม่เรียกเก็บลูกค้า (รถเปล่า)'}
+              />
+              <p>จำนวนเงินเที่ยวนี้: {t.billable ? (t.billing.trim() ? (() => { try { return `${formatMoney(money(t.billing, 'ราคา'))} บาท`; } catch { return 'จำนวนเงินไม่ถูกต้อง'; } })() : 'ยังไม่ระบุราคา') : 'ไม่เรียกเก็บลูกค้า'}</p>
+            </div>
             {t.destinationMode && <p>ค่าเที่ยวคนขับ: {t.paySatang == null ? 'ยังไม่ได้ตั้งราคา' : `${formatMoney(t.paySatang)} บาท`}</p>}
             <div className={settings.formGroup}>
               <label className={settings.formLabel} htmlFor={`tr-note-${i}`}>หมายเหตุ</label>
               <input id={`tr-note-${i}`} className={settings.formInput} value={t.note} placeholder="เช่น เลขใบส่งของ น้ำหนักบรรทุก" onChange={e => patchTrip(i, { note: e.target.value })} />
             </div>
+            <label className={styles.checkRow}>
+              <input type="checkbox" checked={t.cancelled} onChange={e => patchTrip(i, { cancelled: e.target.checked })} />
+              <span>ยกเลิกเที่ยว</span>
+            </label>
           </div>
         ))}
         <button type="button" className={styles.addBtn} onClick={() => setTrips(ts => { const previous=ts[ts.length-1]; const location=previous?.destinationMode.startsWith('LOC_') ? boot.truckLocations?.find(l=>l.locationId===previous.destinationMode.slice(4)) : undefined; return [...ts, {...blankTrip(location ? `${location.code} — ${location.name}` : ''), originId:location?.locationId || ''}]; })}>
