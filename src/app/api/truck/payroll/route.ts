@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 function preparePayroll(month:string,legacy:any,tripSnap:any,daySnap:any) {
   const legacyReviewRequired=legacy.docs.some((d:any)=>(d.data().trips||[]).some((t:{tripId?:string})=>!t.tripId));
   const days:PayrollDay[]=daySnap.docs.flatMap((d:any)=>{const x=d.data();return (x.drivers||[]).map((v:{driverId:string;name:string;baseWageSatang?:number})=>({date:x.dateKey,driverId:v.driverId,driverName:v.name,baseSatang:v.baseWageSatang??x.baseWageSatang}));});
-  const trips:PayrollTrip[]=tripSnap.docs.map((d:any)=>{const x=d.data();return {tripId:d.id,driverId:x.driverId??null,driverName:x.driverNameSnapshot||'',departureDate:x.departureDate,arrivalDate:x.arrivalDate??null,status:x.status,driverPaySatang:x.driverPaySatang??null,driverExtraSatang:x.driverExtraSatang??0,origin:x.originNameSnapshot||x.fromLocation||'',destination:x.destinationNameSnapshot||x.destinationName||'',plate:x.plateNumberSnapshot||''};});
+  const trips:PayrollTrip[]=tripSnap.docs.map((d:any)=>{const x=d.data();return {tripId:d.id,pricingVersion:x.pricingVersion===3?3:undefined,driverId:x.driverId??null,driverName:x.driverNameSnapshot||'',departureDate:x.departureDate,arrivalDate:x.arrivalDate??null,status:x.status,driverPaySatang:x.driverPaySatang??null,...(x.pricingVersion===3?{}:{driverExtraSatang:x.driverExtraSatang??0}),legacyDriverExtraSatang:x.legacyDriverExtraSatang??0,origin:x.originNameSnapshot||x.fromLocation||'',destination:x.destinationNameSnapshot||x.destinationName||'',plate:x.plateNumberSnapshot||''};});
   return {preview:calculateTruckPayroll(month,days,trips),legacyReviewRequired};
 }
 export async function GET(req: NextRequest) {

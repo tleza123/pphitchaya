@@ -1,4 +1,5 @@
 import type { TruckDailyRecordDoc, TruckTripItem } from './types';
+import { getTripDriverChargeSatang } from './pricing';
 
 /** Project completed legs by departure day and retain the source record date. */
 export function recordsForAccountingMonths(records: TruckDailyRecordDoc[], months: string[]): TruckDailyRecordDoc[] {
@@ -13,7 +14,7 @@ export function recordsForAccountingMonths(records: TruckDailyRecordDoc[], month
     return [...groups.entries()].map(([day, trips]) => ({
       ...record, sourceDateKey: record.sourceDateKey || record.dateKey, dateKey: day, monthKey: day.slice(0, 7), trips,
       tripCount: trips.length,
-      totalDriverPaySatang: trips.reduce((sum, trip) => sum + (trip.driverPaySatang || 0) + (trip.driverExtraSatang || 0), 0),
+      totalDriverPaySatang: trips.reduce((sum, trip) => sum + getTripDriverChargeSatang(trip), 0),
       fuelCostSatang: 0
     }));
   });
@@ -29,7 +30,7 @@ export function mergeReportTrips(records: TruckDailyRecordDoc[], standalone: any
     sourceDateKey: records.find(r => r.recordId === (t.recordId || t.legacyRecordId))?.dateKey || t.departureDate,
     truckId: t.truckId, plateNumberSnapshot: t.plateNumberSnapshot || '', driverNameSnapshot: t.driverNameSnapshot || t.legacyDriverName || '',
     trips: [{ ...t, fromLocation: t.fromLocation || t.originNameSnapshot || '', destinationName: t.destinationName || t.destinationNameSnapshot || '', tripIndex: t.tripIndex || 1 }],
-    tripCount: 1, totalDriverPaySatang: t.driverPaySatang || 0, fuelCostSatang: 0, photos: t.photos || [], revision: 1, createdAt: t.createdAt || '', updatedAt: t.updatedAt || '', updatedBy: t.updatedBy || ''
+    tripCount: 1, totalDriverPaySatang: getTripDriverChargeSatang(t), fuelCostSatang: 0, photos: t.photos || [], revision: 1, createdAt: t.createdAt || '', updatedAt: t.updatedAt || '', updatedBy: t.updatedBy || ''
   } as TruckDailyRecordDoc));
   return [...embedded, ...separate];
 }

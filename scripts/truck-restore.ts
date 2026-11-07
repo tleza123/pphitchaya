@@ -26,6 +26,12 @@ async function main() {
   }
   for (const {_id,invoiceId,...data} of c.truckInvoicePayments) { if (typeof _id !== 'string'||!_id||_id.includes('/')||typeof invoiceId !== 'string'||!invoiceId||invoiceId.includes('/')) throw new Error('INVALID_ID'); entries.push({path:`truckInvoices/${invoiceId}/payments/${_id}`,data}); }
   for (const {_id,payrollMonthId,...data} of c.truckPayrollVersions) { if (typeof _id !== 'string'||!_id||_id.includes('/')||typeof payrollMonthId !== 'string'||!payrollMonthId||payrollMonthId.includes('/')) throw new Error('INVALID_ID'); entries.push({path:`truckPayrollMonths/${payrollMonthId}/versions/${_id}`,data}); }
+  for (const name of ['requests','audit']) {
+    for (const {_id,...data} of c[name] || []) {
+      if (typeof _id !== 'string' || !_id || _id.includes('/')) throw new Error('INVALID_ID');
+      entries.push({path:`${name}/${_id}`,data});
+    }
+  }
   const seen = new Set<string>();
   for (const entry of entries) { if (seen.has(entry.path)) throw new Error('DUPLICATE_BACKUP_PATH'); seen.add(entry.path); }
   if (entries.length > 450) throw new Error('RESTORE_TOO_LARGE');

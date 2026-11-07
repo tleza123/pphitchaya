@@ -24,10 +24,12 @@ export async function GET(req:NextRequest) {
     for(const day of row.days) doc.text(`${day.date}   ${formatMoney(day.baseSatang)} บาท`);
     doc.moveDown().text('รายละเอียดเที่ยว');
     const routeCounts=new Map<string,number>();
-    for(const trip of row.trips) { const route=`${trip.origin} → ${trip.destination}`; routeCounts.set(route,(routeCounts.get(route)||0)+1); doc.text(`${trip.departureDate} ถึง ${trip.arrivalDate}  ${trip.plate}  ${route}  ${formatMoney(trip.driverPaySatang)} + ${formatMoney(trip.driverExtraSatang)} บาท`); }
+    for(const trip of row.trips) { const route=`${trip.origin} → ${trip.destination}`; const isV3=trip.pricingVersion===3; const oldExtra=isV3?(trip.legacyDriverExtraSatang??0):(trip.driverExtraSatang??0); routeCounts.set(route,(routeCounts.get(route)||0)+1); doc.text(`${trip.departureDate} ถึง ${trip.arrivalDate}  ${trip.plate}  ${route}  ${formatMoney(trip.driverPaySatang)}${oldExtra>0?` + ${formatMoney(oldExtra)} เงินเพิ่มเดิม`:' บาท'}`); }
     doc.moveDown().text('จำนวนเที่ยวตามเส้นทาง');
     for(const [route,count] of routeCounts) doc.text(`${route}: ${count} เที่ยว`);
-    doc.moveDown().text(`จำนวนเที่ยว ${row.trips.length} เที่ยว`).text(`ฐาน ${formatMoney(row.baseSatang)} บาท`).text(`ค่าเที่ยว ${formatMoney(row.tripSatang)} บาท`).text(`เงินพิเศษ ${formatMoney(row.extraSatang)} บาท`).text(`ยอดรวม ${formatMoney(row.totalSatang)} บาท`);
+    doc.moveDown().text(`จำนวนเที่ยว ${row.trips.length} เที่ยว`).text(`ฐาน ${formatMoney(row.baseSatang)} บาท`).text(`ค่าเที่ยว ${formatMoney(row.tripSatang)} บาท`);
+    if(row.extraSatang>0) doc.text(`เงินเพิ่มเดิมจากข้อมูลก่อนรุ่น 3 ${formatMoney(row.extraSatang)} บาท`);
+    doc.text(`ยอดรวม ${formatMoney(row.totalSatang)} บาท`);
     const pages=doc.bufferedPageRange(); for(let p=0;p<pages.count;p++){doc.switchToPage(p);doc.fontSize(12).text(`หน้า ${p+1} / ${pages.count}`,45,doc.page.height-35,{align:'center',lineBreak:false});}
     doc.end(); const pdf=await done; return new Response(new Uint8Array(pdf),{headers:{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="truck-payroll-${month}.pdf"`}});
   } catch(e:unknown){return createErrorResponse((e as Error).message||'INTERNAL_ERROR',undefined,422);}

@@ -87,6 +87,8 @@ test('GET /api/truck/reports?month=YYYY-MM returns monthly totals, perTruck metr
     trips: [
       {
         tripIndex: 1,
+        pricingVersion: 3,
+        billingPricingMode: 'PER_TRIP',
         fromLocation: 'โรงโม่หินสระบุรี',
         destinationMode: 'DEST_1',
         destinationId: 'dest-1',
@@ -381,6 +383,9 @@ test('GET /api/truck/reports/export?month=YYYY-MM&format=csv returns UTF-8 BOM C
         destinationId: 'dest-1',
         destinationName: 'ไซต์งานบางนา',
         driverPaySatang: 65050,
+        billingSatang: 120000,
+        weightKg: 12500,
+        billable: true,
         note: 'เที่ยวเช้า หินคลุก'
       }
     ],
@@ -415,9 +420,13 @@ test('GET /api/truck/reports/export?month=YYYY-MM&format=csv returns UTF-8 BOM C
   assert.ok(text.includes('ค่าเที่ยว (บาท)'));
   assert.ok(!text.includes('ค่าน้ำมัน (บาท)'));
   assert.ok(text.includes('หมายเหตุ'));
+  assert.ok(text.includes('น้ำหนัก (ตัน)'));
+  assert.ok(text.includes('ยอดเรียกเก็บ (บาท)'));
 
   // Verify satang converted to formatted Baht (65050 satang -> "650.50", 125050 satang -> "1,250.50")
   assert.ok(text.includes('650.50'), 'Satang 65050 must be converted to 650.50 Baht');
+  assert.ok(text.includes('12.500'), 'weight is exported as tons');
+  assert.ok(text.includes('1,200.00'), 'the customer CSV charge equals the single flat rate');
   assert.ok(!text.includes('1,250.50'), 'Fuel is excluded');
   assert.ok(!text.includes('65050'), 'Raw satang 65050 must not appear in exported CSV');
   assert.ok(!text.includes('125050'), 'Raw satang 125050 must not appear in exported CSV');

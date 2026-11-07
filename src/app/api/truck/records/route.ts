@@ -24,8 +24,11 @@ import { calculateTruckRecordTotals } from '@/lib/truck/engine';
 import { validateSatang } from '@/lib/payroll/money';
 import { TruckDailyRecordDoc } from '@/lib/truck/types';
 import { randomUUID } from 'node:crypto';
+import { validateWeightKg } from '@/lib/truck/weight';
+import { needsLegacyPricingReview } from '@/lib/truck/pricing';
 
 export const dynamic = 'force-dynamic';
+const V3_UNSUPPORTED_FIELDS = ['driverPaySatang', 'driverRateSource', 'driverTariffId', 'driverTariffRevision', 'driverExtraSatang', 'driverExtraNote', 'billingTariffId', 'billingTariffRevision', 'billingExtraSatang', 'billingExtraNote', 'billingRateSource', 'overrideReason', 'legacyDriverExtraSatang', 'legacyPricingSnapshot', 'legacyTripSnapshot', 'legacyRecordId', 'legacyTripIndex', 'invoiceId'];
 
 export async function GET(req: NextRequest) {
   try {
@@ -79,7 +82,7 @@ export async function GET(req: NextRequest) {
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; statusCode?: number };
     if (error.message === 'TRUCK_MAINTENANCE') return createErrorResponse('TRUCK_MAINTENANCE', 'ระบบกำลังบำรุงรักษา กรุณาลองใหม่ภายหลัง', 503);
-    if (['INVALID_TRIP_ID','INVALID_LOCATION','INVALID_INPUT','INVALID_DATE','INVALID_TIME','EXTRA_NOTE_REQUIRED','BILLING_INCOMPLETE','DRIVER_REQUIRED','CUSTOMER_NOT_ACTIVE','DRIVER_NOT_ACTIVE','TRUCK_NOT_ACTIVE','MISSING_PRICE'].includes(error.message || '')) return createErrorResponse(error.message!, undefined, 422);
+    if (['INVALID_TRIP_ID','INVALID_LOCATION','INVALID_INPUT','INVALID_DATE','INVALID_TIME','BILLING_INCOMPLETE','DRIVER_REQUIRED','CUSTOMER_NOT_ACTIVE','DRIVER_NOT_ACTIVE','TRUCK_NOT_ACTIVE','MISSING_PRICE','UNSUPPORTED_PRICING_VERSION','UNSUPPORTED_PRICING_FIELDS','LEGACY_PRICING_REVIEW_REQUIRED'].includes(error.message || '')) return createErrorResponse(error.message!, undefined, 422);
     return createErrorResponse(error.code || 'INTERNAL_ERROR', error.message, error.statusCode || 500);
   }
 }
@@ -114,6 +117,17 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(trips) || trips.length > 100) {
       return createErrorResponse('INVALID_INPUT', 'รายการเที่ยววิ่งไม่ถูกต้อง', 422);
     }
+    if (trips.some((trip: any) => trip?.pricingVersion !== 3 || trip?.billingPricingMode !== 'PER_TRIP')) {
+      return createErrorResponse('UNSUPPORTED_PRICING_VERSION', 'เที่ยวใหม่ต้องใช้รูปแบบราคาเหมาต่อเที่ยวรุ่น 3', 422);
+    }
+    if (trips.some((trip: any) => V3_UNSUPPORTED_FIELDS.some(field => Object.prototype.hasOwnProperty.call(trip, field)))) {
+      return createErrorResponse('UNSUPPORTED_PRICING_FIELDS', 'ข้อมูลเที่ยวมีฟิลด์การเงินที่ไม่รองรับในรุ่น 3', 422);
+    }
+    // Legacy rows must be reviewed through the dedicated migration workflow;
+    // they must not bypass current trip pricing by omitting departureDate.
+    if (trips.some((trip: any) => !trip || typeof trip.departureDate !== 'string' || !trip.departureDate)) {
+      return createErrorResponse('INVALID_DATE', undefined, 422);
+    }
     if (photos !== undefined && !Array.isArray(photos)) {
       return createErrorResponse('INVALID_INPUT', 'ข้อมูลรูปภาพไม่ถูกต้อง', 422);
     }
@@ -123,7 +137,7 @@ export async function POST(req: NextRequest) {
 
     let totals: { totalDriverPaySatang: number; tripCount: number };
     try {
-      totals = calculateTruckRecordTotals(trips, Number(fuelCostSatang ?? 0));
+      totals = trips.some((t: any) => t.departureDate) ? { totalDriverPaySatang: 0, tripCount: trips.length } : calculateTruckRecordTotals(trips, Number(fuelCostSatang ?? 0));
     } catch {
       return createErrorResponse('INVALID_MONEY', 'ยอดเงินค่าน้ำมันหรือค่าเที่ยวคนขับไม่ถูกต้อง', 422);
     }
@@ -139,12 +153,9 @@ export async function POST(req: NextRequest) {
         trip.status = trip.status === 'CANCELLED' ? 'CANCELLED' : trip.arrivalDate ? 'COMPLETED' : 'OPEN';
         for (const time of [trip.departureTime, trip.arrivalTime]) if (time != null && time !== '' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return createErrorResponse('INVALID_TIME', undefined, 422);
         if (trip.arrivalTime && !trip.arrivalDate) return createErrorResponse('INVALID_TIME', undefined, 422);
-        trip.departedAt = trip.departureTime ? new Date(`${trip.departureDate}T${trip.departureTime}:00+07:00`).toISOString() : null;
-        trip.arrivedAt = trip.arrivalDate && trip.arrivalTime ? new Date(`${trip.arrivalDate}T${trip.arrivalTime}:00+07:00`).toISOString() : null;
-        if (trip.status === 'COMPLETED' && trip.driverPaySatang == null) return createErrorResponse('MISSING_PRICE', 'ระบุค่าเที่ยวก่อนปิดเที่ยว', 422);
+        try { trip.weightKg = validateWeightKg(trip.weightKg); } catch { return createErrorResponse('INVALID_WEIGHT', undefined, 422); }
         if (trip.departedAt && trip.arrivedAt && trip.arrivedAt < trip.departedAt) return createErrorResponse('INVALID_TIME', 'เวลาถึงต้องไม่ก่อนเวลาออก', 422);
         if (trip.billingSatang != null) { try { validateSatang(trip.billingSatang); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); } }
-        for (const amount of [trip.driverExtraSatang ?? 0, trip.billingExtraSatang ?? 0]) { try { validateSatang(amount); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); } }
         continue;
       }
       const start = typeof trip.departedAt === 'string' ? trip.departedAt : `${dateKey}T12:00:00+07:00`;
@@ -158,9 +169,6 @@ export async function POST(req: NextRequest) {
       if (trip.arrivedAt) trip.arrivedAt = new Date(trip.arrivedAt).toISOString();
       if (trip.billingSatang !== undefined && trip.billingSatang !== null) {
         try { validateSatang(trip.billingSatang); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); }
-      }
-      for (const amount of [trip.driverExtraSatang || 0, trip.billingExtraSatang || 0]) {
-        try { validateSatang(amount); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); }
       }
     }
     const recordId = `${dateKey}_${truckId}`;
@@ -220,6 +228,11 @@ export async function POST(req: NextRequest) {
       if (oldSnaps.some(s => s.data()?.invoiceId)) throw new Error('TRIP_BILLED');
       if (oldSnaps.some(s => s.data()?.recordId !== recordId)) throw new Error('INVALID_TRIP_ID');
       const existingTrips = new Map(oldSnaps.map(s => [s.id, s.data()]));
+      const needsLegacyReview = trips.some((t: any) => {
+        const prior = t.tripId ? existingTrips.get(t.tripId) : null;
+        return prior && needsLegacyPricingReview(prior);
+      });
+      if (needsLegacyReview) throw new Error('LEGACY_PRICING_REVIEW_REQUIRED');
       const modern = trips.some((t: any) => !!t.departureDate);
       if (modern && (!driverId || typeof driverId !== 'string')) throw new Error('DRIVER_REQUIRED');
       const locationIds = [...new Set<string>(trips.filter((t:any)=>t.departureDate).flatMap((t:any)=>[t.originId,t.destinationId]))];
@@ -242,29 +255,27 @@ export async function POST(req: NextRequest) {
       const rateSnapshots = trips.map((t: any) => {
         if (!t.departureDate) return {};
         const prior = t.tripId ? existingTrips.get(t.tripId) : null;
-        const sameRoute = prior && prior.originId === t.originId && prior.destinationId === t.destinationId && (prior.customerId || null) === (t.customerId || null);
+        const sameDriverRoute = prior && prior.originId === t.originId && prior.destinationId === t.destinationId;
+        const sameRoute = sameDriverRoute && (prior.customerId || null) === (t.customerId || null);
         const driverTariffs = activeTariffs.filter((x: any) => x.originId === t.originId && x.destinationId === t.destinationId && x.customerId == null);
         const billingTariffs = activeTariffs.filter((x: any) => x.originId === t.originId && x.destinationId === t.destinationId && x.customerId === t.customerId);
         if (driverTariffs.length > 1 || billingTariffs.length > 1) throw new Error('AMBIGUOUS_TARIFF');
         const driverTariff = driverTariffs[0];
         const billingTariff = billingTariffs[0];
-        const standardDriver = driverTariff && t.driverPaySatang === driverTariff.driverPaySatang;
+        const resolvedDriverPay = sameDriverRoute && prior.driverPaySatang != null ? prior.driverPaySatang : driverTariff?.driverPaySatang ?? null;
+        t.driverPaySatang = resolvedDriverPay;
+        if (t.status === 'COMPLETED' && resolvedDriverPay == null) throw new Error('MISSING_PRICE');
+        const standardDriver = driverTariff && resolvedDriverPay === driverTariff.driverPaySatang;
         const standardBilling = t.billable !== false && billingTariff?.customerRateSatang != null && t.billingSatang === billingTariff.customerRateSatang;
-        const priorDriver = sameRoute && prior.driverPaySatang === t.driverPaySatang;
-        const priorBilling = sameRoute && prior.billingSatang === t.billingSatang;
-        const driverOverride = t.driverPaySatang != null && !standardDriver && !priorDriver;
-        const billingOverride = t.billable !== false && t.billingSatang != null && !standardBilling && !priorBilling;
-        const needsReason = driverOverride || billingOverride;
-        const reason = typeof t.overrideReason === 'string' ? t.overrideReason.trim().slice(0, 500) : '';
-        if (needsReason && !reason) throw new Error('PRICE_OVERRIDE_REQUIRED');
+        const priorDriver = sameDriverRoute && prior.driverPaySatang != null;
+        const sameBillingSnapshot = sameRoute && prior.billingSatang === t.billingSatang;
         return {
           driverTariffId: priorDriver ? prior.driverTariffId ?? driverTariff?.tariffId ?? null : driverTariff?.tariffId ?? null,
           driverTariffRevision: priorDriver ? prior.driverTariffRevision ?? driverTariff?.revision ?? null : driverTariff?.revision ?? null,
           driverRateSource: t.driverPaySatang == null ? 'PENDING' : standardDriver ? 'STANDARD' : priorDriver ? prior.driverRateSource || 'STANDARD' : 'OVERRIDE',
-          billingTariffId: priorBilling ? prior.billingTariffId ?? billingTariff?.tariffId ?? null : billingTariff?.tariffId ?? null,
-          billingTariffRevision: priorBilling ? prior.billingTariffRevision ?? billingTariff?.revision ?? null : billingTariff?.revision ?? null,
-          billingRateSource: t.billable === false ? 'NON_BILLABLE' : t.billingSatang == null ? 'PENDING' : standardBilling ? 'STANDARD' : priorBilling ? prior.billingRateSource || 'STANDARD' : 'OVERRIDE',
-          overrideReason: needsReason ? reason : (reason || prior?.overrideReason || null)
+          billingTariffId: sameBillingSnapshot ? prior.billingTariffId ?? billingTariff?.tariffId ?? null : standardBilling ? billingTariff?.tariffId ?? null : null,
+          billingTariffRevision: sameBillingSnapshot ? prior.billingTariffRevision ?? billingTariff?.revision ?? null : standardBilling ? billingTariff?.revision ?? null : null,
+          billingRateSource: t.billable === false ? 'NON_BILLABLE' : t.billingSatang == null ? 'PENDING' : sameBillingSnapshot ? prior.billingRateSource || (standardBilling ? 'STANDARD' : 'MANUAL') : standardBilling ? 'STANDARD' : 'MANUAL'
         };
       });
 
@@ -279,11 +290,15 @@ export async function POST(req: NextRequest) {
       const finalPhotos = Array.isArray(photos) ? photos : (current?.photos || []);
       const finalTrips = trips.map((t: any, index: number) => {
         const origin=locations.get(t.originId), destination=locations.get(t.destinationId);
-        if (t.departureDate && (t.originId===t.destinationId || origin?.status !== 'ACTIVE' || destination?.status !== 'ACTIVE')) throw new Error('INVALID_LOCATION');
-        if (t.billable !== false && t.status === 'COMPLETED' && t.departureDate && (!t.customerId || t.billingSatang == null)) throw new Error('BILLING_INCOMPLETE');
-        if ((t.driverExtraSatang || 0)>0 && !String(t.driverExtraNote||'').trim()) throw new Error('EXTRA_NOTE_REQUIRED');
-        if ((t.billingExtraSatang || 0)>0 && !String(t.billingExtraNote||'').trim()) throw new Error('EXTRA_NOTE_REQUIRED');
-        return { ...t, ...rateSnapshots[index], overrideReason: rateSnapshots[index].overrideReason || null, fromLocation: origin ? `${origin.code} — ${origin.name}` : t.fromLocation, destinationName: destination ? `${destination.code} — ${destination.name}` : t.destinationName, customerName: t.customerId ? customers.get(t.customerId) : '', tripId: t.tripId || randomUUID() };
+        const prior = t.tripId ? existingTrips.get(t.tripId) : null;
+        if (t.departureDate && (t.originId===t.destinationId || (origin?.status !== 'ACTIVE' && prior?.originId !== t.originId) || (destination?.status !== 'ACTIVE' && prior?.destinationId !== t.destinationId))) throw new Error('INVALID_LOCATION');
+        if (t.billable !== false && t.status === 'COMPLETED' && t.departureDate && (!t.customerId || t.billingSatang == null || t.weightKg == null)) throw new Error('BILLING_INCOMPLETE');
+        const legacyDriverExtraSatang = prior?.legacyDriverExtraSatang ?? (prior?.pricingVersion !== 3 ? prior?.driverExtraSatang : undefined);
+        const legacyFeeFields = ['driverExtraSatang', 'driverExtraNote', 'billingExtraSatang', 'billingExtraNote'];
+        const hadLegacyFeeFields = prior?.pricingVersion !== 3 && legacyFeeFields.some(field => Object.prototype.hasOwnProperty.call(prior || {}, field));
+        const legacyPricingSnapshot = prior?.legacyPricingSnapshot ?? (hadLegacyFeeFields ? { pricingVersion: prior?.pricingVersion ?? 2, ...Object.fromEntries(legacyFeeFields.filter(field => Object.prototype.hasOwnProperty.call(prior || {}, field)).map(field => [field, prior?.[field]])) } : undefined);
+        const hasLegacyDriverExtra = prior && (Object.prototype.hasOwnProperty.call(prior, 'legacyDriverExtraSatang') || (prior.pricingVersion !== 3 && Object.prototype.hasOwnProperty.call(prior, 'driverExtraSatang')));
+        return { ...t, pricingVersion: 3, ...(prior ? { departureTime: prior.departureTime ?? null, arrivalTime: prior.arrivalTime ?? null, departedAt: prior.departedAt ?? null, arrivedAt: prior.arrivedAt ?? null } : { departureTime: null, arrivalTime: null, departedAt: null, arrivedAt: null }), billingPricingMode: 'PER_TRIP', ...rateSnapshots[index], ...(hasLegacyDriverExtra ? { legacyDriverExtraSatang: legacyDriverExtraSatang ?? 0 } : {}), ...(legacyPricingSnapshot ? { legacyPricingSnapshot } : {}), fromLocation: prior && prior.originId === t.originId ? prior.fromLocation : origin ? `${origin.code} — ${origin.name}` : t.fromLocation, destinationName: prior && prior.destinationId === t.destinationId ? prior.destinationName : destination ? `${destination.code} — ${destination.name}` : t.destinationName, customerName: prior && prior.customerId === t.customerId ? prior.customerName : t.customerId ? customers.get(t.customerId) : '', tripId: t.tripId || randomUUID() };
       });
 
       const recordData: TruckDailyRecordDoc = {
@@ -295,7 +310,7 @@ export async function POST(req: NextRequest) {
         plateNumberSnapshot,
         driverNameSnapshot,
         fuelCostSatang: modern ? 0 : Number(fuelCostSatang ?? 0),
-        totalDriverPaySatang: totals.totalDriverPaySatang,
+        totalDriverPaySatang: calculateTruckRecordTotals(finalTrips, modern ? 0 : Number(fuelCostSatang ?? 0)).totalDriverPaySatang,
         tripCount: totals.tripCount,
         trips: finalTrips,
         photos: finalPhotos,
@@ -311,7 +326,9 @@ export async function POST(req: NextRequest) {
       for (const ref of oldRefs) if (!retained.has(ref.id)) tx.delete(ref);
       for (const trip of finalTrips) {
         const prior = existingTrips.get(trip.tripId);
-        tx.set(getTruckTripsCol(shopId).doc(trip.tripId), { ...prior, ...trip, recordId, truckId, plateNumberSnapshot, driverNameSnapshot, driverId: driverId || null, invoiceId: null, photos: finalPhotos, updatedAt: now });
+        const tripData: any = { ...prior, ...trip, recordId, truckId, plateNumberSnapshot, driverNameSnapshot, driverId: driverId || null, invoiceId: null, photos: finalPhotos, updatedAt: now };
+        for (const field of ['driverExtraSatang', 'driverExtraNote', 'billingExtraSatang', 'billingExtraNote']) delete tripData[field];
+        tx.set(getTruckTripsCol(shopId).doc(trip.tripId), tripData);
       }
 
       recordAudit(
@@ -323,7 +340,7 @@ export async function POST(req: NextRequest) {
         current,
         recordData,
         requestId,
-        finalTrips.filter((trip: any) => trip.driverRateSource === 'OVERRIDE' || trip.billingRateSource === 'OVERRIDE').map((trip: any) => `${trip.tripId}: ${trip.overrideReason}`).join('\n') || undefined
+        undefined
       );
 
       recordRequestReceipt(tx, requestRef, {

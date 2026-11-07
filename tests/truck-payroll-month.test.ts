@@ -10,3 +10,14 @@ test('cross-month trip stays in departure month while daily wages follow confirm
   assert.equal(calculateTruckPayroll('2026-11',days,[{...trip,status:'OPEN',arrivalDate:null}]).canClose,false);
   assert.throws(()=>calculateTruckPayroll('2026-11',[days[0],days[0]],[trip]),/DUPLICATE_WORKDAY/);
 });
+
+test('v3 payroll rejects new driver extras but retains explicitly migrated historic entitlements',()=>{
+  const trip:PayrollTrip={tripId:'v3',pricingVersion:3,driverId:'d1',driverName:'สมชาย',departureDate:'2026-11-30',arrivalDate:'2026-12-02',status:'COMPLETED',driverPaySatang:15000,origin:'A',destination:'B',plate:'1'};
+  const days=[{date:'2026-11-30',driverId:'d1',driverName:'สมชาย',baseSatang:30000}];
+  assert.throws(()=>calculateTruckPayroll('2026-11',days,[{...trip,driverExtraSatang:10000}]),/UNSUPPORTED_PRICING_FIELDS/);
+  const result=calculateTruckPayroll('2026-11',days,[{...trip,legacyDriverExtraSatang:5000}]);
+  assert.equal(result.drivers[0].tripSatang,15000);
+  assert.equal(result.drivers[0].extraSatang,5000);
+  assert.equal(result.drivers[0].totalSatang,50000);
+  assert.equal(result.pricingVersion,3);
+});

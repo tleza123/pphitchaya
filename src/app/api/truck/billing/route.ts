@@ -7,6 +7,7 @@ import { assertTruckWritable } from '@/lib/server/truck-control';
 import { validateSatang } from '@/lib/payroll/money';
 import { dateKey, getBangkokToday, monthKey } from '@/lib/payroll/dates';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
+import { hasLegacyFeeFields, needsLegacyPricingReview } from '@/lib/truck/pricing';
 
 export const dynamic = 'force-dynamic';
 const validId = (x: unknown): x is string => typeof x === 'string' && x.length > 0 && x.length <= 150 && !x.includes('/');
@@ -16,9 +17,11 @@ export async function GET(req: NextRequest) {
     const month = monthKey(req.nextUrl.searchParams.get('month') || getBangkokToday().slice(0, 7));
     const shop = getShopId();
     const [tripSnap, invoiceSnap] = await Promise.all([getTruckTripsCol(shop).where('accountingMonth', '==', month).get(), getTruckInvoicesCol(shop).get()]);
-    const trips = tripSnap.docs.map(d => ({ ...d.data(), tripId: d.id })).filter((t: any) => t.status === 'COMPLETED' && t.billingSatang != null && t.customerId && !t.invoiceId && t.billable !== false);
+    const allTrips = tripSnap.docs.map(d => ({ ...d.data(), tripId: d.id }));
+    const trips = allTrips.filter((t: any) => t.pricingVersion === 3 && !Object.prototype.hasOwnProperty.call(t, 'billingExtraSatang') && !Object.prototype.hasOwnProperty.call(t, 'billingExtraNote') && t.status === 'COMPLETED' && t.billingSatang != null && Number.isSafeInteger(t.weightKg) && t.weightKg >= 0 && t.customerId && !t.invoiceId && t.billable !== false);
+    const legacyPricingReview = allTrips.filter((t: any) => needsLegacyPricingReview(t) && t.status === 'COMPLETED' && !t.invoiceId && t.billable !== false);
     const invoices = await Promise.all(invoiceSnap.docs.map(async d => { const value = d.data(); const payments = await d.ref.collection('payments').get(); return { ...value, invoiceId: d.id, balanceSatang: value.totalSatang - (value.paidSatang || 0), payments:payments.docs.map(p=>({...p.data(),paymentId:p.id})) }; }));
-    return createSuccessResponse({ trips, invoices });
+    return createSuccessResponse({ trips, legacyPricingReview, invoices });
   } catch (e: any) { return createErrorResponse(e.code || 'INTERNAL_ERROR', e.message, e.statusCode || 500); }
 }
 
@@ -40,14 +43,15 @@ export async function POST(req: NextRequest) {
         const [profile, ...snaps] = await tx.getAll(getTruckProfileRef(shop), ...refs);
         const trips = snaps.map((snap, i) => {
           const t = snap.data();
-          if (!snap.exists || !t || t.status !== 'COMPLETED' || t.invoiceId || t.billable === false || !validId(t.customerId) || typeof t.customerName !== 'string' || !t.customerName.trim() || t.billingSatang == null) throw new Error('TRIP_NOT_READY');
-          const base = validateSatang(t.billingSatang); const extra = validateSatang(t.billingExtraSatang ?? 0);
-          return { tripId: refs[i].id, customerId: t.customerId, customerName: t.customerName, departureDate: t.departureDate || t.accountingDate, arrivalDate: t.arrivalDate || null, fromLocation: t.fromLocation || '', destinationName: t.destinationName || '', plateNumberSnapshot: t.plateNumberSnapshot || '', billingSatang: base, billingExtraSatang: extra, billingExtraNote: t.billingExtraNote || '', note: t.note || '' };
+          if (!snap.exists || !t || t.status !== 'COMPLETED' || t.invoiceId || t.billable === false || !validId(t.customerId) || typeof t.customerName !== 'string' || !t.customerName.trim() || t.billingSatang == null || !Number.isSafeInteger(t.weightKg) || t.weightKg < 0) throw new Error('TRIP_NOT_READY');
+          if (t.pricingVersion !== 3 || hasLegacyFeeFields(t)) throw new Error('LEGACY_PRICING_REVIEW_REQUIRED');
+          const base = validateSatang(t.billingSatang);
+          return { tripId: refs[i].id, pricingVersion: 3, customerId: t.customerId, customerName: t.customerName, departureDate: dateKey(t.departureDate), fromLocation: t.fromLocation || '', destinationName: t.destinationName || '', plateNumberSnapshot: t.plateNumberSnapshot || '', weightKg:t.weightKg, quantity:1, billingPricingMode:'PER_TRIP', billingSatang: base, note: t.note || '' };
         });
         if (trips.some(t => t.customerId !== trips[0].customerId)) throw new Error('MIXED_CUSTOMERS');
-        const totalSatang = trips.reduce((sum,t) => sum + t.billingSatang + t.billingExtraSatang, 0); if (!Number.isSafeInteger(totalSatang)) throw new Error('MONEY_OVERFLOW');
+        const totalSatang = trips.reduce((sum,t) => sum + t.billingSatang, 0); if (!Number.isSafeInteger(totalSatang)) throw new Error('MONEY_OVERFLOW');
         const ref = getTruckInvoicesCol(shop).doc();
-        result = { invoiceId: ref.id, documentNo: `INV-${issueDate.replaceAll('-', '')}-${ref.id.toUpperCase()}`, customerId: trips[0].customerId, customerName: trips[0].customerName, company: profile.data() || {}, lines: trips, tripIds: body.tripIds, totalSatang, paidSatang: 0, issueDate, dueDate, note: String(body.note || '').slice(0,1000), status: 'OPEN', revision: 1, createdAt: now };
+        result = { invoiceId: ref.id, documentNo: `INV-${issueDate.replaceAll('-', '')}-${ref.id.toUpperCase()}`, snapshotVersion:3, pricingVersion:3, billingPricingMode:'PER_TRIP', customerId: trips[0].customerId, customerName: trips[0].customerName, company: profile.data() || {}, lines: trips, tripIds: body.tripIds, totalSatang, paidSatang: 0, issueDate, dueDate, note: String(body.note || '').slice(0,1000), status: 'OPEN', revision: 1, createdAt: now };
         tx.create(ref, result); for (const tripRef of refs) tx.update(tripRef, { invoiceId: result.invoiceId });
         recordAudit(tx, shop, owner.uid, 'CREATE_TRUCK_INVOICE', ref.id, null, result, body.requestId);
       } else if (body.action === 'VOID_INVOICE') {

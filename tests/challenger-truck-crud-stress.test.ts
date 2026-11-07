@@ -175,6 +175,10 @@ test('Concurrency: Sequential conflicting expectedRevision returns 409 CONFLICT'
     status: 'ACTIVE',
     revision: 1
   });
+  store.docs.set(`${shop}/truckDrivers/driver_c1`, { driverId: 'driver_c1', name: 'กิตติศักดิ์', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/a`, { locationId: 'a', code: 'A', name: 'ท่าเรือ', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/b`, { locationId: 'b', code: 'B', name: 'โรงงาน A', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckTariffs/a-b`, { originId: 'a', destinationId: 'b', customerId: null, driverPaySatang: 50000, status: 'ACTIVE', revision: 1 });
 
   // Step 1: Create record at revision 0 -> becomes revision 1
   const createRes = await postRecords(
@@ -184,13 +188,22 @@ test('Concurrency: Sequential conflicting expectedRevision returns 409 CONFLICT'
       body: JSON.stringify({
         dateKey,
         truckId,
+        driverId: 'driver_c1',
         trips: [
           {
             tripIndex: 1,
+            pricingVersion: 3,
+            billingPricingMode: 'PER_TRIP',
+            originId: 'a',
+            destinationId: 'b',
+            departureDate: dateKey,
+            arrivalDate: null,
+            billable: false,
+            billingSatang: 0,
+            weightKg: null,
             fromLocation: 'ท่าเรือ',
-            destinationMode: 'DEST_1',
+            destinationMode: 'LOC_b',
             destinationName: 'โรงงาน A',
-            driverPaySatang: 50000,
             note: ''
           }
         ],
@@ -212,13 +225,23 @@ test('Concurrency: Sequential conflicting expectedRevision returns 409 CONFLICT'
       body: JSON.stringify({
         dateKey,
         truckId,
+        driverId: 'driver_c1',
         trips: [
           {
             tripIndex: 1,
+            tripId: createBody.data.trips[0].tripId,
+            pricingVersion: 3,
+            billingPricingMode: 'PER_TRIP',
+            originId: 'a',
+            destinationId: 'b',
+            destinationMode: 'LOC_b',
             fromLocation: 'ท่าเรือ',
-            destinationMode: 'DEST_1',
             destinationName: 'โรงงาน A',
-            driverPaySatang: 50000,
+            departureDate: dateKey,
+            arrivalDate: null,
+            billable: false,
+            billingSatang: null,
+            weightKg: null,
             note: 'รอบบ่าย'
           }
         ],
@@ -240,14 +263,24 @@ test('Concurrency: Sequential conflicting expectedRevision returns 409 CONFLICT'
       body: JSON.stringify({
         dateKey,
         truckId,
+        driverId: 'driver_c1',
         trips: [
           {
             tripIndex: 1,
+            tripId: updateBodyA.data.trips[0].tripId,
+            pricingVersion: 3,
+            billingPricingMode: 'PER_TRIP',
+            originId: 'a',
+            destinationId: 'b',
+            destinationMode: 'LOC_b',
             fromLocation: 'ท่าเรือ',
-            destinationMode: 'DEST_1',
             destinationName: 'โรงงาน B',
-            driverPaySatang: 60000,
-            note: 'รอบชน'
+            departureDate: dateKey,
+            arrivalDate: null,
+            billable: false,
+            billingSatang: null,
+            weightKg: null,
+            note: 'ผู้ชนแก้ไขข้อมูล'
           }
         ],
         fuelCostSatang: 150000,
@@ -264,7 +297,7 @@ test('Concurrency: Sequential conflicting expectedRevision returns 409 CONFLICT'
   // Verify that document in store was NOT modified by Client B
   const recordDoc = store.docs.get(`${shop}/truckMonths/${monthKey}/records/${recordDocId}`);
   assert.equal(recordDoc.revision, 2);
-  assert.equal(recordDoc.trips[0].destinationName, 'โรงงาน A');
+  assert.equal(recordDoc.trips[0].note, 'รอบบ่าย');
 });
 
 test('Concurrency: Parallel racing updates with identical expectedRevision - only 1 succeeds, others get 409', async () => {
@@ -278,6 +311,10 @@ test('Concurrency: Parallel racing updates with identical expectedRevision - onl
 
   // Seed truck and initial record at revision 1
   store.docs.set(`${shop}/trucks/${truckId}`, { truckId, plateNumber: '72-0000', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckDrivers/driver_race`, { driverId: 'driver_race', name: 'นักแข่ง', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/race-a`, { locationId: 'race-a', code: 'A', name: 'ท่าเรือ', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/race-b`, { locationId: 'race-b', code: 'B', name: 'ปลายทาง', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckTariffs/race`, { originId: 'race-a', destinationId: 'race-b', customerId: null, driverPaySatang: 50000, status: 'ACTIVE', revision: 1 });
   store.docs.set(recordPath, {
     recordId: recordDocId,
     dateKey,
@@ -302,13 +339,22 @@ test('Concurrency: Parallel racing updates with identical expectedRevision - onl
         body: JSON.stringify({
           dateKey,
           truckId,
+          driverId: 'driver_race',
           trips: [
             {
               tripIndex: 1,
+              pricingVersion: 3,
+              billingPricingMode: 'PER_TRIP',
+              originId: 'race-a',
+              destinationId: 'race-b',
+              departureDate: dateKey,
+              arrivalDate: null,
+              billable: false,
+              billingSatang: 0,
+              weightKg: null,
               fromLocation: 'ท่าเรือ',
-              destinationMode: 'DEST_1',
+              destinationMode: 'LOC_race-b',
               destinationName: `ปลายทางแข่งที่ ${i}`,
-              driverPaySatang: 50000,
               note: ''
             }
           ],
@@ -435,17 +481,30 @@ test('Idempotency: Exact replay with identical requestId returns cached response
   const recordPath = `${shop}/truckMonths/${monthKey}/records/${recordDocId}`;
 
   store.docs.set(`${shop}/trucks/${truckId}`, { truckId, plateNumber: '80-1111', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckDrivers/driver_idem`, { driverId: 'driver_idem', name: 'คนขับทดสอบ', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/idem-a`, { locationId: 'idem-a', code: 'A', name: 'ต้นทาง', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/idem-b`, { locationId: 'idem-b', code: 'B', name: 'ปลายทาง', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckTariffs/idem`, { originId: 'idem-a', destinationId: 'idem-b', customerId: null, driverPaySatang: 70000, status: 'ACTIVE', revision: 1 });
 
   const payload = {
     dateKey,
     truckId,
+    driverId: 'driver_idem',
     trips: [
       {
         tripIndex: 1,
+        pricingVersion: 3,
+        billingPricingMode: 'PER_TRIP',
+        originId: 'idem-a',
+        destinationId: 'idem-b',
+        departureDate: dateKey,
+        arrivalDate: null,
+        billable: false,
+        billingSatang: 0,
+        weightKg: null,
         fromLocation: 'ต้นทาง',
-        destinationMode: 'DEST_1',
+        destinationMode: 'LOC_idem-b',
         destinationName: 'ปลายทาง',
-        driverPaySatang: 70000,
         note: ''
       }
     ],
@@ -529,10 +588,18 @@ test('Idempotency: Reused requestId with tampered payload returns 422 REQUEST_ID
     trips: [
       {
         tripIndex: 1,
+        pricingVersion: 3,
+        billingPricingMode: 'PER_TRIP',
+        originId: 'idem-a',
+        destinationId: 'idem-b',
+        departureDate: dateKey,
+        arrivalDate: null,
+        billable: false,
+        billingSatang: 0,
+        weightKg: null,
         fromLocation: 'ต้นทาง',
-        destinationMode: 'DEST_1',
+        destinationMode: 'LOC_idem-b',
         destinationName: 'ปลายทางใหม่',
-        driverPaySatang: 99999,
         note: 'แอบเปลี่ยนข้อมูล'
       }
     ],
@@ -715,38 +782,47 @@ test('Strict Read-Before-Write: All route handlers maintain strict read-then-wri
   store.docs.set(`${shop}/profile/truck`, { companyName: 'ทดสอบ RBW', revision: 1 });
   store.docs.set(`${shop}/truckOrigins/o_rbw`, { originId: 'o_rbw', name: 'ต้นทาง RBW', revision: 1 });
   store.docs.set(`${shop}/truckDestinations/d_rbw`, { destinationId: 'd_rbw', name: 'ปลายทาง RBW', driverPaySatang: 80000, revision: 1 });
+  store.docs.set(`${shop}/truckDrivers/d_rbw`, { driverId: 'd_rbw', name: 'คนขับ RBW', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/a_rbw`, { locationId: 'a_rbw', code: 'A', name: 'ต้นทาง RBW', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/b_rbw`, { locationId: 'b_rbw', code: 'B', name: 'ปลายทาง RBW', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckTariffs/rbw`, { originId: 'a_rbw', destinationId: 'b_rbw', customerId: null, driverPaySatang: 80000, status: 'ACTIVE', revision: 1 });
 
   // 1. POST records (Create)
-  await postRecords(
+  const createRes = await postRecords(
     new NextRequest('http://localhost/api/truck/records', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         dateKey: '2026-10-10',
         truckId: 't_rbw',
-        trips: [{ tripIndex: 1, fromLocation: 'A', destinationMode: 'DEST_1', destinationName: 'B', driverPaySatang: 80000, note: '' }],
+        driverId: 'd_rbw',
+        trips: [{ tripIndex: 1, pricingVersion: 3, billingPricingMode: 'PER_TRIP', originId: 'a_rbw', destinationId: 'b_rbw', fromLocation: 'A', destinationMode: 'LOC_b_rbw', destinationName: 'B', departureDate: '2026-10-10', arrivalDate: null, billable: false, billingSatang: null, weightKg: null, note: '' }],
         fuelCostSatang: 100000,
         expectedRevision: 0,
         requestId: 'req_rbw_records_create'
       })
     })
   );
+  assert.equal(createRes.status, 200);
+  const createdRecord = (await createRes.json()).data;
 
   // 2. POST records (Update)
-  await postRecords(
+  const updateRes = await postRecords(
     new NextRequest('http://localhost/api/truck/records', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         dateKey: '2026-10-10',
         truckId: 't_rbw',
-        trips: [{ tripIndex: 1, fromLocation: 'A', destinationMode: 'DEST_1', destinationName: 'B', driverPaySatang: 80000, note: '' }],
+        driverId: 'd_rbw',
+        trips: [{ tripId: createdRecord.trips[0].tripId, tripIndex: 1, pricingVersion: 3, billingPricingMode: 'PER_TRIP', originId: 'a_rbw', destinationId: 'b_rbw', fromLocation: 'A', destinationMode: 'LOC_b_rbw', destinationName: 'B', departureDate: '2026-10-10', arrivalDate: null, billable: false, billingSatang: null, weightKg: null, note: '' }],
         fuelCostSatang: 120000,
         expectedRevision: 1,
         requestId: 'req_rbw_records_update'
       })
     })
   );
+  assert.equal(updateRes.status, 200);
 
   // 3. POST settings UPDATE_PROFILE
   await postSettings(

@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     const monthRecordArrays = await Promise.all(recordsPromises);
     const records: TruckDailyRecordDoc[] = monthRecordArrays.flat() as any[];
 
-    const extraNames = ['truckLocations','truckDrivers','truckCustomers','truckTariffs','truckTrips','truckRuns','truckPayrollMonths','truckInvoices','truckPayments','truckPhotos'];
+    const extraNames = ['truckLocations','truckDrivers','truckCustomers','truckTariffs','truckTrips','truckRuns','truckPayrollMonths','truckInvoices','truckPayments','truckPhotos','requests','audit'];
     const shopRef = getShopDocRef(shopId);
     const extraSnaps = await Promise.all(extraNames.map(name => shopRef.collection(name).get()));
     const extraDocuments: {path:string;data:FirebaseFirestore.DocumentData}[] = [];

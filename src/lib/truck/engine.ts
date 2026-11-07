@@ -26,6 +26,7 @@ export function calculateTruckRecordTotals(
     requireCondition(trip && typeof trip === 'object', 'INVALID_TRIP');
     if (trip.driverPaySatang === null && (trip.status === 'OPEN' || trip.status === 'CANCELLED')) continue;
     if (trip.driverPaySatang === null) throw new Error('MISSING_PRICE');
+    if (trip.driverPaySatang === undefined) throw new Error('INVALID_MONEY');
     validateSatang(trip.driverPaySatang);
     totalDriverPaySatang += trip.driverPaySatang ?? 0;
     requireCondition(Number.isSafeInteger(totalDriverPaySatang), 'MONEY_OVERFLOW');

@@ -10,6 +10,7 @@ import { GET as getRecordById, DELETE as deleteRecordById } from '../src/app/api
 import { POST as postPhotos } from '../src/app/api/truck/photos/route';
 import { GET as getPhotoById, DELETE as deletePhotoById } from '../src/app/api/truck/photos/[id]/route';
 import { GET as getBackup, POST as postBackup } from '../src/app/api/truck/backup/route';
+import { GET as getTripsForReview, PATCH as reviewTrip } from '../src/app/api/truck/trips/route';
 
 interface MockStore {
   docs: Map<string, any>;
@@ -23,6 +24,7 @@ function setupMockDb(): MockStore {
   const ref = (path: string, isCol = false): any => {
     const self: any = {
       path,
+      isCol,
       id: path.split('/').pop() || '',
       collection: (name: string) => ref(`${path}/${name}`, true),
       doc: (id?: string) => ref(id ? `${path}/${id}` : `${path}/auto-${Math.random().toString(36).slice(2, 9)}`, false),
@@ -79,7 +81,7 @@ function setupMockDb(): MockStore {
       };
 
       const result = await run({
-        get: async (r: any) => { if (r.queryField) { const prefix = r.path + '/'; const matched = [...docs.entries()].filter(([k,v]) => k.startsWith(prefix) && !k.slice(prefix.length).includes('/') && v?.[r.queryField] === r.queryValue).map(([k,v]) => ({id:k.split('/').pop(),data:()=>v})); return {empty: matched.length === 0,docs:matched}; } return read(r); },
+        get: async (r: any) => { if (r.queryField) { const prefix = r.path + '/'; const matched = [...docs.entries()].filter(([k,v]) => k.startsWith(prefix) && !k.slice(prefix.length).includes('/') && v?.[r.queryField] === r.queryValue).map(([k,v]) => ({id:k.split('/').pop(),data:()=>v})); return {empty: matched.length === 0,docs:matched}; } if (r.isCol) { assert.equal(stagedWrites.length, 0, `Strict Read-Before-Write violated: attempted to read collection "${r.path}" after write operations were staged`); const prefix = r.path + '/'; const matched = [...docs.entries()].filter(([k]) => k.startsWith(prefix) && !k.slice(prefix.length).includes('/')).map(([k,v]) => ({id:k.split('/').pop(),data:()=>v})); return {empty:matched.length===0,docs:matched}; } return read(r); },
         getAll: async (...refs: any[]) => refs.map(read),
         set: (r: any, value: any, options?: any) => {
           stagedWrites.push({
@@ -274,22 +276,36 @@ test('Truck Routes: POST /api/truck/records creates, updates in-place, and enfor
     status: 'ACTIVE',
     revision: 1
   });
+  store.docs.set(`${shop}/truckDrivers/driver_88`, { driverId: 'driver_88', name: 'สมบูรณ์ บุญส่ง', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/a`, { locationId: 'a', code: 'A', name: 'โรงโม่สระบุรี', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/b`, { locationId: 'b', code: 'B', name: 'แพลนท์พระราม 2', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/c`, { locationId: 'c', code: 'C', name: 'ไซต์งานพิเศษบางนา', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckTariffs/a-b`, { originId: 'a', destinationId: 'b', customerId: null, driverPaySatang: 75000, status: 'ACTIVE', revision: 1 });
+  store.docs.set(`${shop}/truckTariffs/b-c`, { originId: 'b', destinationId: 'c', customerId: null, driverPaySatang: 80000, status: 'ACTIVE', revision: 1 });
 
   const initialPayload = {
     dateKey,
     truckId,
+    driverId: 'driver_88',
     trips: [
       {
         tripIndex: 1,
+        pricingVersion: 3,
+        billingPricingMode: 'PER_TRIP',
+        originId: 'a',
+        destinationId: 'b',
         fromLocation: 'โรงโม่สระบุรี',
-        destinationMode: 'DEST_1',
-        destinationId: 'd1',
+        destinationMode: 'LOC_b',
         destinationName: 'แพลนท์พระราม 2',
-        driverPaySatang: 75000,
+        departureDate: dateKey,
+        arrivalDate: null,
+        weightKg: null,
+        billable: false,
+        billingSatang: 0,
         note: 'เที่ยวเช้า'
       }
     ],
-    fuelCostSatang: 150000, // 1,500.00 Baht
+    fuelCostSatang: 150000,
     expectedRevision: 0,
     requestId: 'req_create_daily_record_01'
   };
@@ -310,7 +326,7 @@ test('Truck Routes: POST /api/truck/records creates, updates in-place, and enfor
   assert.equal(createBody.data.revision, 1);
   assert.equal(createBody.data.tripCount, 1);
   assert.equal(createBody.data.totalDriverPaySatang, 75000);
-  assert.equal(createBody.data.fuelCostSatang, 150000);
+  assert.equal(createBody.data.fuelCostSatang, 0, 'modern truck entries do not add fuel costs');
   assert.equal(createBody.data.plateNumberSnapshot, '82-5555');
   assert.equal(store.docs.has(recordPath), true);
 
@@ -330,26 +346,43 @@ test('Truck Routes: POST /api/truck/records creates, updates in-place, and enfor
   const updatePayload = {
     dateKey,
     truckId,
+    driverId: 'driver_88',
     trips: [
       {
         tripIndex: 1,
+        tripId: createBody.data.trips[0].tripId,
+        pricingVersion: 3,
+        billingPricingMode: 'PER_TRIP',
+        originId: 'a',
+        destinationId: 'b',
+        destinationMode: 'LOC_b',
         fromLocation: 'โรงโม่สระบุรี',
-        destinationMode: 'DEST_1',
-        destinationId: 'd1',
         destinationName: 'แพลนท์พระราม 2',
-        driverPaySatang: 75000,
+        departureDate: dateKey,
+        arrivalDate: null,
+        weightKg: null,
+        billable: false,
+        billingSatang: null,
         note: 'เที่ยวเช้า'
       },
       {
         tripIndex: 2,
+        pricingVersion: 3,
+        billingPricingMode: 'PER_TRIP',
+        originId: 'b',
+        destinationId: 'c',
+        destinationMode: 'LOC_c',
         fromLocation: 'แพลนท์พระราม 2',
-        destinationMode: '__OTHER__',
         destinationName: 'ไซต์งานพิเศษบางนา',
-        driverPaySatang: 80000,
+        departureDate: dateKey,
+        arrivalDate: null,
+        weightKg: null,
+        billable: false,
+        billingSatang: null,
         note: 'เที่ยวบ่าย'
       }
     ],
-    fuelCostSatang: 220000, // 2,200.00 Baht
+    fuelCostSatang: 220000,
     expectedRevision: 1,
     requestId: 'req_edit_daily_record_02'
   };
@@ -369,7 +402,7 @@ test('Truck Routes: POST /api/truck/records creates, updates in-place, and enfor
   assert.equal(updateBody.data.revision, 2);
   assert.equal(updateBody.data.tripCount, 2);
   assert.equal(updateBody.data.totalDriverPaySatang, 155000);
-  assert.equal(updateBody.data.fuelCostSatang, 220000);
+  assert.equal(updateBody.data.fuelCostSatang, 0, 'fuel cost remains excluded for modern records');
 
   // Confirm document in store has revision 2 and updated values
   const storedDoc = store.docs.get(recordPath);
@@ -502,6 +535,8 @@ test('Truck Routes: Backup exports truck data and keeps web restore disabled', a
     fuelCostSatang: 100000,
     totalDriverPaySatang: 0
   });
+  store.docs.set(`${shop}/requests/req-1`, { requestId: 'req-1', entityKey: 'trip-1' });
+  store.docs.set(`${shop}/audit/audit-1`, { action: 'CREATE_TRUCK_TRIP', entityId: 'trip-1' });
 
   const res = await getBackup(new NextRequest('http://localhost/api/truck/backup'));
   const body = await res.json();
@@ -514,6 +549,8 @@ test('Truck Routes: Backup exports truck data and keeps web restore disabled', a
   assert.equal(body.data.truckDestinations.length, 1);
   assert.equal(body.data.records.length, 1);
   assert.equal(body.data.records[0].recordId, '2026-09-10_t1');
+  assert.ok(body.data.extraDocuments.some((d: any) => d.path === 'requests/req-1'));
+  assert.ok(body.data.extraDocuments.some((d: any) => d.path === 'audit/audit-1'));
 
   // Restore is restricted to the maintenance-gated CLI command.
   const restoreRes = await postBackup(
@@ -529,6 +566,45 @@ test('Truck Routes: Backup exports truck data and keeps web restore disabled', a
   const restoreBody = await restoreRes.json();
   assert.equal(restoreRes.status, 409);
   assert.equal(restoreBody.error.code, 'RESTORE_OFFLINE_ONLY');
+});
+
+test('Truck review requires explicit fee confirmation and atomically preserves legacy amounts', async () => {
+  const store = setupMockDb();
+  const shop = `shops/${process.env.SHOP_ID || 'main'}`;
+  const recordId = '2026-10-10_t1';
+  const tripId = 'legacy-trip-1';
+  const recordPath = `${shop}/truckMonths/2026-10/records/${recordId}`;
+  const tripPath = `${shop}/truckTrips/${tripId}`;
+  store.docs.set(`${shop}/truckDrivers/d1`, { driverId: 'd1', name: 'คนขับเก่า', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckCustomers/c1`, { customerId: 'c1', name: 'ลูกค้าเก่า', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/a`, { locationId: 'a', code: 'A', name: 'อู่เก่า', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/b`, { locationId: 'b', code: 'B', name: 'โรงงานเก่า', status: 'ACTIVE' });
+  const oldTrip = { tripId, recordId, revision: 1, pricingVersion: 2, driverId: 'd1', driverNameSnapshot: 'คนขับเก่า', originId: 'a', destinationId: 'b', fromLocation: 'A — อู่เก่า', destinationName: 'B — โรงงานเก่า', customerId: 'c1', customerName: 'ลูกค้าเก่า', billable: true, departureDate: '2026-10-10', arrivalDate: '2026-10-10', accountingMonth: '2026-10', status: 'COMPLETED', weightKg: 12500, driverPaySatang: 15000, driverExtraSatang: 2000, driverExtraNote: 'เงินเพิ่มคนขับเดิม', billingSatang: 100000, billingExtraSatang: 10000, billingExtraNote: 'ค่าบริการเดิม' };
+  store.docs.set(tripPath, oldTrip);
+  store.docs.set(recordPath, { recordId, dateKey: '2026-10-10', monthKey: '2026-10', truckId: 't1', revision: 4, trips: [{ ...oldTrip, tripIndex: 1 }], photos: [] });
+
+  const list = await getTripsForReview(new NextRequest('http://localhost/api/truck/trips'));
+  const listed = (await list.json()).data.trips[0];
+  assert.equal(list.status, 200);
+  assert.equal(listed.legacyFeesPresent, true);
+  assert.equal(listed.recordRevision, 4);
+  const patch = (body: any) => reviewTrip(new NextRequest('http://localhost/api/truck/trips', { method: 'PATCH', body: JSON.stringify(body) }));
+  const body: any = { tripId, expectedRevision: 1, expectedRecordRevision: 4, pricingVersion: 3, billingPricingMode: 'PER_TRIP', driverId: 'd1', originId: 'a', destinationId: 'b', customerId: 'c1', departureDate: '2026-10-10', arrivalDate: '2026-10-10', billable: true, weightKg: 12500, billingSatang: 110000, reason: 'ยืนยันราคาเหมาใหม่', requestId: 'legacy-review-confirm' };
+  assert.equal((await patch(body)).status, 422, 'fee-bearing legacy data cannot upgrade without confirmation');
+  const reviewed = await patch({ ...body, confirmLegacyPricing: true });
+  assert.equal(reviewed.status, 200, JSON.stringify(await reviewed.clone().json()));
+  const result = (await reviewed.json()).data;
+  assert.equal(result.pricingVersion, 3);
+  assert.equal(result.billingSatang, 110000);
+  assert.equal(result.legacyDriverExtraSatang, 2000);
+  assert.equal(result.legacyPricingSnapshot.billingExtraSatang, 10000);
+  assert.equal('billingExtraSatang' in result, false);
+  const parent = store.docs.get(recordPath);
+  assert.equal(parent.revision, 5);
+  assert.equal(parent.trips[0].pricingVersion, 3);
+  assert.equal(parent.trips[0].billingSatang, 110000);
+  assert.equal(parent.trips[0].legacyDriverExtraSatang, 2000);
+  assert.equal(store.docs.get(tripPath).legacyPricingSnapshot.driverExtraSatang, 2000);
 });
 
 test('Truck Routes: Input validation and error handling', async () => {

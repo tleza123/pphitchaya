@@ -14,6 +14,8 @@ import { createTruckReportPdf } from '@/lib/server/truck-pdf';
 import { formatMoney } from '@/lib/payroll/money';
 import { TruckDoc, TruckDailyRecordDoc } from '@/lib/truck/types';
 import { recordsForAccountingMonths } from '@/lib/truck/report-records';
+import { getTripCustomerChargeSatang, getTripDriverChargeSatang } from '@/lib/truck/pricing';
+import { formatWeightTons } from '@/lib/truck/weight';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -91,7 +93,9 @@ export async function GET(req: NextRequest) {
       'ต้นทาง',
       'ปลายทาง',
       'ค่าเที่ยว (บาท)',
-      'หมายเหตุ'
+      'หมายเหตุ',
+      'น้ำหนัก (ตัน)',
+      'ยอดเรียกเก็บ (บาท)'
     ];
 
     const rows: string[][] = [];
@@ -105,7 +109,8 @@ export async function GET(req: NextRequest) {
           const tripNo = trip.tripIndex ?? index + 1;
           const origin = trip.fromLocation || '';
           const destination = trip.destinationName || '';
-          const driverPay = formatMoney(trip.driverPaySatang ?? 0);
+          const driverPay = formatMoney(getTripDriverChargeSatang(trip));
+          const customerCharge = getTripCustomerChargeSatang(trip);
           const note = trip.note || '';
 
           rows.push([
@@ -116,7 +121,9 @@ export async function GET(req: NextRequest) {
             origin,
             destination,
             driverPay,
-            note
+            note,
+            trip.weightKg == null ? '' : formatWeightTons(trip.weightKg),
+            customerCharge == null ? '' : formatMoney(customerCharge)
           ]);
         });
       } else {
@@ -129,6 +136,8 @@ export async function GET(req: NextRequest) {
           '',
           '',
           formatMoney(0),
+          '',
+          '',
           ''
         ]);
       }

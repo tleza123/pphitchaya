@@ -5,6 +5,7 @@ import { verifyOwner } from '@/lib/server/auth';
 import { createErrorResponse } from '@/lib/server/errors';
 import { getTruckInvoicesCol } from '@/lib/server/repository';
 import { formatMoney } from '@/lib/payroll/money';
+import { formatWeightTons } from '@/lib/truck/weight';
 
 export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     doc.registerFont('Regular', regular); doc.registerFont('Bold', bold);
     const chunks: Buffer[] = [];
     const done = new Promise<Buffer>((resolve,reject) => { doc.on('data', c=>chunks.push(c)); doc.on('end',()=>resolve(Buffer.concat(chunks))); doc.on('error',reject); });
+    const hasLegacyFeeLines = (invoice.lines || []).some((line: any) => Object.prototype.hasOwnProperty.call(line, 'billingExtraSatang') || Object.prototype.hasOwnProperty.call(line, 'billingExtraNote'));
     const header = () => {
       doc.font('Bold').fontSize(23).text('ใบวางบิล');
       const company = invoice.company || {};
@@ -28,18 +30,30 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
       if (company.taxId) doc.text(`เลขประจำตัวผู้เสียภาษี ${company.taxId}`);
       doc.text(`เลขที่ ${invoice.documentNo}  วันที่ ${invoice.issueDate}  ครบกำหนด ${invoice.dueDate}`);
       doc.text(`ลูกค้า ${invoice.customerName}`).moveDown(.5);
-      doc.font('Bold').text('วันที่ออก – ถึง | ทะเบียน | เส้นทาง | ค่าขนส่ง + เพิ่มเติม', { width:510 });
+      const version = Number(invoice.snapshotVersion);
+      const columns = version >= 3
+        ? 'วันที่รถออก | ทะเบียน | เส้นทาง | น้ำหนักตัน | จำนวนเที่ยว | ราคาเหมา/เที่ยว | จำนวนเงิน'
+        : version === 2 || hasLegacyFeeLines
+          ? 'วันที่รถออก | ทะเบียน | เส้นทาง | น้ำหนัก | จำนวนเที่ยว | ราคา/เที่ยว | เงินเพิ่ม | รวม'
+          : 'วันที่รถออก | ทะเบียน | เส้นทาง | รายละเอียดตามเอกสารเดิม';
+      doc.font('Bold').text(columns, { width:510 });
       doc.moveTo(40,doc.y).lineTo(555,doc.y).stroke(); doc.moveDown(.4);
     };
     header();
     for (const line of invoice.lines || []) {
-      const description = `${line.departureDate || '-'} – ${line.arrivalDate || '-'}  |  ${line.plateNumberSnapshot || '-'}  |  ${line.fromLocation || '-'} → ${line.destinationName || '-'}\nค่าขนส่ง ${formatMoney(line.billingSatang)} บาท  เพิ่มเติม ${formatMoney(line.billingExtraSatang || 0)} บาท${line.billingExtraNote ? ` (${line.billingExtraNote})` : ''}`;
+      const route = `${line.departureDate || line.dateKey || '-'}  |  ${line.plateNumberSnapshot || '-'}  |  ${line.fromLocation || '-'} → ${line.destinationName || '-'}`;
+      const version = Number(invoice.snapshotVersion);
+      const description = version >= 3
+        ? `${route}\nน้ำหนัก ${formatWeightTons(line.weightKg)} ตัน  |  ${line.quantity ?? 1} เที่ยว  |  ราคาเหมา ${formatMoney(line.billingSatang)} บาท  |  จำนวนเงิน ${formatMoney(line.billingSatang)} บาท`
+        : version === 2 || line.billingPricingMode === 'PER_TRIP' || Object.prototype.hasOwnProperty.call(line, 'billingExtraSatang') || Object.prototype.hasOwnProperty.call(line, 'billingExtraNote')
+          ? `${route}\nน้ำหนัก ${formatWeightTons(line.weightKg)} ตัน  |  ${line.quantity ?? 1} เที่ยว  |  ราคา ${formatMoney(line.billingSatang)} บาท  |  เพิ่ม ${formatMoney(line.billingExtraSatang ?? 0)} บาท  |  รวม ${formatMoney(line.billingSatang + (line.billingExtraSatang ?? 0))} บาท${line.billingExtraNote ? ` (${line.billingExtraNote})` : ''}`
+          : `${route}\n${Number.isSafeInteger(line.totalSatang ?? line.amountSatang ?? line.billingSatang) ? `ยอดตามเอกสารเดิม ${formatMoney(line.totalSatang ?? line.amountSatang ?? line.billingSatang)} บาท` : 'ยอดตามเอกสารเดิม'}${line.note ? ` (${line.note})` : ''}`;
       const height = doc.font('Regular').fontSize(14).heightOfString(description,{width:510});
       if (doc.y + height > 760) { doc.addPage(); header(); }
       doc.font('Regular').fontSize(14).text(description,{width:510}).moveDown(.3);
     }
     if (doc.y > 720) { doc.addPage(); header(); }
-    doc.moveDown(.5).font('Bold').fontSize(18).text(`ยอดรวม ${formatMoney(invoice.totalSatang)} บาท`,{align:'right'});
+    doc.moveDown(.5).font('Bold').fontSize(18).text(`ยอดรวม ${Number.isSafeInteger(invoice.totalSatang) ? `${formatMoney(invoice.totalSatang)} บาท` : 'ตาม snapshot เดิม'}`,{align:'right'});
     if (invoice.note) doc.font('Regular').fontSize(14).text(`หมายเหตุ: ${invoice.note}`);
     const pages=doc.bufferedPageRange(); for(let i=0;i<pages.count;i++){doc.switchToPage(i);doc.font('Regular').fontSize(11).text(`หน้า ${i+1} / ${pages.count}`,40,810,{width:515,align:'right',lineBreak:false});}
     doc.end(); const buffer=await done;

@@ -13,6 +13,7 @@
 - `employees`, `months`, `closeJobs`, `requests` และ `audit` (ข้อมูลระบบเช็คชื่อและประวัติการเปลี่ยนแปลง)
 - `trucks`, `truckOrigins`, `truckDestinations` และ `truckPhotos` (ข้อมูลระบบรถสิบล้อ)
 - `truckMonths` (เอกสารสรุปรายเดือน) และ `truckMonthRecords` (ใบงานใน subcollection `truckMonths/{monthKey}/records`)
+- ข้อมูลระบบรถปัจจุบัน (`truckLocations`, `truckDrivers`, `truckCustomers`, `truckTariffs`, `truckTrips`, `truckRuns`, `truckPayrollMonths`, `truckInvoices`, รูป และ subcollections ของเอกสารการเงิน) พร้อม `requests` และ `audit` สำหรับตรวจการส่งซ้ำและประวัติการเปลี่ยนแปลง
 
 รายการใน `truckMonthRecords` จะมี `monthKey` และ `_id` เพื่อระบุเดือนและรหัสเอกสารต้นทาง โดยยอด `totalRecords` นับรวมเอกสารรายเดือนและใบงานย่อยด้วย
 
@@ -55,3 +56,5 @@ npm run restore:check backups/backup_de-team_20260914_083000.json
 - **ไฟล์สำรองอยู่ในรูปแบบ Deterministic JSON**: สามารถเปิดตรวจสอบด้วยโปรแกรมแก้ไขข้อความได้โดยตรง
 - **ไม่เขียนทับฐานข้อมูลจริงโดยอัตโนมัติ**: สคริปต์ตรวจสอบจะรันในโหมดอ่านอย่างเดียว (Read-only Dry Run) จะไม่มีการแก้ไขหรือลบข้อมูลใน Cloud Firestore
 - **ข้อแนะนำ**: ควรสำรองข้อมูลเดือนละ 1 ครั้งหลังจากการปิดเดือนเรียบร้อยแล้ว หรือก่อนที่จะมีการปรับโครงสร้างองค์กรครั้งใหญ่
+
+การกู้คืนระบบรถใช้ `npm run truck:restore -- <backup.json> --apply` ตามขั้นตอน maintenance gate ใน [TRUCK_MIGRATION_RUNBOOK.md](TRUCK_MIGRATION_RUNBOOK.md) เท่านั้น สคริปต์เป็น create-only และจะหยุดเมื่อพบเอกสารเป้าหมายที่มีอยู่แล้ว รวม `requests` และ `audit` ด้วย ห้ามใช้ browser export เป็นแหล่ง restore และห้ามทดลองกับข้อมูล production ระหว่างพัฒนา

@@ -32,9 +32,12 @@ export interface TruckDestinationDoc {
 
 export interface TruckTripItem {
   tripId?: string;
+  pricingVersion?: 3;
   originId?: string | null;
   departureDate?: string;
   arrivalDate?: string | null;
+  weightKg?: number | null;
+  billingPricingMode?: 'PER_TRIP';
   departureTime?: string | null;
   arrivalTime?: string | null;
   billable?: boolean;
@@ -46,7 +49,8 @@ export interface TruckTripItem {
   destinationMode: string; // 'DEST_<id>' | '__OTHER__'
   destinationId?: string | null;
   destinationName: string;
-  driverPaySatang: number | null; // null means price pending
+  driverPaySatang?: number | null; // null means price pending; client writes omit this field
+  legacyDriverExtraSatang?: number;
   note: string;
   departedAt?: string;
   arrivedAt?: string | null;
@@ -61,7 +65,7 @@ export interface TruckTripItem {
   driverRateSource?: 'STANDARD' | 'OVERRIDE' | 'PENDING';
   billingTariffId?: string | null;
   billingTariffRevision?: number | null;
-  billingRateSource?: 'STANDARD' | 'OVERRIDE' | 'PENDING' | 'NON_BILLABLE';
+  billingRateSource?: 'STANDARD' | 'MANUAL' | 'OVERRIDE' | 'PENDING' | 'NON_BILLABLE';
   accountingMonth?: string;
 }
 

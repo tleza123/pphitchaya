@@ -8,11 +8,10 @@ import { errMsg, getJson } from './api';
 import type { TruckBoot } from './TruckShell';
 import styles from './truck.module.css';
 
-type Metric = 'tripCount' | 'driverPaySatang' | 'fuelCostSatang' | 'totalCostSatang';
+type Metric = 'tripCount' | 'driverPaySatang';
 const METRICS: { key: Metric; label: string }[] = [
   { key: 'tripCount', label: 'เที่ยววิ่ง' },
-  { key: 'driverPaySatang', label: 'ค่าเที่ยว' },
-  { key: 'totalCostSatang', label: 'ต้นทุนรวม' }
+  { key: 'driverPaySatang', label: 'ค่าเที่ยว' }
 ];
 const PERIODS: { key: TruckReportPeriod; label: string }[] = [{ key: 'day', label: 'รายวัน' }, { key: 'month', label: 'รายเดือน' }, { key: 'year', label: 'รายปี' }];
 const fmt = (m: Metric, v: number) => (m === 'tripCount' ? String(v) : formatMoney(v));
@@ -53,7 +52,7 @@ export function TruckDetailedReports({ active, boot, onBack }: { active: boolean
   const [period, setPeriod] = useState<TruckReportPeriod>('day');
   const [month, setMonth] = useState(boot.monthKey);
   const [year, setYear] = useState(boot.monthKey.slice(0, 4));
-  const [metric, setMetric] = useState<Metric>('totalCostSatang');
+  const [metric, setMetric] = useState<Metric>('driverPaySatang');
   const [truckId, setTruckId] = useState('');
   const [data, setData] = useState<TruckAnalyticsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +116,6 @@ export function TruckDetailedReports({ active, boot, onBack }: { active: boolean
           <div className={styles.figures}>
             <div className={styles.fig}><small>เที่ยววิ่ง</small><strong>{totals.tripCount}</strong></div>
             <div className={styles.fig}><small>ค่าเที่ยว (บาท)</small><strong>{formatMoney(totals.driverPaySatang)}</strong></div>
-            <div className={styles.fig}><small>ต้นทุนรวม (บาท)</small><strong>{formatMoney(totals.totalCostSatang)}</strong></div>
           </div>
         </div>
       )}
@@ -127,14 +125,12 @@ export function TruckDetailedReports({ active, boot, onBack }: { active: boolean
             <Chart rows={rows} metric={metric} />
             <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="ตารางข้อมูล">
               <table className={styles.table}>
-                <thead><tr><th>ช่วง</th><th className={styles.num}>เที่ยว</th><th className={styles.num}>ค่าเที่ยว</th><th className={styles.num}>ต้นทุนรวม</th></tr></thead>
+                <thead><tr><th>ช่วง</th><th className={styles.num}>เที่ยว</th><th className={styles.num}>ค่าเที่ยว</th></tr></thead>
                 <tbody>
                   {rows.map(r => (
                     <tr key={r.key}>
                       <td>{r.key}</td><td className={styles.num}>{r.tripCount}</td>
                       <td className={styles.num}>{formatMoney(r.driverPaySatang)}</td>
-                      <td className={styles.num}>{formatMoney(r.fuelCostSatang)}</td>
-                      <td className={styles.num}>{formatMoney(r.totalCostSatang)}</td>
                     </tr>
                   ))}
                 </tbody>

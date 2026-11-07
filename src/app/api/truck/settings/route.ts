@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
       if (!disable && location && (!input?.code?.trim() || !input?.name?.trim())) return createErrorResponse('INVALID_INPUT', 'ระบุรหัสและชื่อจุด', 422);
       if (!disable && !location) {
         if (!input?.originId || !input?.destinationId || input.originId === input.destinationId) return createErrorResponse('INVALID_INPUT', 'เลือกต้นทางและปลายทาง', 422);
-        try { validateSatang(input.driverPaySatang); if (input.customerRateSatang != null) validateSatang(input.customerRateSatang); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); }
+        try { if (!input.customerId || input.driverPaySatang != null) validateSatang(input.driverPaySatang); if (input.customerId) validateSatang(input.customerRateSatang); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); }
       }
       const hash = computePayloadHash(owner.uid, 'POST', action, body);
       const result = await db.runTransaction(async tx => {
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
           }
         }
         const now = new Date().toISOString();
-        const data = disable ? { ...current, status:'SUSPENDED', revision:current!.revision+1, updatedAt:now } : location ? { locationId:ref.id, code:input.code.trim(), name:input.name.trim(), detail:String(input.detail || '').trim(), status:'ACTIVE', revision:(current?.revision||0)+1, createdAt:current?.createdAt||now, updatedAt:now } : { tariffId:ref.id, originId:input.originId, destinationId:input.destinationId, customerId:input.customerId || null, driverPaySatang:input.driverPaySatang, customerRateSatang:input.customerRateSatang ?? null, status:'ACTIVE', revision:(current?.revision||0)+1, createdAt:current?.createdAt||now, updatedAt:now };
+        const data = disable ? { ...current, status:'SUSPENDED', revision:current!.revision+1, updatedAt:now } : location ? { locationId:ref.id, code:input.code.trim(), name:input.name.trim(), detail:String(input.detail || '').trim(), status:'ACTIVE', revision:(current?.revision||0)+1, createdAt:current?.createdAt||now, updatedAt:now } : { tariffId:ref.id, originId:input.originId, destinationId:input.destinationId, customerId:input.customerId || null, driverPaySatang:input.customerId ? (current?.driverPaySatang ?? null) : input.driverPaySatang, customerRateSatang:input.customerId ? input.customerRateSatang : null, status:'ACTIVE', revision:(current?.revision||0)+1, createdAt:current?.createdAt||now, updatedAt:now };
         tx.set(ref,data); recordAudit(tx,shopId,owner.uid,action,ref.id,current,data,requestId); recordRequestReceipt(tx,requestRef,{requestId,actorUid:owner.uid,method:'POST',entityKey:ref.id,payloadHash:hash,response:data,createdAt:now}); return data;
       });
       return createSuccessResponse(result, requestId);

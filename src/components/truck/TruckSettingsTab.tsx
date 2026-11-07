@@ -64,6 +64,7 @@ function MasterSection({ title, fields, items, busy, onSave, onDelete }: {
               )}
             </div>
           ))}
+          {title.startsWith('ราคา') && values.originId && values.destinationId && <p>เส้นทาง: {fields.find(f=>f.key==='originId')?.options?.find(o=>o.value===values.originId)?.label} → {fields.find(f=>f.key==='destinationId')?.options?.find(o=>o.value===values.destinationId)?.label} · {values.billing || values.pay || 'ยังไม่ระบุ'} บาท</p>}
           <div style={{ display: 'grid', gap: '.6rem' }}>
             <button type="submit" className={settings.primaryBtn} disabled={busy} aria-busy={busy}>บันทึก</button>
             <button type="button" className={settings.secondaryBtn} onClick={() => setEditing(null)} disabled={busy}>ยกเลิก</button>
@@ -111,7 +112,7 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
   const drivers: Item[] = ((boot as any).truckDrivers || []).filter((d:any) => d.status !== 'SUSPENDED').map((d: any) => ({ id: d.driverId, title: d.name, sub: `ค่าแรงฐาน ${formatMoney(d.baseWageSatang ?? 30000)} บาท/วัน`, values: { name: d.name, base: String((d.baseWageSatang ?? 30000) / 100), revision: String(d.revision) } }));
   const customers: Item[] = ((boot as any).truckCustomers || []).filter((d:any) => d.status !== 'SUSPENDED').map((d: any) => ({ id: d.customerId, title: d.name, values: { name: d.name, revision: String(d.revision) } }));
   const locations: Item[] = ((boot as any).truckLocations || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.locationId,title:`${d.code} — ${d.name}`,values:{code:d.code,name:d.name,detail:d.detail||'',revision:String(d.revision)}}));
-  const tariffs: Item[] = ((boot as any).truckTariffs || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.tariffId,title:`${locations.find(x=>x.id===d.originId)?.title || d.originId} → ${locations.find(x=>x.id===d.destinationId)?.title || d.destinationId}`,sub:`ค่าเที่ยว ${formatMoney(d.driverPaySatang)} บาท`,values:{originId:d.originId,destinationId:d.destinationId,customerId:d.customerId||'',pay:satangToDecimalString(d.driverPaySatang),billing:d.customerRateSatang==null?'':satangToDecimalString(d.customerRateSatang),revision:String(d.revision)}}));
+  const tariffs: Item[] = ((boot as any).truckTariffs || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.tariffId,title:`${locations.find(x=>x.id===d.originId)?.title || d.originId} → ${locations.find(x=>x.id===d.destinationId)?.title || d.destinationId}`,sub:d.customerId ? `${customers.find(x=>x.id===d.customerId)?.title || d.customerId}: ${d.customerRateSatang == null ? 'ยังไม่ได้ตั้งราคา' : formatMoney(d.customerRateSatang)+' บาท'}` : `ค่าเที่ยว ${formatMoney(d.driverPaySatang)} บาท`,values:{originId:d.originId,destinationId:d.destinationId,customerId:d.customerId||'',pay:d.driverPaySatang == null ? '' : satangToDecimalString(d.driverPaySatang),billing:d.customerRateSatang==null?'':satangToDecimalString(d.customerRateSatang),revision:String(d.revision)}}));
 
   const backup = () => act(async () => {
     const data = await getJson('/api/truck/backup');
@@ -147,9 +148,13 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
         fields={[{key:'code',label:'รหัสจุด เช่น A',required:true},{key:'name',label:'ชื่อสถานที่',required:true},{key:'detail',label:'ที่อยู่หรือรายละเอียด'}]}
         onSave={(v,id)=>act(()=>post({action:'UPSERT_LOCATION',location:{id:id||undefined,code:v.code,name:v.name,detail:v.detail},expectedRevision:id?Number(v.revision):0}),'บันทึกจุดแล้ว')}
         onDelete={item=>{setPendingDelete({item,request:{action:'DISABLE_LOCATION',id:item.id,expectedRevision:Number(item.values.revision)},success:'ปิดใช้งานจุดแล้ว'});return Promise.resolve();}} />
-      <MasterSection title="ราคาต้นทาง–ปลายทาง" busy={busy} items={tariffs}
-        fields={[{key:'originId',label:'ต้นทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'destinationId',label:'ปลายทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'pay',label:'ค่าเที่ยวคนขับ (บาท)',kind:'money',required:true},{key:'customerId',label:'ลูกค้า (ถ้ามี)',kind:'select',options:customers.map(c=>({value:c.id,label:c.title}))},{key:'billing',label:'ค่าขนส่งลูกค้า (บาท)',kind:'money'}]}
-        onSave={(v,id)=>act(()=>post({action:'UPSERT_TARIFF',tariff:{id:id||undefined,originId:v.originId,destinationId:v.destinationId,customerId:v.customerId||null,driverPaySatang:baht(v.pay),customerRateSatang:v.billing?baht(v.billing):null},expectedRevision:id?Number(v.revision):0}),'บันทึกราคาแล้ว')}
+      <MasterSection title="ราคาค่าเที่ยวคนขับ" busy={busy} items={tariffs.filter(t=>!t.values.customerId)}
+        fields={[{key:'originId',label:'ต้นทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'destinationId',label:'ปลายทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'pay',label:'ค่าเที่ยวคนขับ (บาท)',kind:'money',required:true}]}
+        onSave={(v,id)=>act(()=>post({action:'UPSERT_TARIFF',tariff:{id:id||undefined,originId:v.originId,destinationId:v.destinationId,customerId:null,driverPaySatang:baht(v.pay)},expectedRevision:id?Number(v.revision):0}),'บันทึกราคาแล้ว')}
+        onDelete={item=>{setPendingDelete({item,request:{action:'DISABLE_TARIFF',id:item.id,expectedRevision:Number(item.values.revision)},success:'ปิดใช้งานราคาแล้ว'});return Promise.resolve();}} />
+      <MasterSection title="ราคาขนส่งลูกค้าต่อเที่ยว" busy={busy} items={tariffs.filter(t=>!!t.values.customerId)}
+        fields={[{key:'customerId',label:'ลูกค้า',kind:'select',required:true,options:customers.map(c=>({value:c.id,label:c.title}))},{key:'originId',label:'ต้นทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'destinationId',label:'ปลายทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'billing',label:'ราคาขนส่งต่อเที่ยว (บาท)',kind:'money',required:true}]}
+        onSave={(v,id)=>act(()=>post({action:'UPSERT_TARIFF',tariff:{id:id||undefined,originId:v.originId,destinationId:v.destinationId,customerId:v.customerId,customerRateSatang:baht(v.billing)},expectedRevision:id?Number(v.revision):0}),'บันทึกราคาแล้ว')}
         onDelete={item=>{setPendingDelete({item,request:{action:'DISABLE_TARIFF',id:item.id,expectedRevision:Number(item.values.revision)},success:'ปิดใช้งานราคาแล้ว'});return Promise.resolve();}} />
 
       <MasterSection title="รถสิบล้อและคนขับ" busy={busy} items={trucks}
@@ -166,16 +171,6 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
         fields={[{ key: 'name', label: 'ชื่อลูกค้า', required: true }]}
         onSave={(v, id) => act(() => post({ action: 'UPSERT_CUSTOMER', customer: { customerId: id || undefined, name: v.name }, expectedRevision: id ? Number(v.revision) : 0 }), 'บันทึกลูกค้าแล้ว')}
         onDelete={item => { setPendingDelete({ item, request: { action: 'DELETE_CUSTOMER', customerId: item.id, expectedRevision: Number(item.values.revision) }, success: 'ปิดใช้งานลูกค้าแล้ว' }); return Promise.resolve(); }} />
-
-      <MasterSection title="ปลายทางและค่าเที่ยวคนขับ" busy={busy} items={dests}
-        fields={[{ key: 'name', label: 'ชื่อปลายทาง', required: true }, { key: 'pay', label: 'ค่าเที่ยวคนขับ (บาท)', kind: 'money', required: true }]}
-        onSave={(v, id) => act(() => post({ action: 'UPSERT_DESTINATION', destination: { destinationId: id ?? undefined, name: v.name, driverPaySatang: baht(v.pay || '0') }, expectedRevision: id ? boot.truckDestinations.find(d => d.destinationId === id)?.revision : undefined }), 'บันทึกปลายทางแล้ว')}
-        onDelete={item => { setPendingDelete({ item, request: { action: 'DELETE_DESTINATION', destinationId: item.id }, success: 'ลบปลายทางแล้ว' }); return Promise.resolve(); }} />
-
-      <MasterSection title="ต้นทาง" busy={busy} items={origins}
-        fields={[{ key: 'name', label: 'ชื่อต้นทาง', required: true }]}
-        onSave={(v, id) => act(() => post({ action: 'UPSERT_ORIGIN', origin: { originId: id ?? undefined, name: v.name }, expectedRevision: id ? boot.truckOrigins.find(o => o.originId === id)?.revision : undefined }), 'บันทึกต้นทางแล้ว')}
-        onDelete={item => { setPendingDelete({ item, request: { action: 'DELETE_ORIGIN', originId: item.id }, success: 'ลบต้นทางแล้ว' }); return Promise.resolve(); }} />
 
       <div className={styles.panel}>
         <div className={styles.sectionHead}><h3>ชื่อกิจการ</h3></div>

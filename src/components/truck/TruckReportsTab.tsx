@@ -8,6 +8,7 @@ import { useModalInteraction } from '@/components/shared/useModalInteraction';
 import { formatMoney } from '@/lib/payroll/money';
 import { formatThaiDate, formatThaiMonth } from '@/lib/payroll/dates';
 import { TruckDailyRecordDoc, TruckMonthlyReport } from '@/lib/truck/types';
+import { getTripDriverChargeSatang } from '@/lib/truck/pricing';
 import { download, errMsg, getJson, sendJson } from './api';
 import { PhotoLightbox } from './PhotoLightbox';
 import type { TruckBoot } from './TruckShell';
@@ -100,7 +101,6 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
           <div className={styles.figures}>
             <div className={styles.fig}><small>เที่ยววิ่งรวม</small><strong>{totals.totalTrips}</strong></div>
             <div className={styles.fig}><small>ค่าเที่ยวคนขับ (บาท)</small><strong>{formatMoney(totals.totalDriverPaySatang)}</strong></div>
-            <div className={styles.fig}><small>ต้นทุนรวม (บาท)</small><strong>{formatMoney(totals.totalCostSatang)}</strong></div>
           </div>
         </div>
       )}
@@ -117,7 +117,6 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
                     <td>{r.plateNumber}</td><td>{r.driverName || '-'}</td>
                     <td className={styles.num}>{r.tripCount}</td>
                     <td className={styles.num}>{formatMoney(r.totalDriverPaySatang)}</td>
-                    <td className={styles.num}>{formatMoney(r.totalFuelCostSatang)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -141,7 +140,7 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
             {r.trips.map(t => (
               <div className={styles.recTrip} key={t.tripIndex}>
                 <span>{t.tripIndex}. {t.fromLocation || 'ไม่ระบุต้นทาง'} - {t.destinationName}{t.note ? ` (${t.note})` : ''}</span>
-                <span className={styles.pay}>{formatMoney(t.driverPaySatang ?? 0)}</span>
+                <span className={styles.pay}>{formatMoney(getTripDriverChargeSatang(t))}</span>
               </div>
             ))}
             <div className={styles.recMeta}>รวมค่าเที่ยว {formatMoney(r.totalDriverPaySatang)} บาท</div>

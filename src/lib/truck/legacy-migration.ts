@@ -20,14 +20,24 @@ export function previewLegacyTruckMigration(records: TruckDailyRecordDoc[]) {
       validateSatang(trip.driverPaySatang);
       total += trip.driverPaySatang;
       if (!Number.isSafeInteger(total)) throw new Error('MONEY_OVERFLOW');
+      // The record date is a reporting fallback only when the source has no trip date.
+      const departureDate = trip.departureDate ?? record.dateKey;
+      dateKey(departureDate);
       trips.push({
         tripId: createHash('sha256').update(JSON.stringify([record.recordId, index])).digest('hex'),
         legacyRecordId: record.recordId,
         legacyTripIndex: index,
-        departureDate: record.dateKey,
-        accountingMonth: record.dateKey.slice(0, 7),
-        departureTimeKnown: false,
-        arrivalDate: null,
+        departureDate,
+        accountingMonth: departureDate.slice(0, 7),
+        departureTimeKnown: Boolean(trip.departureTime ?? trip.departedAt),
+        departureTime: trip.departureTime ?? null,
+        arrivalDate: trip.arrivalDate ?? null,
+        arrivalTime: trip.arrivalTime ?? null,
+        departedAt: trip.departedAt ?? null,
+        arrivedAt: trip.arrivedAt ?? null,
+        legacyRecordCreatedAt: record.createdAt ?? null,
+        legacyRecordUpdatedAt: record.updatedAt ?? null,
+        legacyTripSnapshot: trip,
         originNameSnapshot: trip.fromLocation || '',
         destinationNameSnapshot: trip.destinationName || '',
         truckId: record.truckId,
@@ -36,7 +46,8 @@ export function previewLegacyTruckMigration(records: TruckDailyRecordDoc[]) {
         driverId: null,
         customerId: null,
         driverPaySatang: trip.driverPaySatang,
-        billingSatang: null,
+        billingSatang: trip.billingSatang ?? null,
+        weightKg: (trip as typeof trip & {weightKg?: number | null}).weightKg ?? null,
         note: trip.note || '',
         photos: record.photos || [],
         status: 'LEGACY_REVIEW_REQUIRED'

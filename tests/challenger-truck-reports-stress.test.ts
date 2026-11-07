@@ -229,12 +229,14 @@ test('CSV Adversarial: Complex characters (quotes, commas, newlines, Thai script
     'ต้นทาง',
     'ปลายทาง',
     'ค่าเที่ยว (บาท)',
-    'หมายเหตุ'
+    'หมายเหตุ',
+    'น้ำหนัก (ตัน)',
+    'ยอดเรียกเก็บ (บาท)'
   ]);
 
   // Verify row columns
   const dataRow = parsedRows[1];
-  assert.equal(dataRow.length, 8, 'Data row must have exactly 8 columns');
+  assert.equal(dataRow.length, 10, 'Data row must have 10 columns');
   assert.equal(dataRow[0], '2026-10-05', 'Date key mismatch');
   assert.equal(dataRow[1], '70-9999', 'Plate number mismatch');
   assert.equal(dataRow[2], 'สมชาย "ฉายาสิงห์รถบรรทุก" ใจดี', 'Driver name quotes corrupted');
@@ -243,6 +245,8 @@ test('CSV Adversarial: Complex characters (quotes, commas, newlines, Thai script
   assert.equal(dataRow[5], testDestination, 'Destination with newline and Thai digits corrupted');
   assert.equal(dataRow[6], '1,250.50', 'Driver pay satang conversion to formatted Baht corrupted');
   assert.equal(dataRow[7], testNote, 'Note with multi-line CRLF/LF corrupted');
+  assert.equal(dataRow[8], '', 'unknown historic weight remains empty');
+  assert.equal(dataRow[9], '', 'unknown historic customer amount remains empty');
 
   // Verify raw satangs do not appear
   assert.ok(!decodedCsv.includes('125050'));

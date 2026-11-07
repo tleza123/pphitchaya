@@ -55,7 +55,7 @@ export default function TruckPayrollPage() {
                 <section className={styles.payrollRow} key={driver.driverId}>
                   <h3>{driver.driverName}</h3>
                   <p>วันทำงาน {driver.days.length} วัน · เที่ยว {driver.trips.length} เที่ยว</p>
-                  <p>ค่าแรงฐาน {formatMoney(driver.baseSatang)} · ค่าเที่ยว {formatMoney(driver.tripSatang)} · เงินเพิ่ม {formatMoney(driver.extraSatang)} · รวม {formatMoney(driver.totalSatang)} บาท</p>
+                  <p>ค่าแรงฐาน {formatMoney(driver.baseSatang)} · ค่าเที่ยว {formatMoney(driver.tripSatang)}{driver.extraSatang > 0 ? ` · เงินเพิ่มเดิม ${formatMoney(driver.extraSatang)}` : ''} · รวม {formatMoney(driver.totalSatang)} บาท</p>
                 </section>
               ))}
               <button type="button" disabled={!data.preview.canClose || data.legacyReviewRequired} onClick={() => void action('CLOSE')}>ปิดรอบค่าแรง</button>
