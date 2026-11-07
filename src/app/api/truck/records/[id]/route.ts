@@ -13,6 +13,7 @@ import {
 import { getAdminFirestore } from '@/lib/firebase/admin';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
 import { TruckDailyRecordDoc } from '@/lib/truck/types';
+import { needsLegacyPricingReview } from '@/lib/truck/pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,6 +121,7 @@ export async function DELETE(
       const tripSnaps = refs.length ? await tx.getAll(...refs) : [];
       if (tripSnaps.some(s => !s.exists)) throw new Error('TRIP_NOT_FOUND');
       if (tripSnaps.some(s => s.data()?.invoiceId)) throw new Error('TRIP_BILLED');
+      if (tripSnaps.some(s => needsLegacyPricingReview(s.data()))) throw new Error('LEGACY_PRICING_REVIEW_REQUIRED');
 
       // 2. Write phase
       tx.delete(recordRef);
@@ -159,6 +161,7 @@ export async function DELETE(
     if (error.message === 'MONTH_CLOSED') return createErrorResponse('MONTH_CLOSED', 'รอบค่าแรงปิดแล้ว กรุณาเปิดรอบก่อนลบ', 409);
     if (error.message === 'RECORD_MIGRATED') return createErrorResponse('RECORD_MIGRATED', 'ใบงานนี้ย้ายเป็นเที่ยวแยกแล้ว ไม่สามารถลบผ่านใบงานเดิม', 409);
     if (error.message === 'TRIP_BILLED') return createErrorResponse('TRIP_BILLED', 'เที่ยวในใบงานนี้วางบิลแล้ว ไม่สามารถลบได้', 409);
+    if (error.message === 'LEGACY_PRICING_REVIEW_REQUIRED') return createErrorResponse('LEGACY_PRICING_REVIEW_REQUIRED', 'ต้องตรวจราคาเดิมก่อนลบใบงาน', 409);
     if (error.message === 'REQUEST_ID_REUSED') {
       return createErrorResponse('REQUEST_ID_REUSED', undefined, 422);
     }

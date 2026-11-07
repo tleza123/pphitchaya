@@ -61,7 +61,7 @@ export async function PATCH(req:NextRequest){try{
     tx.set(ref,value);recordAudit(tx,shop,owner.uid,'REVIEW_TRUCK_PRICING_V3',ref.id,current,value,body.requestId,body.reason.trim());
     if(linkedRecord&&linked){
       const index=(linked.trips||[]).findIndex((t:any)=>t.tripId===ref.id||(!t.tripId&&t.tripIndex===current.legacyTripIndex));if(index<0)throw new Error('TRIP_NOT_FOUND');
-      const trips=[...linked.trips];const {tripId:linkedId,recordId:linkedRecordId,...embeddedValue}=value;trips[index]={...trips[index],...embeddedValue,tripId:linkedId||trips[index].tripId};
+      const trips=[...linked.trips];const {tripId:linkedId,recordId:linkedRecordId,...embeddedValue}=value;trips[index]={...embeddedValue,tripId:linkedId||trips[index].tripId};
       const updatedRecord={...linked,trips,revision:(linked.revision||0)+1,updatedAt:now,updatedBy:owner.uid};tx.set(linkedRecord,updatedRecord);recordAudit(tx,shop,owner.uid,'REVIEW_TRUCK_RECORD_PRICING_V3',current.recordId,linked,updatedRecord,body.requestId,body.reason.trim());
     }
     recordRequestReceipt(tx,receipt,{requestId:body.requestId,actorUid:owner.uid,method:'PATCH',entityKey:ref.id,payloadHash:hash,response:value,createdAt:now});return value;

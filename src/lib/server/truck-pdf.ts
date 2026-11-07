@@ -60,6 +60,7 @@ export async function createTruckReportPdf(
   const borderCol = '#d7e0ea';
 
   let y = 35;
+  let repeatTableHeader: (() => void) | undefined;
 
   const text = (
     value: string,
@@ -104,6 +105,7 @@ export async function createTruckReportPdf(
       doc.addPage();
       y = 35;
       drawHeader(true);
+      repeatTableHeader?.();
     }
   };
 
@@ -135,25 +137,31 @@ export async function createTruckReportPdf(
     text('สรุปผลงานแยกตามคันรถ', left, y, width, 15, true, 'left', ink);
     y += 20;
 
-    // Table Header
+    const summaryHeader = () => {
     doc.rect(left, y, width, 22).fill(pale);
     text('ทะเบียนรถ', left + 8, y + 4, 90, 12, true, 'left', muted);
     text('คนขับประจำ', left + 105, y + 4, 120, 12, true, 'left', muted);
     text('เที่ยววิ่ง', left + 230, y + 4, 55, 12, true, 'right', muted);
     text('ค่าเที่ยว (บาท)', left + 295, y + 4, 100, 12, true, 'right', muted);
     y += 22;
+    };
+    summaryHeader();
+    repeatTableHeader = summaryHeader;
 
     for (const tr of perTruckRows) {
-      ensureSpace(20);
+      const rowHeight = Math.max(18, doc.font('Regular').fontSize(12).heightOfString(tr.driverName, { width: 120, lineGap: 1 }) + 6,
+        doc.font('Bold').fontSize(12).heightOfString(tr.plateNumber, { width: 90, lineGap: 1 }) + 6);
+      ensureSpace(rowHeight);
       text(tr.plateNumber, left + 8, y + 3, 90, 12, true);
       text(tr.driverName, left + 105, y + 3, 120, 12, false);
       text(`${tr.tripCount}`, left + 230, y + 3, 55, 12, false, 'right');
       text(formatMoney(tr.totalDriverPaySatang), left + 295, y + 3, 100, 12, false, 'right');
-      y += 18;
+      y += rowHeight;
       line(y);
     }
 
     y += 14;
+    repeatTableHeader = undefined;
   }
 
   // Section 2: Detailed Daily Records
@@ -161,13 +169,16 @@ export async function createTruckReportPdf(
   text('ประวัติการวิ่งงานรายวัน', left, y, width, 15, true, 'left', ink);
   y += 20;
 
-  // Detail Table Header
+  const detailHeader = () => {
   doc.rect(left, y, width, 22).fill(pale);
   text('วันที่', left + 8, y + 4, 75, 12, true, 'left', muted);
   text('ทะเบียนรถ / คนขับ', left + 88, y + 4, 115, 12, true, 'left', muted);
   text('เส้นทาง / หมายเหตุ', left + 208, y + 4, 140, 12, true, 'left', muted);
   text('ค่าเที่ยว (บาท)', left + 352, y + 4, 75, 12, true, 'right', muted);
   y += 22;
+  };
+  detailHeader();
+  repeatTableHeader = detailHeader;
 
   if (records.length === 0) {
     ensureSpace(30);
@@ -179,18 +190,34 @@ export async function createTruckReportPdf(
         ? rec.trips.map(t => `${t.fromLocation} -> ${t.destinationName}${t.note ? ` (${t.note})` : ''}`).join('\n')
         : '-';
 
-      const tripsHeight = Math.max(18, doc.font('Regular').fontSize(11).heightOfString(tripsSummary, { width: 140, lineGap: 1 }));
-      const rowHeight = tripsHeight + 10;
-
-      ensureSpace(rowHeight);
-
-      text(formatThaiDate(rec.dateKey, { day: 'numeric', month: 'short' }), left + 8, y + 4, 75, 12);
-      text(`${rec.plateNumberSnapshot}\n${rec.driverNameSnapshot}`, left + 88, y + 4, 115, 11);
-      text(tripsSummary, left + 208, y + 4, 140, 11);
-      text(formatMoney(rec.totalDriverPaySatang), left + 352, y + 4, 75, 12, false, 'right');
-
-      y += rowHeight;
-      line(y);
+      // Split exceptionally long records across explicit pages. PDFKit's implicit
+      // pagination would otherwise lose our table header and overlap the footer.
+      let remaining = [`${rec.plateNumberSnapshot}\n${rec.driverNameSnapshot}`, tripsSummary];
+      let first = true;
+      const segmenter = new Intl.Segmenter('th', { granularity: 'grapheme' });
+      do {
+        ensureSpace(35);
+        const available = 770 - y - 10;
+        const parts = remaining.map((value, index) => {
+          const pieces = [...segmenter.segment(value)].map(s => s.segment);
+          let lo = 0, hi = pieces.length;
+          while (lo < hi) {
+            const mid = Math.ceil((lo + hi) / 2);
+            const h = doc.font('Regular').fontSize(11).heightOfString(pieces.slice(0, mid).join(''), { width: index === 0 ? 115 : 140, lineGap: 1 });
+            if (h <= available) lo = mid; else hi = mid - 1;
+          }
+          return [pieces.slice(0, lo).join(''), pieces.slice(lo).join('')];
+        });
+        const rowHeight = Math.max(18, ...parts.map(([value], index) => doc.font('Regular').fontSize(11).heightOfString(value, { width: index === 0 ? 115 : 140, lineGap: 1 }))) + 10;
+        text(first ? formatThaiDate(rec.dateKey, { day: 'numeric', month: 'short' }) : '(ต่อ)', left + 8, y + 4, 75, 12);
+        text(parts[0][0], left + 88, y + 4, 115, 11);
+        text(parts[1][0], left + 208, y + 4, 140, 11);
+        if (first) text(formatMoney(rec.totalDriverPaySatang), left + 352, y + 4, 75, 12, false, 'right');
+        y += rowHeight; line(y);
+        remaining = parts.map(([, rest]) => rest);
+        first = false;
+        if (remaining.some(Boolean)) { doc.addPage(); y = 35; drawHeader(true); detailHeader(); }
+      } while (remaining.some(Boolean));
     }
   }
 

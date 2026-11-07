@@ -41,7 +41,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     };
     header();
     for (const line of invoice.lines || []) {
-      const route = `${line.departureDate || line.dateKey || '-'}  |  ${line.plateNumberSnapshot || '-'}  |  ${line.fromLocation || '-'} → ${line.destinationName || '-'}`;
+      const route = `${line.departureDate || line.dateKey || '-'}  |  ${line.plateNumberSnapshot || '-'}  |  ${line.fromLocation || '-'} ไป ${line.destinationName || '-'}`;
       const version = Number(invoice.snapshotVersion);
       const description = version >= 3
         ? `${route}\nน้ำหนัก ${formatWeightTons(line.weightKg)} ตัน  |  ${line.quantity ?? 1} เที่ยว  |  ราคาเหมา ${formatMoney(line.billingSatang)} บาท  |  จำนวนเงิน ${formatMoney(line.billingSatang)} บาท`
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     if (doc.y > 720) { doc.addPage(); header(); }
     doc.moveDown(.5).font('Bold').fontSize(18).text(`ยอดรวม ${Number.isSafeInteger(invoice.totalSatang) ? `${formatMoney(invoice.totalSatang)} บาท` : 'ตาม snapshot เดิม'}`,{align:'right'});
     if (invoice.note) doc.font('Regular').fontSize(14).text(`หมายเหตุ: ${invoice.note}`);
-    const pages=doc.bufferedPageRange(); for(let i=0;i<pages.count;i++){doc.switchToPage(i);doc.font('Regular').fontSize(11).text(`หน้า ${i+1} / ${pages.count}`,40,810,{width:515,align:'right',lineBreak:false});}
+    const pages=doc.bufferedPageRange(); for(let i=0;i<pages.count;i++){doc.switchToPage(i);doc.page.margins.bottom=0;doc.font('Regular').fontSize(11).text(`หน้า ${i+1} / ${pages.count}`,40,810,{width:515,align:'right',lineBreak:false});}
     doc.end(); const buffer=await done;
     return new Response(new Uint8Array(buffer),{headers:{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="invoice-${id}.pdf"`}});
   } catch(e:any) { return createErrorResponse(e.code || 'INTERNAL_ERROR',e.message,e.statusCode||500); }

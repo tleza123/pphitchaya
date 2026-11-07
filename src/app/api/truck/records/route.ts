@@ -228,7 +228,7 @@ export async function POST(req: NextRequest) {
       if (oldSnaps.some(s => s.data()?.invoiceId)) throw new Error('TRIP_BILLED');
       if (oldSnaps.some(s => s.data()?.recordId !== recordId)) throw new Error('INVALID_TRIP_ID');
       const existingTrips = new Map(oldSnaps.map(s => [s.id, s.data()]));
-      const needsLegacyReview = trips.some((t: any) => {
+      const needsLegacyReview = oldTrips.some((t: any) => {
         const prior = t.tripId ? existingTrips.get(t.tripId) : null;
         return prior && needsLegacyPricingReview(prior);
       });
@@ -367,6 +367,7 @@ export async function POST(req: NextRequest) {
     if (error.message === 'MONTH_CLOSED') return createErrorResponse('MONTH_CLOSED', 'รอบค่าแรงปิดแล้ว กรุณาเปิดรอบก่อนแก้ไข', 409);
     if (error.message === 'RECORD_MIGRATED') return createErrorResponse('RECORD_MIGRATED', 'ใบงานนี้ย้ายเป็นเที่ยวแยกแล้ว ไม่สามารถแก้ไขผ่านใบงานเดิม', 409);
     if (error.message === 'TRIP_BILLED') return createErrorResponse('TRIP_BILLED', 'เที่ยวในใบงานนี้วางบิลแล้ว ไม่สามารถแก้ไขได้', 409);
+    if (error.message === 'LEGACY_PRICING_REVIEW_REQUIRED') return createErrorResponse('LEGACY_PRICING_REVIEW_REQUIRED', 'ต้องตรวจราคาเดิมก่อนแก้ไขหรือลบเที่ยว', 409);
     if (error.message === 'REQUEST_ID_REUSED') {
       return createErrorResponse('REQUEST_ID_REUSED', undefined, 422);
     }

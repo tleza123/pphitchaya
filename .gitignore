@@ -28,3 +28,6 @@ firebase-debug.log
 .DS_Store
 Thumbs.db
 *.tsbuildinfo
+
+# Reproducible local synthetic QA artifacts (screenshots, PDFs and logs)
+/output/truck-qa/

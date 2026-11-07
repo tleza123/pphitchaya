@@ -1,5 +1,7 @@
 # สถานะการส่งมอบระบบรถบรรทุก
 
+> ผล QA ล่าสุด 7 พฤศจิกายน 2569: ดู [TRUCK_QA_RESULTS.md](TRUCK_QA_RESULTS.md) และ [TRUCK_REVISION_CHECKLIST.md](TRUCK_REVISION_CHECKLIST.md) ซึ่งบันทึกการตรวจ PDF ภาษาไทยหลายหน้า มือถือ และ backup/migration/restore ออฟไลน์ ข้อความด้านล่างเป็นประวัติวันที่ 6 พฤศจิกายน ไม่ใช่ผลล่าสุด และยังไม่ถือว่า Firestore emulator หรือ production recovery ผ่าน
+
 วันที่ตรวจ: 2026-11-06
 
 เอกสารนี้เป็น checklist จากการตรวจ source และ fixtures ปัจจุบัน ไม่ใช่การรับรองว่าข้อมูล production ถูกย้ายหรือเอกสารจริงถูกตรวจแล้ว สัญญาระบบหลักอยู่ใน [TRUCK_IMPLEMENTATION_PLAN.md](TRUCK_IMPLEMENTATION_PLAN.md)

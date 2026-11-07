@@ -8,7 +8,7 @@ try {
   (process as any).loadEnvFile?.('.env.local');
 } catch {}
 
-async function main() {
+export async function backupTruckData(backupDir = path.join(process.cwd(), 'backups')) {
   const shopId = getShopId();
   console.log(`--- เริ่มการสำรองข้อมูล (Backup) ร้าน ${shopId} ---`);
 
@@ -115,7 +115,6 @@ async function main() {
     ...backupPayload
   };
 
-  const backupDir = path.join(process.cwd(), 'backups');
   if (!fs.existsSync(backupDir)) {
     fs.mkdirSync(backupDir, { recursive: true });
   }
@@ -129,9 +128,10 @@ async function main() {
   console.log(`ไฟล์: ${filePath}`);
   console.log(`จำนวนข้อมูลรวม: ${totalRecords} รายการ`);
   console.log(`SHA-256 Checksum: ${checksum}`);
+  return filePath;
 }
 
-main().catch((err) => {
+if (require.main === module) backupTruckData().catch((err) => {
   console.error('สำรองข้อมูลล้มเหลว:', err);
   process.exit(1);
 });

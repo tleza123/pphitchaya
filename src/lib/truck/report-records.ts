@@ -30,7 +30,7 @@ export function mergeReportTrips(records: TruckDailyRecordDoc[], standalone: any
     sourceDateKey: records.find(r => r.recordId === (t.recordId || t.legacyRecordId))?.dateKey || t.departureDate,
     truckId: t.truckId, plateNumberSnapshot: t.plateNumberSnapshot || '', driverNameSnapshot: t.driverNameSnapshot || t.legacyDriverName || '',
     trips: [{ ...t, fromLocation: t.fromLocation || t.originNameSnapshot || '', destinationName: t.destinationName || t.destinationNameSnapshot || '', tripIndex: t.tripIndex || 1 }],
-    tripCount: 1, totalDriverPaySatang: getTripDriverChargeSatang(t), fuelCostSatang: 0, photos: t.photos || [], revision: 1, createdAt: t.createdAt || '', updatedAt: t.updatedAt || '', updatedBy: t.updatedBy || ''
+    tripCount: 1, totalDriverPaySatang: getTripDriverChargeSatang(t), fuelCostSatang: 0, photos: t.photos || [], revision: records.find(r => r.recordId === (t.recordId || t.legacyRecordId))?.revision ?? t.revision ?? 0, createdAt: t.createdAt || '', updatedAt: t.updatedAt || '', updatedBy: t.updatedBy || ''
   } as TruckDailyRecordDoc));
   return [...embedded, ...separate];
 }

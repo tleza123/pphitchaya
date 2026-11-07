@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 // Restore is deliberately create-only: existing documents require manual reconciliation.
-async function main() {
-  const [input, flag] = process.argv.slice(2);
+export async function restoreTruckBackup(args = process.argv.slice(2)) {
+  const [input, flag] = args;
   if (!input || flag !== '--apply') throw new Error('Usage: npm run truck:restore -- <backup.json> --apply');
   const backup = JSON.parse(readFileSync(input, 'utf8'));
   const {checksum,...payload} = backup;
@@ -14,7 +14,7 @@ async function main() {
   if (payload.shopId !== getShopId()) throw new Error('BACKUP_SHOP_MISMATCH');
   const c = payload.collections;
   const names = ['trucks','truckOrigins','truckDestinations','truckLocations','truckDrivers','truckCustomers','truckTariffs','truckTrips','truckRuns','truckPayrollMonths','truckInvoices','truckPayments','truckMonths','truckPhotos'];
-  if (!c || names.some(name => !Array.isArray(c[name])) || !Array.isArray(c.truckMonthRecords) || !Array.isArray(c.truckMonth_workDays) || !Array.isArray(c.truckMonth_payroll) || !Array.isArray(c.truckInvoicePayments) || !Array.isArray(c.truckPayrollVersions)) throw new Error('BACKUP_INCOMPLETE');
+  if (!c || names.some(name => !Array.isArray(c[name])) || !Array.isArray(c.truckMonthRecords) || !Array.isArray(c.truckMonth_workDays) || !Array.isArray(c.truckMonth_payroll) || !Array.isArray(c.truckInvoicePayments) || !Array.isArray(c.truckPayrollVersions) || !Array.isArray(c.requests) || !Array.isArray(c.audit)) throw new Error('BACKUP_INCOMPLETE');
   const shop = getAdminFirestore().collection('shops').doc(getShopId());
   const entries: {path:string; data:Record<string,unknown>}[] = [];
   if (!Array.isArray(c.profile)) throw new Error('BACKUP_INCOMPLETE');
@@ -57,4 +57,4 @@ async function main() {
   });
   console.log(`Restored ${entries.length} truck documents atomically.`);
 }
-main().catch(e => {console.error(e);process.exitCode=1;});
+if (require.main === module) restoreTruckBackup().catch(e => {console.error(e);process.exitCode=1;});

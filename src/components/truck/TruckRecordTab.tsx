@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import settings from '@/components/settings/settings.module.css';
 import { LineSendButton } from '@/components/shared/LineSendButton';
 import { MutationIntent } from '@/lib/client/mutation-intent';
@@ -11,34 +11,12 @@ import { TruckPhotoMeta, TruckTripItem } from '@/lib/truck/types';
 import { parseTonsToKg, formatWeightTons } from '@/lib/truck/weight';
 import { needsLegacyPricingReview } from '@/lib/truck/pricing';
 import { errMsg, getJson, sendJson } from './api';
-import { PhotoLightbox } from './PhotoLightbox';
 import type { TruckBoot } from './TruckShell';
 import styles from './truck.module.css';
 
 interface TripForm { tripId: string; fromLocation: string; originId: string; destinationMode: string; paySatang: number | null; note: string; departureDate: string; arrivalDate: string; billing: string; weight: string; customer: string; customerId:string; billable:boolean; cancelled:boolean }
-const MAX_PHOTOS = 5;
 
 const blankTrip = (from: string): TripForm => ({ tripId: '', fromLocation: from, originId: '', destinationMode: '', paySatang: null, note: '', departureDate: '', arrivalDate: '', billing: '', weight: '', customer: '', customerId:'', billable:true, cancelled:false });
-
-function toWebp(file: File): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('ไม่สามารถเปิดรูปภาพนี้ได้')); };
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const k = Math.min(1, 1280 / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.width * k);
-      canvas.height = Math.round(img.height * k);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return reject(new Error('แปลงรูปภาพไม่สำเร็จ'));
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob(b => (b ? resolve(b) : reject(new Error('แปลงรูปภาพไม่สำเร็จ'))), 'image/webp', 0.78);
-    };
-    img.src = url;
-  });
-}
 
 function money(text: string, label: string): number {
   try { return optionalMoney(text); } catch { throw new Error(`${label}: จำนวนเงินไม่ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง`); }
@@ -61,9 +39,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
   const [loading, setLoading] = useState(false);
   const [legacyFeeReviewRequired, setLegacyFeeReviewRequired] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<{ err: boolean; text: string } | null>(null);
-  const [viewPhoto, setViewPhoto] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const intent = useRef(new MutationIntent());
   const bootRef = useRef(boot);
@@ -120,30 +96,8 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
   };
   const totalPay = trips.every(t => t.paySatang != null) ? trips.reduce((s, t) => s + (t.paySatang ?? 0), 0) : null;
 
-  const addPhotos = async (files: FileList | null) => {
-    if (!files?.length || uploading) return;
-    setUploading(true);
-    setMsg(null);
-    try {
-      const added: TruckPhotoMeta[] = [];
-      for (const file of Array.from(files).slice(0, MAX_PHOTOS - photos.length)) {
-        const fd = new FormData();
-        fd.append('file', await toWebp(file), 'bill.webp');
-        const res = await fetch('/api/truck/photos', { method: 'POST', body: fd });
-        const json = await res.json().catch(() => null);
-        if (!res.ok || !json?.ok) throw new Error(json?.error?.message || 'อัปโหลดรูปภาพไม่สำเร็จ');
-        added.push(json.data);
-      }
-      setPhotos(p => [...p, ...added]);
-    } catch (e) {
-      setMsg({ err: true, text: errMsg(e) });
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const save = async () => {
-    if (saving || uploading) return;
+    if (saving) return;
     setMsg(null);
     try {
       if (!truckId) throw new Error('กรุณาเลือกรถสิบล้อ');
@@ -254,29 +208,6 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
       </div>
 
       <div className={styles.panel}>
-        <label className={styles.fileLabel}>
-          <Camera size={20} aria-hidden="true" />
-          {uploading ? 'กำลังอัปโหลด...' : 'แนบรูปบิล / ใบส่งของ'}
-          <input type="file" accept="image/*" multiple hidden disabled={uploading || photos.length >= MAX_PHOTOS} onChange={e => { void addPhotos(e.target.files); e.target.value = ''; }} />
-        </label>
-        <p className={styles.hint}>แนบได้ไม่เกิน {MAX_PHOTOS} รูป ({photos.length}/{MAX_PHOTOS}) ระบบย่อเป็น WebP ให้อัตโนมัติ</p>
-        {photos.length > 0 && (
-          <div className={styles.thumbs}>
-            {photos.map(p => (
-              <div className={styles.thumb} key={p.photoId}>
-                <button type="button" onClick={() => setViewPhoto(p.photoId)} aria-label="ดูรูปหลักฐานขนาดใหญ่">
-                  <img src={`/api/truck/photos/${p.photoId}`} alt="รูปหลักฐาน" loading="lazy" />
-                </button>
-                <button type="button" className={styles.thumbRemove} onClick={() => setPhotos(ps => ps.filter(x => x.photoId !== p.photoId))} aria-label="เอารูปออกจากใบงาน">
-                  <X size={16} aria-hidden="true" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className={styles.panel}>
         <div className={styles.totalBar}>
           <div className={styles.totalFigs}>
             <div className={styles.fig}><small>จำนวนเที่ยว</small><strong>{trips.length}</strong></div>
@@ -284,7 +215,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
           </div>
         </div>
         <div className={styles.actions}>
-          <button type="button" className={settings.primaryBtn} onClick={save} disabled={saving || uploading || loading || legacyFeeReviewRequired} aria-busy={saving}>
+          <button type="button" className={settings.primaryBtn} onClick={save} disabled={saving || loading || legacyFeeReviewRequired} aria-busy={saving}>
             {saving ? 'กำลังบันทึก...' : revision > 0 ? 'บันทึกการแก้ไขใบงาน' : 'บันทึกใบงาน'}
           </button>
           <LineSendButton scope="truck" className={settings.secondaryBtn} />
@@ -292,7 +223,6 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
         <div role={msg?.err ? 'alert' : 'status'} className={msg?.err ? styles.error : styles.ok}>{msg?.text}</div>
       </div>
       </fieldset>
-      <PhotoLightbox photoId={viewPhoto} onClose={() => setViewPhoto(null)} />
     </div>
   );
 }

@@ -10,8 +10,8 @@ function canonical(value: unknown): string {
 }
 
 /** Import only from a verified full backup. Existing differing candidates are never overwritten. */
-async function main() {
-  const [input, flag] = process.argv.slice(2);
+export async function importTruckMigration(args = process.argv.slice(2)) {
+  const [input, flag] = args;
   if (!input || flag !== '--apply') throw new Error('Usage: npm run truck:migration:import -- <verified-backup.json> --apply');
   const backup = JSON.parse(readFileSync(input, 'utf8'));
   const { checksum, ...payload } = backup;
@@ -47,4 +47,4 @@ async function main() {
   }
   console.log(JSON.stringify({created, unchanged, warnings:preview.warnings}, null, 2));
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+if (require.main === module) importTruckMigration().catch(error => { console.error(error); process.exitCode = 1; });

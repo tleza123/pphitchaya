@@ -4,6 +4,9 @@ import { NextRequest } from 'next/server';
 import { POST as save } from '../src/app/api/truck/records/route';
 import { DELETE as remove } from '../src/app/api/truck/records/[id]/route';
 import { POST as bill } from '../src/app/api/truck/billing/route';
+import { PATCH as review } from '../src/app/api/truck/trips/route';
+import { needsLegacyPricingReview } from '../src/lib/truck/pricing';
+import { mergeReportTrips } from '../src/lib/truck/report-records';
 
 test('modern records preserve permanent IDs and lock invoice edits, deletion and old/new payroll months', async () => {
   const docs=new Map<string,any>(); let counter=0; let queue=Promise.resolve();
@@ -67,6 +70,25 @@ test('modern records preserve permanent IDs and lock invoice edits, deletion and
   const priceAudit=[...docs.entries()].find(([path,value])=>path.startsWith(`${shop}/audit/`)&&value.action==='CREATE_TRUCK_RECORD'&&value.entityKey==='2026-11-28_truck');
   assert.equal((priceAudit?.[1].after as any)?.trips[0].billingSatang,100001,'the direct flat-price amount is retained in the after snapshot');
   const foreign=await save(req('/api/truck/records',{...payload,dateKey:'2026-12-07',requestId:'foreign-trip-id',trips:[{...payload.trips[0],tripId:id}]}));assert.equal(foreign.status,422);
+  const oldRecordId=pendingRecord.recordId;
+  const parentPath=`${shop}/truckMonths/2026-12/records/${oldRecordId}`;
+  const parent=docs.get(parentPath);
+  const oldTrip={...parent.trips[0],pricingVersion:2,driverExtraSatang:2000,billingExtraSatang:1000,recordId:oldRecordId,driverId:'driver'};
+  docs.set(`${shop}/truckTrips/${oldTrip.tripId}`,oldTrip);
+  docs.set(parentPath,{...parent,trips:[oldTrip]});
+  const omitted=await save(req('/api/truck/records',{...pending,expectedRevision:parent.revision,requestId:'omit-legacy-trip',trips:[]}));
+  assert.equal(omitted.status,409,'omitting a legacy trip cannot bypass review');
+  const delLegacy=await remove(new NextRequest('http://localhost/api/truck/records/x',{method:'DELETE',body:JSON.stringify({expectedRevision:parent.revision,requestId:'delete-legacy-trip'})}),{params:Promise.resolve({id:oldRecordId})});
+  assert.equal(delLegacy.status,409,'whole-record deletion also requires legacy review');
+  assert.ok(docs.has(`${shop}/truckTrips/${oldTrip.tripId}`));
+  const reviewed=await review(new NextRequest('http://localhost/api/truck/trips',{method:'PATCH',body:JSON.stringify({pricingVersion:3,billingPricingMode:'PER_TRIP',tripId:oldTrip.tripId,requestId:'review-legacy-trip',expectedRevision:oldTrip.revision||0,expectedRecordRevision:parent.revision,driverId:'driver',originId:'a',destinationId:'b',customerId:'customer',departureDate:'2026-12-05',arrivalDate:'2026-12-06',weightKg:12500,billingSatang:1000,confirmLegacyPricing:true,reason:'ตรวจราคาเดิม'})}));
+  assert.equal(reviewed.status,200,JSON.stringify(await reviewed.clone().json()));
+  const reviewedParent=docs.get(parentPath);
+  assert.equal(needsLegacyPricingReview(reviewedParent.trips[0]),false,'parent and standalone agree that review is complete');
+  assert.equal('driverExtraSatang' in reviewedParent.trips[0],false);
+  assert.equal(reviewedParent.trips[0].legacyDriverExtraSatang,2000,'historical entitlement retained');
+  const projected=mergeReportTrips([reviewedParent],[docs.get(`${shop}/truckTrips/${oldTrip.tripId}`)]).find(r=>r.trips.length);
+  assert.equal(projected?.revision,reviewedParent.revision,'report uses actual current parent revision');
   docs.set(`${shop}/truckControl/main`,{maintenance:true});
   const maintenance=await save(req('/api/truck/records',{...payload,dateKey:'2026-12-08',requestId:'maintenance-edit'}));assert.equal(maintenance.status,503);
 });

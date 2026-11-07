@@ -1,0 +1,4 @@
+﻿const {initializeApp}=require('firebase-admin/app');
+const {getFirestore}=require('firebase-admin/firestore');
+const assert=require('node:assert/strict');
+(async()=>{if(process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8080'||process.env.GCLOUD_PROJECT!=='demo-truck-qa')throw Error('Emulator guard');initializeApp({projectId:'demo-truck-qa'});const db=getFirestore();const ref=db.doc('qa/contention');await ref.set({count:0});let attempts=0;await Promise.all(Array.from({length:8},()=>db.runTransaction(async tx=>{attempts++;const s=await tx.get(ref);await new Promise(r=>setTimeout(r,15));tx.update(ref,{count:s.data().count+1});},{maxAttempts:30})));assert.equal((await ref.get()).data().count,8);assert.ok(attempts>8);console.log(JSON.stringify({count:8,attempts}));await db.terminate();})().catch(e=>{console.error(e);process.exitCode=1});
