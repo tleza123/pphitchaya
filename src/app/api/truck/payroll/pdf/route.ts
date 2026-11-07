@@ -13,6 +13,7 @@ export async function GET(req:NextRequest) {
     await verifyOwner(req); const month=monthKey(req.nextUrl.searchParams.get('month')||''); const driverId=req.nextUrl.searchParams.get('driverId');
     if(!driverId || driverId.includes('/')) throw new Error('INVALID_INPUT');
     const snap=await getShopDocRef().collection('truckPayrollMonths').doc(month).get(); const data=snap.data();
+    if(data?.state!=='CLOSED') return createErrorResponse('PAYROLL_NOT_CLOSED','รอบค่าแรงยังไม่ปิด',409);
     const row=data?.snapshot?.drivers?.find((r:{driverId:string})=>r.driverId===driverId); if(!row) throw new Error('NOT_FOUND');
     const doc=new PDFDocument({size:'A4',margin:45,bufferPages:true}); const chunks:Buffer[]=[];
     const done=new Promise<Buffer>((resolve,reject)=>{doc.on('data',(c:Buffer)=>chunks.push(c));doc.on('end',()=>resolve(Buffer.concat(chunks)));doc.on('error',reject);});

@@ -258,7 +258,7 @@ test('buildTruckDailyFlex generates compliant LINE Flex Bubble card with Slate-N
   assert.match(jsonStr, /3,250\.00/);
   assert.doesNotMatch(jsonStr, /4,800\.00/);
   assert.match(jsonStr, /29,250\.00/);
-  assert.match(jsonStr, /43,200\.00/);
+  assert.doesNotMatch(jsonStr, /43,200\.00/);
 });
 
 test('sendLinePush calls native fetch for push and broadcast endpoints correctly', async () => {

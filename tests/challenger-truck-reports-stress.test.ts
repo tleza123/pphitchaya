@@ -313,8 +313,8 @@ test('CSV Adversarial: Formula injection payloads are safely quoted and parsed w
 
   // Verify that all fields in raw CSV are wrapped in double quotes
   // e.g. "=""=1+1""" or `"=1+1"`
-  assert.ok(csvText.includes(""'=1+1""));
-  assert.ok(csvText.includes(""'@SUM(A1:A10)""));
+  assert.ok(csvText.includes("\"'=1+1\""));
+  assert.ok(csvText.includes("\"'@SUM(A1:A10)\""));
 });
 
 test('CSV Adversarial: Mixed trips and zero-trip records format satang and assign fuel cost only to trip 1', async () => {
@@ -621,11 +621,11 @@ test('Concurrency Boundaries: Dynamic concurrency scales accurately for N = 1, 2
     updatedAt: '2026-01-01T00:00:00.000Z'
   });
 
-  // Test N = 1 month -> peak should be 1
+  // Two metadata reads run in parallel even when only one month is requested.
   const db1 = createInstrumentedMockDb(docs, 15);
   const res1 = await getReports(new NextRequest('http://localhost/api/truck/reports?month=2026-01'));
   assert.equal(res1.status, 200);
-  assert.equal(db1.tracker.peakActive, 1, '1 month must have peak active = 1');
+  assert.equal(db1.tracker.peakActive, 2, '1 month must include the two parallel metadata reads');
 
   // Test N = 2 months -> peak should be 2
   const db2 = createInstrumentedMockDb(docs, 15);

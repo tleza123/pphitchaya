@@ -21,7 +21,11 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     const done = new Promise<Buffer>((resolve,reject) => { doc.on('data', c=>chunks.push(c)); doc.on('end',()=>resolve(Buffer.concat(chunks))); doc.on('error',reject); });
     const header = () => {
       doc.font('Bold').fontSize(23).text('ใบวางบิล');
-      doc.font('Regular').fontSize(15).text(String(invoice.company?.companyName || ''));
+      const company = invoice.company || {};
+      doc.font('Regular').fontSize(15).text(String(company.companyName || ''));
+      if (company.address) doc.text(`ที่อยู่ ${company.address}`);
+      if (company.phone) doc.text(`โทรศัพท์ ${company.phone}`);
+      if (company.taxId) doc.text(`เลขประจำตัวผู้เสียภาษี ${company.taxId}`);
       doc.text(`เลขที่ ${invoice.documentNo}  วันที่ ${invoice.issueDate}  ครบกำหนด ${invoice.dueDate}`);
       doc.text(`ลูกค้า ${invoice.customerName}`).moveDown(.5);
       doc.font('Bold').text('วันที่ออก – ถึง | ทะเบียน | เส้นทาง | ค่าขนส่ง + เพิ่มเติม', { width:510 });

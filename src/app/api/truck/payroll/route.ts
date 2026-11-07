@@ -9,11 +9,24 @@ import { assertTruckWritable } from '@/lib/server/truck-control';
 import { calculateTruckPayroll, PayrollDay, PayrollTrip } from '@/lib/truck/payroll';
 
 export const dynamic = 'force-dynamic';
+function preparePayroll(month:string,legacy:any,tripSnap:any,daySnap:any) {
+  const legacyReviewRequired=legacy.docs.some((d:any)=>(d.data().trips||[]).some((t:{tripId?:string})=>!t.tripId));
+  const days:PayrollDay[]=daySnap.docs.flatMap((d:any)=>{const x=d.data();return (x.drivers||[]).map((v:{driverId:string;name:string;baseWageSatang?:number})=>({date:x.dateKey,driverId:v.driverId,driverName:v.name,baseSatang:v.baseWageSatang??x.baseWageSatang}));});
+  const trips:PayrollTrip[]=tripSnap.docs.map((d:any)=>{const x=d.data();return {tripId:d.id,driverId:x.driverId??null,driverName:x.driverNameSnapshot||'',departureDate:x.departureDate,arrivalDate:x.arrivalDate??null,status:x.status,driverPaySatang:x.driverPaySatang??null,driverExtraSatang:x.driverExtraSatang??0,origin:x.originNameSnapshot||x.fromLocation||'',destination:x.destinationNameSnapshot||x.destinationName||'',plate:x.plateNumberSnapshot||''};});
+  return {preview:calculateTruckPayroll(month,days,trips),legacyReviewRequired};
+}
 export async function GET(req: NextRequest) {
   try {
     await verifyOwner(req); const month=monthKey(req.nextUrl.searchParams.get('month') || ''); const shop=getShopId();
-    const snap=await getShopDocRef(shop).collection('truckPayrollMonths').doc(month).get();
-    return createSuccessResponse(snap.exists ? snap.data() : {month,state:'OPEN',revision:0});
+    const [snap,legacy,tripSnap,daySnap]=await Promise.all([
+      getShopDocRef(shop).collection('truckPayrollMonths').doc(month).get(),
+      getTruckRecordsCol(month,shop).get(),
+      getTruckTripsCol(shop).where('accountingMonth','==',month).get(),
+      getTruckWorkDaysCol(month,shop).get()
+    ]);
+    const current=snap.exists?snap.data()!:{month,state:'OPEN',revision:0};
+    if(current.state==='CLOSED') return createSuccessResponse(current);
+    return createSuccessResponse({...current,...preparePayroll(month,legacy,tripSnap,daySnap)});
   } catch(e: unknown) { const x=e as Error; return createErrorResponse(x.message || 'INTERNAL_ERROR',undefined,400); }
 }
 export async function POST(req: NextRequest) {
@@ -31,10 +44,9 @@ export async function POST(req: NextRequest) {
       if(action==='CLOSE') {
         if(current.state==='CLOSED') throw new Error('MONTH_CLOSED');
         const [legacy,tripSnap,daySnap]=await Promise.all([tx.get(getTruckRecordsCol(month,shop)),tx.get(getTruckTripsCol(shop).where('accountingMonth','==',month)),tx.get(getTruckWorkDaysCol(month,shop))]);
-        if(legacy.docs.some(d => (d.data().trips || []).some((t: {tripId?:string}) => !t.tripId))) throw new Error('LEGACY_REVIEW_REQUIRED');
-        const days:PayrollDay[]=daySnap.docs.flatMap(d => { const x=d.data(); return (x.drivers||[]).map((v: {driverId:string; name:string; baseWageSatang?:number})=>({date:x.dateKey,driverId:v.driverId,driverName:v.name,baseSatang:v.baseWageSatang ?? x.baseWageSatang})); });
-        const trips:PayrollTrip[]=tripSnap.docs.map(d=>{const x=d.data(); return {tripId:d.id,driverId:x.driverId??null,driverName:x.driverNameSnapshot||'',departureDate:x.departureDate,arrivalDate:x.arrivalDate??null,status:x.status,driverPaySatang:x.driverPaySatang??null,driverExtraSatang:x.driverExtraSatang??0,origin:x.originNameSnapshot||x.fromLocation||'',destination:x.destinationNameSnapshot||x.destinationName||'',plate:x.plateNumberSnapshot||''};});
-        const payroll=calculateTruckPayroll(month,days,trips); if(!payroll.canClose) throw new Error('PAYROLL_INCOMPLETE');
+        const {preview:payroll,legacyReviewRequired}=preparePayroll(month,legacy,tripSnap,daySnap);
+        if(legacyReviewRequired) throw new Error('LEGACY_REVIEW_REQUIRED');
+        if(!payroll.canClose) throw new Error('PAYROLL_INCOMPLETE');
         value={month,state:'CLOSED',revision:current.revision+1,version:(current.version||0)+1,snapshot:payroll,closedAt:now,closedBy:owner.uid,payments:{}};
         tx.set(lock.collection('versions').doc(String(value.version)),value);
       } else if(action==='REOPEN') {

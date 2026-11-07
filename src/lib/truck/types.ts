@@ -40,7 +40,7 @@ export interface TruckTripItem {
   billable?: boolean;
   driverExtraNote?: string;
   billingExtraNote?: string;
-  overrideReason?: string;
+  overrideReason?: string | null;
   tripIndex: number;
   fromLocation: string;
   destinationMode: string; // 'DEST_<id>' | '__OTHER__'
@@ -56,6 +56,12 @@ export interface TruckTripItem {
   billingSatang?: number | null;
   billingExtraSatang?: number;
   driverExtraSatang?: number;
+  driverTariffId?: string | null;
+  driverTariffRevision?: number | null;
+  driverRateSource?: 'STANDARD' | 'OVERRIDE' | 'PENDING';
+  billingTariffId?: string | null;
+  billingTariffRevision?: number | null;
+  billingRateSource?: 'STANDARD' | 'OVERRIDE' | 'PENDING' | 'NON_BILLABLE';
   accountingMonth?: string;
 }
 

@@ -485,7 +485,7 @@ test('Truck Routes: Photo upload processes WebP with sharp, enforces limit, and 
   assert.equal(store.docs.has(photoDocPath), false);
 });
 
-test('Truck Routes: Backup exports all truck collections as JSON and restores them', async () => {
+test('Truck Routes: Backup exports truck data and keeps web restore disabled', async () => {
   const store = setupMockDb();
   const shop = `shops/${process.env.SHOP_ID || 'main'}`;
 
@@ -515,8 +515,7 @@ test('Truck Routes: Backup exports all truck collections as JSON and restores th
   assert.equal(body.data.records.length, 1);
   assert.equal(body.data.records[0].recordId, '2026-09-10_t1');
 
-  // Test Restore via POST /api/truck/backup
-  store.reset();
+  // Restore is restricted to the maintenance-gated CLI command.
   const restoreRes = await postBackup(
     new NextRequest('http://localhost/api/truck/backup', {
       method: 'POST',
@@ -528,17 +527,8 @@ test('Truck Routes: Backup exports all truck collections as JSON and restores th
     })
   );
   const restoreBody = await restoreRes.json();
-  assert.equal(restoreRes.status, 200);
-  assert.equal(restoreBody.ok, true);
-  assert.equal(restoreBody.data.restored, true);
-
-  // Verify docs are restored
-  assert.equal(store.docs.get(`${shop}/profile/truck`)?.companyName, 'ทดสอบ แบคอัพ');
-  assert.equal(store.docs.has(`${shop}/trucks/t1`), true);
-  assert.equal(store.docs.has(`${shop}/truckOrigins/o1`), true);
-  assert.equal(store.docs.has(`${shop}/truckDestinations/d1`), true);
-  assert.equal(store.docs.has(`${shop}/truckMonths/2026-09`), true);
-  assert.equal(store.docs.has(`${shop}/truckMonths/2026-09/records/2026-09-10_t1`), true);
+  assert.equal(restoreRes.status, 409);
+  assert.equal(restoreBody.error.code, 'RESTORE_OFFLINE_ONLY');
 });
 
 test('Truck Routes: Input validation and error handling', async () => {

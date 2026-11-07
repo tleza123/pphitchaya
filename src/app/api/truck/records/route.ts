@@ -219,6 +219,7 @@ export async function POST(req: NextRequest) {
       if (oldSnaps.some(s => !s.exists)) throw new Error('TRIP_NOT_FOUND');
       if (oldSnaps.some(s => s.data()?.invoiceId)) throw new Error('TRIP_BILLED');
       if (oldSnaps.some(s => s.data()?.recordId !== recordId)) throw new Error('INVALID_TRIP_ID');
+      const existingTrips = new Map(oldSnaps.map(s => [s.id, s.data()]));
       const modern = trips.some((t: any) => !!t.departureDate);
       if (modern && (!driverId || typeof driverId !== 'string')) throw new Error('DRIVER_REQUIRED');
       const locationIds = [...new Set<string>(trips.filter((t:any)=>t.departureDate).flatMap((t:any)=>[t.originId,t.destinationId]))];
@@ -236,6 +237,36 @@ export async function POST(req: NextRequest) {
       const customerSnaps = masterSnaps.slice(driverId ? 1 : 0);
       if (customerSnaps.some(s => !s.exists || s.data()?.status !== 'ACTIVE')) throw new Error('CUSTOMER_NOT_ACTIVE');
       const customers = new Map(customerSnaps.map(s => [s.id, s.data()?.name]));
+      const tariffSnap = modern ? await tx.get(getTruckTariffsCol(shopId)) : null;
+      const activeTariffs = (tariffSnap?.docs || []).filter((doc: any) => doc.data()?.status === 'ACTIVE').map((doc: any) => ({ tariffId: doc.id, ...doc.data() }));
+      const rateSnapshots = trips.map((t: any) => {
+        if (!t.departureDate) return {};
+        const prior = t.tripId ? existingTrips.get(t.tripId) : null;
+        const sameRoute = prior && prior.originId === t.originId && prior.destinationId === t.destinationId && (prior.customerId || null) === (t.customerId || null);
+        const driverTariffs = activeTariffs.filter((x: any) => x.originId === t.originId && x.destinationId === t.destinationId && x.customerId == null);
+        const billingTariffs = activeTariffs.filter((x: any) => x.originId === t.originId && x.destinationId === t.destinationId && x.customerId === t.customerId);
+        if (driverTariffs.length > 1 || billingTariffs.length > 1) throw new Error('AMBIGUOUS_TARIFF');
+        const driverTariff = driverTariffs[0];
+        const billingTariff = billingTariffs[0];
+        const standardDriver = driverTariff && t.driverPaySatang === driverTariff.driverPaySatang;
+        const standardBilling = t.billable !== false && billingTariff?.customerRateSatang != null && t.billingSatang === billingTariff.customerRateSatang;
+        const priorDriver = sameRoute && prior.driverPaySatang === t.driverPaySatang;
+        const priorBilling = sameRoute && prior.billingSatang === t.billingSatang;
+        const driverOverride = t.driverPaySatang != null && !standardDriver && !priorDriver;
+        const billingOverride = t.billable !== false && t.billingSatang != null && !standardBilling && !priorBilling;
+        const needsReason = driverOverride || billingOverride;
+        const reason = typeof t.overrideReason === 'string' ? t.overrideReason.trim().slice(0, 500) : '';
+        if (needsReason && !reason) throw new Error('PRICE_OVERRIDE_REQUIRED');
+        return {
+          driverTariffId: priorDriver ? prior.driverTariffId ?? driverTariff?.tariffId ?? null : driverTariff?.tariffId ?? null,
+          driverTariffRevision: priorDriver ? prior.driverTariffRevision ?? driverTariff?.revision ?? null : driverTariff?.revision ?? null,
+          driverRateSource: t.driverPaySatang == null ? 'PENDING' : standardDriver ? 'STANDARD' : priorDriver ? prior.driverRateSource || 'STANDARD' : 'OVERRIDE',
+          billingTariffId: priorBilling ? prior.billingTariffId ?? billingTariff?.tariffId ?? null : billingTariff?.tariffId ?? null,
+          billingTariffRevision: priorBilling ? prior.billingTariffRevision ?? billingTariff?.revision ?? null : billingTariff?.revision ?? null,
+          billingRateSource: t.billable === false ? 'NON_BILLABLE' : t.billingSatang == null ? 'PENDING' : standardBilling ? 'STANDARD' : priorBilling ? prior.billingRateSource || 'STANDARD' : 'OVERRIDE',
+          overrideReason: needsReason ? reason : (reason || prior?.overrideReason || null)
+        };
+      });
 
       const truckData = truckSnap.exists ? truckSnap.data() : null;
       if (modern && (!truckData || truckData.status !== 'ACTIVE')) throw new Error('TRUCK_NOT_ACTIVE');
@@ -246,13 +277,13 @@ export async function POST(req: NextRequest) {
       const now = new Date().toISOString();
       const newRevision = currentRevision + 1;
       const finalPhotos = Array.isArray(photos) ? photos : (current?.photos || []);
-      const finalTrips = trips.map((t: any) => {
+      const finalTrips = trips.map((t: any, index: number) => {
         const origin=locations.get(t.originId), destination=locations.get(t.destinationId);
         if (t.departureDate && (t.originId===t.destinationId || origin?.status !== 'ACTIVE' || destination?.status !== 'ACTIVE')) throw new Error('INVALID_LOCATION');
         if (t.billable !== false && t.status === 'COMPLETED' && t.departureDate && (!t.customerId || t.billingSatang == null)) throw new Error('BILLING_INCOMPLETE');
         if ((t.driverExtraSatang || 0)>0 && !String(t.driverExtraNote||'').trim()) throw new Error('EXTRA_NOTE_REQUIRED');
         if ((t.billingExtraSatang || 0)>0 && !String(t.billingExtraNote||'').trim()) throw new Error('EXTRA_NOTE_REQUIRED');
-        return { ...t, fromLocation: origin ? `${origin.code} — ${origin.name}` : t.fromLocation, destinationName: destination ? `${destination.code} — ${destination.name}` : t.destinationName, customerName: t.customerId ? customers.get(t.customerId) : '', tripId: t.tripId || randomUUID() };
+        return { ...t, ...rateSnapshots[index], overrideReason: rateSnapshots[index].overrideReason || null, fromLocation: origin ? `${origin.code} — ${origin.name}` : t.fromLocation, destinationName: destination ? `${destination.code} — ${destination.name}` : t.destinationName, customerName: t.customerId ? customers.get(t.customerId) : '', tripId: t.tripId || randomUUID() };
       });
 
       const recordData: TruckDailyRecordDoc = {
@@ -277,7 +308,6 @@ export async function POST(req: NextRequest) {
       tx.set(recordRef, recordData);
       tx.set(monthRef, { monthKey, updatedAt: now }, { merge: true });
       const retained = new Set(finalTrips.map((t: any) => t.tripId));
-      const existingTrips = new Map(oldSnaps.map(s => [s.id, s.data()]));
       for (const ref of oldRefs) if (!retained.has(ref.id)) tx.delete(ref);
       for (const trip of finalTrips) {
         const prior = existingTrips.get(trip.tripId);
@@ -292,7 +322,8 @@ export async function POST(req: NextRequest) {
         recordId,
         current,
         recordData,
-        requestId
+        requestId,
+        finalTrips.filter((trip: any) => trip.driverRateSource === 'OVERRIDE' || trip.billingRateSource === 'OVERRIDE').map((trip: any) => `${trip.tripId}: ${trip.overrideReason}`).join('\n') || undefined
       );
 
       recordRequestReceipt(tx, requestRef, {
@@ -312,7 +343,7 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; statusCode?: number };
     if (error.message === 'TRUCK_MAINTENANCE') return createErrorResponse('TRUCK_MAINTENANCE', 'ระบบกำลังบำรุงรักษา กรุณาลองใหม่ภายหลัง', 503);
-    if (['INVALID_TRIP_ID','INVALID_LOCATION','INVALID_INPUT','INVALID_DATE','INVALID_TIME','EXTRA_NOTE_REQUIRED','BILLING_INCOMPLETE','DRIVER_REQUIRED','CUSTOMER_NOT_ACTIVE','DRIVER_NOT_ACTIVE','TRUCK_NOT_ACTIVE','MISSING_PRICE'].includes(error.message || '')) return createErrorResponse(error.message!, undefined, 422);
+    if (['INVALID_TRIP_ID','INVALID_LOCATION','INVALID_INPUT','INVALID_DATE','INVALID_TIME','EXTRA_NOTE_REQUIRED','BILLING_INCOMPLETE','DRIVER_REQUIRED','CUSTOMER_NOT_ACTIVE','DRIVER_NOT_ACTIVE','TRUCK_NOT_ACTIVE','MISSING_PRICE','PRICE_OVERRIDE_REQUIRED','AMBIGUOUS_TARIFF'].includes(error.message || '')) return createErrorResponse(error.message!, undefined, 422);
     if (error.message === 'CONFLICT') {
       return createErrorResponse('CONFLICT', undefined, 409);
     }

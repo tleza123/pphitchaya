@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import styles from '@/components/shell/shell.module.css';
+import truckStyles from './truck.module.css';
 import { TruckDestinationDoc, TruckDoc, TruckOriginDoc } from '@/lib/truck/types';
 import { errMsg, getJson } from './api';
 import { TruckBottomNav } from './TruckBottomNav';
@@ -73,7 +74,7 @@ export default function TruckShell({ initialTab, initialDetailed = false }: { in
       <TruckHeader name={name} activeTab={tab} onChangeTab={next => go(next)} />
 
       <main className={styles.mainContent}>
-        <nav style={{display:'flex',gap:16,flexWrap:'wrap',marginBottom:16}} aria-label="เอกสารรถบรรทุก"><a href="/">เลือกระบบ</a><a href="/truck/payroll">วันทำงานและปิดรอบค่าแรง</a><a href="/truck/billing">วางบิลและรับเงิน</a><a href="/truck/review">ตรวจข้อมูลที่ย้ายมา</a></nav>
+        <nav className={truckStyles.docNav} aria-label="เอกสารรถบรรทุก"><a href="/truck/payroll">วันทำงานและปิดรอบค่าแรง</a><a href="/truck/billing">วางบิลและรับเงิน</a><a href="/truck/review">ตรวจข้อมูลที่ย้ายมา</a></nav>
         {error && <div role="alert" style={{ color: 'var(--team-absent)' }}>{error} <button type="button" onClick={() => void loadBoot()}>ลองใหม่</button></div>}
         {!boot && !error && (
           <div aria-busy="true" aria-label="กำลังเปิดหน้า" className="tabLoading">

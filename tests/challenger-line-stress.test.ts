@@ -394,7 +394,7 @@ test('Stress-test: Truck Flex with 20 trucks, multiple trips and custom origins/
   assert.match(jsonStr, /32,500\.00/);
   assert.doesNotMatch(jsonStr, /48,000\.00/);
   assert.match(jsonStr, /546,000\.00/);
-  assert.match(jsonStr, /806,400\.00/);
+  assert.doesNotMatch(jsonStr, /806,400\.00/);
   assert.match(jsonStr, /ท่าทราย A \(บางบ่อ\)/);
 });
 

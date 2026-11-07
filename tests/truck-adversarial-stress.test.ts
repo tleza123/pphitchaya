@@ -200,7 +200,7 @@ test('calculateTruckRecordTotals: trip driverPaySatang boundaries - rejects nega
   );
   assert.throws(
     () => calculateTruckRecordTotals([createMockTrip(1, null as any)], 0),
-    /INVALID_MONEY/
+    /MISSING_PRICE/
   );
   assert.throws(
     () => calculateTruckRecordTotals([createMockTrip(1, undefined as any)], 0),

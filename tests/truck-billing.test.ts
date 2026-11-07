@@ -2,20 +2,27 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { NextRequest } from 'next/server';
 import { POST } from '../src/app/api/truck/billing/route';
+import { GET as invoicePdf } from '../src/app/api/truck/billing/[id]/pdf/route';
 
 test('billing locks a trip atomically and receipts and partial payments cannot duplicate money', async () => {
   process.env.TRUCK_BILLING_ENABLED = 'true';
   const docs = new Map<string, any>(); let n=0; let queue=Promise.resolve();
-  const ref=(path:string):any=>({path,id:path.split('/').pop(),collection:(name:string)=>col(`${path}/${name}`)});
+  const ref=(path:string):any=>({path,id:path.split('/').pop(),collection:(name:string)=>col(`${path}/${name}`),get:async()=>snap(ref(path))});
   const col=(path:string):any=>({doc:(id?:string)=>ref(`${path}/${id || `generated${++n}`}`)});
   const snap=(r:any)=>({id:r.id,exists:docs.has(r.path),data:()=>docs.get(r.path)});
   (globalThis as any).adminDb={collection:col,runTransaction:async(fn:any)=>{let release!:()=>void;const previous=queue;queue=new Promise<void>(r=>{release=r;});await previous;try {const writes:(()=>void)[]=[];const tx={get:async(r:any)=>snap(r),getAll:async(...refs:any[])=>refs.map(snap),create:(r:any,v:any)=>writes.push(()=>{if(docs.has(r.path))throw Error('ALREADY_EXISTS');docs.set(r.path,v);}),set:(r:any,v:any)=>writes.push(()=>docs.set(r.path,v)),update:(r:any,v:any)=>writes.push(()=>docs.set(r.path,{...docs.get(r.path),...v}))};const result=await fn(tx);writes.forEach(w=>w());return result;}finally{release();}}};
   const base=`shops/${process.env.SHOP_ID||'main'}`;
+  docs.set(`${base}/profile/truck`,{companyName:'Demo Haulage',address:'12 Road',phone:'02-123-4567',taxId:'0100000000000'});
   docs.set(`${base}/truckTrips/t1`,{status:'COMPLETED',customerId:'c1',customerName:'ลูกค้า',billingSatang:100000,billingExtraSatang:5000,departureDate:'2026-11-30',arrivalDate:'2026-12-02'});
   const post=(body:any)=>POST(new NextRequest('http://localhost/api/truck/billing',{method:'POST',body:JSON.stringify(body)}));
   const [a,b]=await Promise.all([post({action:'INVOICE',requestId:'request-a',tripIds:['t1'],issueDate:'2026-12-03'}),post({action:'INVOICE',requestId:'request-b',tripIds:['t1'],issueDate:'2026-12-03'})]);
   assert.deepEqual([a.status,b.status].sort(),[200,409]); const inv=(await a.json()).data;
   assert.equal(inv.totalSatang,105000); assert.equal(docs.get(`${base}/truckTrips/t1`).invoiceId,inv.invoiceId);
+  assert.deepEqual(inv.company,{companyName:'Demo Haulage',address:'12 Road',phone:'02-123-4567',taxId:'0100000000000'});
+  assert.equal(JSON.stringify(inv.lines).includes('driverPaySatang'),false);
+  const pdf=await invoicePdf(new NextRequest(`http://localhost/api/truck/billing/${inv.invoiceId}/pdf`),{params:Promise.resolve({id:inv.invoiceId})});
+  assert.equal(pdf.status,200); assert.equal(pdf.headers.get('Content-Type'),'application/pdf');
+  assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0,4).toString(),'%PDF');
   const pay={action:'PAYMENT',requestId:'request-pay',invoiceId:inv.invoiceId,expectedRevision:1,amountSatang:50000,paidDate:'2026-12-05'};
   const firstPayment=await post(pay); assert.equal(firstPayment.status,200); const payment=(await firstPayment.json()).data; assert.equal((await post(pay)).status,200);
   assert.equal(docs.get(`${base}/truckInvoices/${inv.invoiceId}`).paidSatang,50000);
