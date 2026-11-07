@@ -112,13 +112,21 @@ export async function GET(req: NextRequest) {
       };
     });
 
+    // Sort displayed location codes numerically (1, 2, 10; A1, A2, A10).
+    const truckLocations = [...locationsSnap.docs]
+      .sort((a, b) => String(a.data().code || '').localeCompare(String(b.data().code || ''), 'th', { numeric: true }))
+      .map(d => ({ locationId: d.id, ...d.data() }));
+
     return createSuccessResponse({
       truckProfile,
       lineSettings,
       trucks,
       truckOrigins,
-      truckDestinations
-      , truckDrivers: driversSnap.docs.map(d=>({driverId:d.id,...d.data()})), truckCustomers: customersSnap.docs.map(d=>({customerId:d.id,...d.data()})), truckTariffs: tariffsSnap.docs.map(d=>({tariffId:d.id,...d.data()})), truckLocations: locationsSnap.docs.map(d=>({locationId:d.id,...d.data()}))
+      truckDestinations,
+      truckDrivers: driversSnap.docs.map(d=>({driverId:d.id,...d.data()})),
+      truckCustomers: customersSnap.docs.map(d=>({customerId:d.id,...d.data()})),
+      truckTariffs: tariffsSnap.docs.map(d=>({tariffId:d.id,...d.data()})),
+      truckLocations
     });
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; statusCode?: number };
