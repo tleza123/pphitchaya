@@ -79,6 +79,8 @@ export async function GET(req: NextRequest) {
         truckId: doc.id,
         plateNumber: d.plateNumber || '',
         driverName: d.driverName || '',
+        ...(d.driverId ? { driverId: d.driverId } : {}),
+        ...(d.baseWageSatang !== undefined ? { baseWageSatang: d.baseWageSatang } : {}),
         notes: d.notes || '',
         status: d.status || 'ACTIVE',
         revision: d.revision || 1,

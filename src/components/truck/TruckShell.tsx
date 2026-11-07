@@ -18,7 +18,7 @@ export interface TruckBoot {
   trucks: TruckDoc[];
   truckOrigins: TruckOriginDoc[];
   truckDestinations: TruckDestinationDoc[];
-  truckDrivers: {driverId:string; name:string; status:string}[];
+  truckDrivers: {driverId:string; name:string; status:string; baseWageSatang?: number; revision?: number}[];
   truckCustomers: {customerId:string; name:string; status:string}[];
   truckLocations: { locationId: string; code: string; name: string; status: string }[];
   truckTariffs: { tariffId: string; originId: string; destinationId: string; customerId: string | null; driverPaySatang: number; customerRateSatang: number | null; status: string }[];

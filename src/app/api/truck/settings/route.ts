@@ -77,6 +77,8 @@ export async function GET(req: NextRequest) {
         truckId: doc.id,
         plateNumber: d.plateNumber || '',
         driverName: d.driverName || '',
+        ...(d.driverId ? { driverId: d.driverId } : {}),
+        ...(d.baseWageSatang !== undefined ? { baseWageSatang: d.baseWageSatang } : {}),
         notes: d.notes || '',
         status: d.status || 'ACTIVE',
         revision: d.revision || 1,
@@ -282,10 +284,15 @@ export async function POST(req: NextRequest) {
       const status = truck.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
       const expectedRevision = typeof body.expectedRevision === 'number' ? body.expectedRevision : undefined;
 
+      if (truck.baseWageSatang !== undefined) {
+        try { validateSatang(truck.baseWageSatang); } catch { return createErrorResponse('INVALID_MONEY', undefined, 422); }
+      }
+
       const payloadHash = computePayloadHash(owner.uid, 'POST', `truck:${truckId}`, {
         truckId,
         plateNumber,
         driverName,
+        baseWageSatang: truck.baseWageSatang,
         status,
         expectedRevision
       });
@@ -293,12 +300,15 @@ export async function POST(req: NextRequest) {
       const truckRef = getTruckRef(truckId, shopId);
 
       const result = await db.runTransaction(async tx => {
-      await assertTruckWritable(tx, shopId);
+        await assertTruckWritable(tx, shopId);
         // Read phase
         const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
         if (cached) return cached;
 
-        const snap = await tx.get(truckRef);
+        const [snap, driversSnap] = await Promise.all([
+          tx.get(truckRef),
+          tx.get(getTruckDriversCol(shopId))
+        ]);
         const exists = snap.exists;
         const current = exists ? snap.data() : null;
 
@@ -309,10 +319,34 @@ export async function POST(req: NextRequest) {
         // Write phase
         const now = new Date().toISOString();
         const newRevision = (current?.revision || 0) + 1;
+
+        let driverId = current?.driverId || '';
+        if (driverName) {
+          const matchedDriver = driversSnap.docs.find(d => (driverId && d.id === driverId) || d.data().name?.trim() === driverName);
+          const driverRef = matchedDriver ? getTruckDriversCol(shopId).doc(matchedDriver.id) : getTruckDriversCol(shopId).doc();
+          driverId = driverRef.id;
+          const driverCurrent = matchedDriver?.data();
+          const baseWageSatang = typeof truck.baseWageSatang === 'number'
+            ? truck.baseWageSatang
+            : (driverCurrent?.baseWageSatang ?? 30000);
+          const driverData = {
+            driverId,
+            name: driverName,
+            baseWageSatang,
+            status,
+            revision: (driverCurrent?.revision || 0) + 1,
+            createdAt: driverCurrent?.createdAt || now,
+            updatedAt: now
+          };
+          tx.set(driverRef, driverData);
+        }
+
         const data: TruckDoc = {
           truckId,
           plateNumber,
           driverName,
+          ...(driverId ? { driverId } : {}),
+          ...(typeof truck.baseWageSatang === 'number' ? { baseWageSatang: truck.baseWageSatang } : (current?.baseWageSatang !== undefined ? { baseWageSatang: current.baseWageSatang } : {})),
           notes,
           status,
           revision: newRevision,
@@ -360,19 +394,30 @@ export async function POST(req: NextRequest) {
       const truckRef = getTruckRef(truckId, shopId);
 
       const result = await db.runTransaction(async tx => {
-      await assertTruckWritable(tx, shopId);
+        await assertTruckWritable(tx, shopId);
         // Read phase
         const cached = await checkRequestReceipt(tx, requestRef, payloadHash);
         if (cached) return cached;
 
-        const snap = await tx.get(truckRef);
+        const [snap, driversSnap] = await Promise.all([
+          tx.get(truckRef),
+          tx.get(getTruckDriversCol(shopId))
+        ]);
         if (!snap.exists) {
           return { deleted: true, truckId };
         }
         const current = snap.data();
 
         // Write phase
-        tx.set(truckRef, { ...current, status:'SUSPENDED', revision:(current?.revision||0)+1, updatedAt:new Date().toISOString() });
+        const now = new Date().toISOString();
+        tx.set(truckRef, { ...current, status:'SUSPENDED', revision:(current?.revision||0)+1, updatedAt:now });
+
+        if (current?.driverId || current?.driverName) {
+          const driverDoc = driversSnap.docs.find(d => (current.driverId && d.id === current.driverId) || (current.driverName && d.data().name?.trim() === current.driverName.trim()));
+          if (driverDoc && driverDoc.data().status !== 'SUSPENDED') {
+            tx.set(getTruckDriversCol(shopId).doc(driverDoc.id), { ...driverDoc.data(), status: 'SUSPENDED', revision: (driverDoc.data().revision || 0) + 1, updatedAt: now });
+          }
+        }
 
         recordAudit(
           tx,
@@ -393,7 +438,7 @@ export async function POST(req: NextRequest) {
           entityKey: `delete:truck:${truckId}`,
           payloadHash,
           response: responsePayload,
-          createdAt: new Date().toISOString()
+          createdAt: now
         });
 
         return responsePayload;

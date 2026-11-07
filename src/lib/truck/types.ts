@@ -6,6 +6,8 @@ export interface TruckDoc {
   truckId: string;
   plateNumber: string;
   driverName: string;
+  driverId?: string;
+  baseWageSatang?: number;
   notes?: string;
   status: 'ACTIVE' | 'SUSPENDED';
   revision: number;

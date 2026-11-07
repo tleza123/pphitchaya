@@ -50,6 +50,16 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
     if (!truckId && boot.trucks.length) setTruckId((boot.trucks.find(t => t.status === 'ACTIVE') || boot.trucks[0]).truckId);
   }, [boot.trucks, truckId]);
 
+  // Synchronize driverId automatically from the selected truck
+  useEffect(() => {
+    if (!truckId) return;
+    const currentTruck = boot.trucks.find(t => t.truckId === truckId);
+    if (!currentTruck) return;
+    const matched = boot.truckDrivers?.find(d => (currentTruck.driverId && d.driverId === currentTruck.driverId) || (currentTruck.driverName && d.name === currentTruck.driverName && d.status === 'ACTIVE'))
+      || boot.truckDrivers?.find(d => currentTruck.driverName && d.name === currentTruck.driverName);
+    if (matched) setDriverId(matched.driverId);
+  }, [truckId, boot.trucks, boot.truckDrivers]);
+
   // "Edit" from the reports tab jumps here with a specific day and truck.
   useEffect(() => {
     if (editTarget) { setDate(editTarget.dateKey); setTruckId(editTarget.truckId); setReloadKey(k => k + 1); }
@@ -66,7 +76,14 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
         if (stale) return;
         const b = bootRef.current;
         const rec = d.records?.[0];
-        setDriverId(rec?.driverId || '');
+        if (rec?.driverId) {
+          setDriverId(rec.driverId);
+        } else {
+          const currentTruck = b.trucks.find(t => t.truckId === truckId);
+          const matched = b.truckDrivers?.find(d => (currentTruck?.driverId && d.driverId === currentTruck.driverId) || (currentTruck?.driverName && d.name === currentTruck.driverName && d.status === 'ACTIVE'))
+            || b.truckDrivers?.find(d => currentTruck?.driverName && d.name === currentTruck.driverName);
+          setDriverId(matched?.driverId || '');
+        }
         if (!rec) {
           setTrips([blankTrip(b.truckOrigins[0]?.name || '')]);
           setPhotos([]); setRevision(0); setLegacyFeeReviewRequired(false);
@@ -103,7 +120,14 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
     setMsg(null);
     try {
       if (!truckId) throw new Error('กรุณาเลือกรถสิบล้อ');
-      if (!driverId) throw new Error('กรุณาเลือกคนขับ');
+      const selectedTruck = boot.trucks.find(t => t.truckId === truckId);
+      let targetDriverId = driverId;
+      if (!targetDriverId && selectedTruck) {
+        const matched = boot.truckDrivers?.find(d => (selectedTruck.driverId && d.driverId === selectedTruck.driverId) || (selectedTruck.driverName && d.name === selectedTruck.driverName && d.status === 'ACTIVE'))
+          || boot.truckDrivers?.find(d => selectedTruck.driverName && d.name === selectedTruck.driverName);
+        if (matched) targetDriverId = matched.driverId;
+      }
+      if (!targetDriverId) throw new Error(`ไม่พบข้อมูลคนขับสำหรับรถ ${selectedTruck?.plateNumber || ''} (กรุณาระบุชื่อคนขับในแท็บตั้งค่า)`);
       const items: TruckTripItem[] = trips.map((t, i) => {
         const label = `เที่ยวที่ ${i + 1}`;
         if (!t.destinationMode) throw new Error(`${label}: กรุณาเลือกปลายทาง`);
@@ -116,7 +140,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
           pricingVersion: 3, billingPricingMode: 'PER_TRIP', weightKg: parseTonsToKg(t.weight), note: t.note.trim(), departureDate: t.departureDate || date, arrivalDate: t.arrivalDate || null, status: t.cancelled ? 'CANCELLED' : t.arrivalDate ? 'COMPLETED' : 'OPEN', customerId: isBillable ? t.customerId : null, customerName: isBillable ? t.customer.trim() : '', billable: isBillable, billingSatang: isBillable ? (t.billing.trim() ? money(t.billing, label) : null) : null
         };
       });
-      const payload = { dateKey: date, truckId, driverId, trips: items, fuelCostSatang: 0, photos, expectedRevision: revision };
+      const payload = { dateKey: date, truckId, driverId: targetDriverId, trips: items, fuelCostSatang: 0, photos, expectedRevision: revision };
       setSaving(true);
       const rec = await sendJson('/api/truck/records', 'POST', payload, intent.current.requestId(payload));
       intent.current.complete();
@@ -156,11 +180,11 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
                 <option key={t.truckId} value={t.truckId}>{t.plateNumber}{t.driverName ? ` (${t.driverName})` : ''}{t.status === 'SUSPENDED' ? ' - พักรถ' : ''}</option>
               ))}
             </select>
+            <p className={styles.hint}>คนขับประจำรถ: {boot.trucks.find(t => t.truckId === truckId)?.driverName || 'ไม่ระบุ'}</p>
           </div>
         </div>
         {revision > 0 && <div className={styles.editing} role="status">กำลังแก้ไขใบงานที่บันทึกไว้ของวันนี้ แก้ไขหรือเพิ่มเที่ยววิ่งแล้วกดบันทึกเพื่อทับข้อมูลเดิม</div>}
         {legacyFeeReviewRequired && <div className={styles.error} role="alert">ใบงานนี้ยังไม่ผ่านการตรวจราคาแบบใหม่ ต้องตรวจข้อมูลเดิมก่อนแก้ไขหรือออกเอกสาร <a href="/truck/review">ไปหน้าตรวจข้อมูลเก่า</a></div>}
-        <div className={settings.formGroup}><label className={settings.formLabel} htmlFor="tr-driver">คนขับ</label><select id="tr-driver" className={settings.formInput} value={driverId} onChange={e=>setDriverId(e.target.value)}><option value="">เลือกคนขับ</option>{boot.truckDrivers?.filter(d=>d.status==='ACTIVE').map(d=><option key={d.driverId} value={d.driverId}>{d.name}</option>)}</select></div>
       </div>
 
       <div className={styles.panel}>

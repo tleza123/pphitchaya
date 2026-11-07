@@ -99,17 +99,27 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
   const post = (body: object) => sendJson('/api/truck/settings', 'POST', body);
   const baht = (text: string) => { try { return moneySatang(text.trim()); } catch { throw new Error('จำนวนเงินไม่ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง'); } };
 
-  const trucks: Item[] = boot.trucks.map(t => ({
-    id: t.truckId, title: t.plateNumber, sub: t.driverName ? `คนขับ: ${t.driverName}` : 'ไม่ระบุคนขับ',
-    flag: t.status === 'SUSPENDED' ? 'พักรถ' : undefined,
-    values: { plateNumber: t.plateNumber, driverName: t.driverName, suspended: String(t.status === 'SUSPENDED') }
-  }));
+  const truckDriversList: Item[] = boot.trucks.map(t => {
+    const d = (boot.truckDrivers || []).find(driver => (t.driverId && driver.driverId === t.driverId) || (t.driverName && driver.name === t.driverName));
+    const wageSatang = d?.baseWageSatang ?? (t.baseWageSatang ?? 30000);
+    return {
+      id: t.truckId,
+      title: t.plateNumber,
+      sub: `${t.driverName ? `คนขับ: ${t.driverName}` : 'ไม่ระบุคนขับ'} · ค่าแรงฐาน ${formatMoney(wageSatang)} บาท/วัน`,
+      flag: t.status === 'SUSPENDED' ? 'พักรถ' : undefined,
+      values: {
+        plateNumber: t.plateNumber,
+        driverName: t.driverName || '',
+        base: String(wageSatang / 100),
+        suspended: String(t.status === 'SUSPENDED')
+      }
+    };
+  });
   const origins: Item[] = boot.truckOrigins.map(o => ({ id: o.originId, title: o.name, values: { name: o.name } }));
   const dests: Item[] = boot.truckDestinations.map(d => ({
     id: d.destinationId, title: d.name, sub: `ค่าเที่ยวคนขับ ${formatMoney(d.driverPaySatang)} บาท`,
     values: { name: d.name, pay: satangToDecimalString(d.driverPaySatang) }
   }));
-  const drivers: Item[] = ((boot as any).truckDrivers || []).filter((d:any) => d.status !== 'SUSPENDED').map((d: any) => ({ id: d.driverId, title: d.name, sub: `ค่าแรงฐาน ${formatMoney(d.baseWageSatang ?? 30000)} บาท/วัน`, values: { name: d.name, base: String((d.baseWageSatang ?? 30000) / 100), revision: String(d.revision) } }));
   const customers: Item[] = ((boot as any).truckCustomers || []).filter((d:any) => d.status !== 'SUSPENDED').map((d: any) => ({ id: d.customerId, title: d.name, values: { name: d.name, revision: String(d.revision) } }));
   const locations: Item[] = ((boot as any).truckLocations || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.locationId,title:`${d.code} — ${d.name}`,values:{code:d.code,name:d.name,detail:d.detail||'',revision:String(d.revision)}}));
   const tariffs: Item[] = ((boot as any).truckTariffs || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.tariffId,title:`${locations.find(x=>x.id===d.originId)?.title || d.originId} → ${locations.find(x=>x.id===d.destinationId)?.title || d.destinationId}`,sub:d.customerId ? `${customers.find(x=>x.id===d.customerId)?.title || d.customerId}: ${d.customerRateSatang == null ? 'ยังไม่ได้ตั้งราคา' : formatMoney(d.customerRateSatang)+' บาท'}` : `ค่าเที่ยว ${formatMoney(d.driverPaySatang)} บาท`,values:{originId:d.originId,destinationId:d.destinationId,customerId:d.customerId||'',pay:d.driverPaySatang == null ? '' : satangToDecimalString(d.driverPaySatang),billing:d.customerRateSatang==null?'':satangToDecimalString(d.customerRateSatang),revision:String(d.revision)}}));
@@ -157,15 +167,32 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
         onSave={(v,id)=>act(()=>post({action:'UPSERT_TARIFF',tariff:{id:id||undefined,originId:v.originId,destinationId:v.destinationId,customerId:v.customerId,customerRateSatang:baht(v.billing)},expectedRevision:id?Number(v.revision):0}),'บันทึกราคาแล้ว')}
         onDelete={item=>{setPendingDelete({item,request:{action:'DISABLE_TARIFF',id:item.id,expectedRevision:Number(item.values.revision)},success:'ปิดใช้งานราคาแล้ว'});return Promise.resolve();}} />
 
-      <MasterSection title="รถสิบล้อและคนขับ" busy={busy} items={trucks}
-        fields={[{ key: 'plateNumber', label: 'ทะเบียนรถ', required: true }, { key: 'driverName', label: 'คนขับประจำ' }, { key: 'suspended', label: 'พักรถชั่วคราว', kind: 'check' }]}
-        onSave={(v, id) => act(() => post({ action: 'UPSERT_TRUCK', truck: { truckId: id ?? undefined, plateNumber: v.plateNumber, driverName: v.driverName || '', status: v.suspended === 'true' ? 'SUSPENDED' : 'ACTIVE' }, expectedRevision: id ? boot.trucks.find(t => t.truckId === id)?.revision : undefined }), 'บันทึกข้อมูลรถแล้ว')}
-        onDelete={item => { setPendingDelete({ item, request: { action: 'DELETE_TRUCK', truckId: item.id }, success: 'ลบรถแล้ว' }); return Promise.resolve(); }} />
-
-      <MasterSection title="คนขับและค่าแรงฐานรายวัน" busy={busy} items={drivers}
-        fields={[{ key: 'name', label: 'ชื่อคนขับ', required: true }, { key: 'base', label: 'ค่าแรงฐานต่อวัน (บาท)', kind: 'money', required: true }]}
-        onSave={(v, id) => act(() => post({ action: 'UPSERT_DRIVER', driver: { driverId: id || undefined, name: v.name, baseWageSatang: baht(v.base || '300') }, expectedRevision: id ? Number(v.revision) : 0 }), 'บันทึกคนขับแล้ว')}
-        onDelete={item => { setPendingDelete({ item, request: { action: 'DELETE_DRIVER', driverId: item.id, expectedRevision: Number(item.values.revision) }, success: 'ปิดใช้งานคนขับแล้ว' }); return Promise.resolve(); }} />
+      <MasterSection title="รถและคนขับประจำรถ" busy={busy} items={truckDriversList}
+        fields={[
+          { key: 'plateNumber', label: 'ทะเบียนรถ', required: true },
+          { key: 'driverName', label: 'ชื่อคนขับ', required: true },
+          { key: 'base', label: 'ค่าแรงฐานต่อวัน (บาท)', kind: 'money', required: true },
+          { key: 'suspended', label: 'พักรถชั่วคราว', kind: 'check' }
+        ]}
+        onSave={(v, id) => act(() => post({
+          action: 'UPSERT_TRUCK',
+          truck: {
+            truckId: id ?? undefined,
+            plateNumber: v.plateNumber.trim(),
+            driverName: v.driverName.trim(),
+            baseWageSatang: baht(v.base || '300'),
+            status: v.suspended === 'true' ? 'SUSPENDED' : 'ACTIVE'
+          },
+          expectedRevision: id ? boot.trucks.find(t => t.truckId === id)?.revision : undefined
+        }), 'บันทึกข้อมูลรถและคนขับแล้ว')}
+        onDelete={item => {
+          setPendingDelete({
+            item,
+            request: { action: 'DELETE_TRUCK', truckId: item.id },
+            success: 'ลบข้อมูลรถแล้ว'
+          });
+          return Promise.resolve();
+        }} />
 
       <MasterSection title="ลูกค้า" busy={busy} items={customers}
         fields={[{ key: 'name', label: 'ชื่อลูกค้า', required: true }]}

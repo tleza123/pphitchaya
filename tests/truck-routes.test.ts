@@ -213,6 +213,9 @@ test('Truck Routes: Settings manages fleet, origins, destinations, and companyNa
   assert.equal(truckBody.ok, true);
   assert.equal(truckBody.data.plateNumber, '83-9999');
   assert.equal(store.docs.has(`${shop}/trucks/truck_101`), true);
+  assert.equal(Boolean(truckBody.data.driverId), true);
+  assert.equal(store.docs.has(`${shop}/truckDrivers/${truckBody.data.driverId}`), true);
+  assert.equal(store.docs.get(`${shop}/truckDrivers/${truckBody.data.driverId}`).name, 'มานพ สมบูรณ์');
 
   // 3. Add origin and destination with satang validation
   const destRes = await postSettings(
