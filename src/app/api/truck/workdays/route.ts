@@ -1,3 +1,4 @@
+import { assertPayrollDatesOpen } from '@/lib/server/truck-payroll-lock';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
 import { createErrorResponse, createSuccessResponse } from '@/lib/server/errors';
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
       const cached=await checkRequestReceipt(tx,receipt,hash); if(cached) return cached;
       await assertTruckWritable(tx,shop);
       const [snap, lockSnap, ...drivers]=await tx.getAll(ref,lock,...ids.map(id=>getTruckDriversCol(shop).doc(id)));
+      await assertPayrollDatesOpen(tx, shop, [date]);
       const current=snap.exists ? snap.data() : null;
       if ((current?.revision||0)!==body.expectedRevision) throw new Error('CONFLICT');
       if (lockSnap.data()?.state==='CLOSED') throw new Error('MONTH_CLOSED');

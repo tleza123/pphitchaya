@@ -156,6 +156,7 @@ export interface TruckMonthlyTotals {
 }
 
 export interface TruckMonthlyReport {
+  unpricedTripCount?: number;
   savedRecords?: TruckDailyRecordDoc[];
   monthKey: string;
   totals: TruckMonthlyTotals;

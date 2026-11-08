@@ -148,8 +148,6 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
         if (!loc && !other) throw new Error(`${label}: กรุณาเลือกปลายทางจากจุดที่ตั้งไว้`);
         const isBillable = !loc?.isShop && Boolean(t.customerId);
         if (!t.originId) throw new Error(`${label}: กรุณาเลือกต้นทาง`);
-        if (!other && t.arrivalDate && t.paySatang == null) throw new Error(`${label}: ยังไม่ได้ตั้งค่าเที่ยวคนขับสำหรับเส้นทางนี้`);
-        if (isBillable && t.arrivalDate && (!t.billing.trim() || !t.weight.trim())) throw new Error(`${label}: กรุณาระบุราคาขนส่งและน้ำหนักก่อนบันทึกเที่ยวที่ถึงแล้ว`);
         return {
           ...(t.tripId ? {tripId:t.tripId} : {}), tripIndex: i + 1, fromLocation: t.fromLocation.trim(), destinationMode: t.destinationMode,
           originId: t.originId || null, destinationId: loc?.locationId || null, destinationName: other ? t.customName.trim() : `${loc!.code} — ${loc!.name}`, ...(other ? { manualDriverPaySatang: manualPay! } : {}),
@@ -232,7 +230,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
             </div>
             <div className={styles.row2}>
               <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-departure-${i}`}>วันที่ออก</label><input id={`tr-departure-${i}`} type="date" className={settings.formInput} value={t.departureDate || date} onChange={e => patchTrip(i, { departureDate: e.target.value })} /></div>
-              <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-arrival-${i}`}>วันที่ถึง (เว้นว่างถ้ายังค้าง)</label><input id={`tr-arrival-${i}`} type="date" className={settings.formInput} value={t.arrivalDate} onChange={e => patchTrip(i, { arrivalDate: e.target.value })} /></div>
+              <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-arrival-${i}`}>วันที่ถึง (ไม่บังคับ ไม่กระทบยอดสรุป)</label><input id={`tr-arrival-${i}`} type="date" className={settings.formInput} value={t.arrivalDate} onChange={e => patchTrip(i, { arrivalDate: e.target.value })} /></div>
             </div>
             {t.destinationMode === '__OTHER__' && <div className={styles.row2}>
               <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-custom-name-${i}`}>ชื่อสถานที่อื่น ๆ</label><input id={`tr-custom-name-${i}`} className={settings.formInput} maxLength={200} value={t.customName} onChange={e => patchTrip(i, { customName: e.target.value })} placeholder="ระบุชื่อสถานที่ส่งงาน" required /></div>

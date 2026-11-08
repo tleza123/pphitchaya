@@ -1,3 +1,4 @@
+import { assertPayrollDatesOpen } from '@/lib/server/truck-payroll-lock';
 import { assertTruckWritable } from '@/lib/server/truck-control';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
@@ -227,6 +228,7 @@ export async function POST(req: NextRequest) {
       const migrated = await tx.get(getTruckTripsCol(shopId).where('legacyRecordId', '==', recordId));
       if (!migrated.empty) throw new Error('RECORD_MIGRATED');
 
+      await assertPayrollDatesOpen(tx, shopId, [dateKey, ...trips.map((t: any) => t.departureDate), ...(current?.trips || []).map((t: any) => t.departureDate || current?.dateKey)]);
       const oldTrips: any[] = current?.trips || [];
       if (oldTrips.some(t => !t.tripId)) throw new Error('LEGACY_REVIEW_REQUIRED');
       const oldIds = oldTrips.map(t => t.tripId as string);
@@ -285,7 +287,6 @@ export async function POST(req: NextRequest) {
         const billingTariff = billingTariffs[0];
         const resolvedDriverPay = sameDriverRoute && prior.driverPaySatang != null ? prior.driverPaySatang : driverTariff?.driverPaySatang ?? null;
         t.driverPaySatang = resolvedDriverPay;
-        if (t.status === 'COMPLETED' && resolvedDriverPay == null) throw new Error('MISSING_PRICE');
         const standardDriver = driverTariff && resolvedDriverPay === driverTariff.driverPaySatang;
         const standardBilling = t.billable !== false && billingTariff?.customerRateSatang != null && t.billingSatang === billingTariff.customerRateSatang;
         const priorDriver = sameDriverRoute && prior.driverPaySatang != null;
@@ -314,7 +315,6 @@ export async function POST(req: NextRequest) {
         const origin=locations.get(t.originId), destination=locations.get(t.destinationId);
         const prior = t.tripId ? existingTrips.get(t.tripId) : null;
         if (t.departureDate && (t.originId===t.destinationId || (origin?.status !== 'ACTIVE' && prior?.originId !== t.originId) || (t.destinationMode !== '__OTHER__' && destination?.status !== 'ACTIVE' && prior?.destinationId !== t.destinationId))) throw new Error('INVALID_LOCATION');
-        if (t.billable !== false && t.status === 'COMPLETED' && t.departureDate && (!t.customerId || t.billingSatang == null || t.weightKg == null)) throw new Error('BILLING_INCOMPLETE');
         const legacyDriverExtraSatang = prior?.legacyDriverExtraSatang ?? (prior?.pricingVersion !== 3 ? prior?.driverExtraSatang : undefined);
         const legacyFeeFields = ['driverExtraSatang', 'driverExtraNote', 'billingExtraSatang', 'billingExtraNote'];
         const hadLegacyFeeFields = prior?.pricingVersion !== 3 && legacyFeeFields.some(field => Object.prototype.hasOwnProperty.call(prior || {}, field));

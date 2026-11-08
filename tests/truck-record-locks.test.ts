@@ -63,9 +63,9 @@ test('modern records preserve permanent IDs and lock invoice edits, deletion and
   const pendingRecord=(await pendingResponse.json()).data;
   assert.equal(pendingRecord.trips[0].driverPaySatang,null,'unknown differs from a real zero');
   const clientPending={...pendingRecord.trips[0]}; for (const key of ['driverPaySatang','driverRateSource','driverTariffId','driverTariffRevision','billingRateSource','billingTariffId','billingTariffRevision']) delete clientPending[key];
-  assert.equal((await save(req('/api/truck/records',{...pending,expectedRevision:1,requestId:'close-missing-price',trips:[{...clientPending,arrivalDate:'2026-12-06'}]}))).status,422);
+  assert.equal((await save(req('/api/truck/records',{...pending,expectedRevision:1,requestId:'close-missing-price',trips:[{...clientPending,arrivalDate:'2026-12-06'}]}))).status,200);
   docs.set(`${shop}/truckTariffs/base`,{originId:'a',destinationId:'b',customerId:null,driverPaySatang:0,status:'ACTIVE',revision:3});
-  const zero=await save(req('/api/truck/records',{...pending,expectedRevision:1,requestId:'close-zero-price',trips:[{...clientPending,billingSatang:0,arrivalDate:'2026-12-06'}]}));assert.equal(zero.status,200);
+  const zero=await save(req('/api/truck/records',{...pending,expectedRevision:2,requestId:'close-zero-price',trips:[{...clientPending,billingSatang:0,arrivalDate:'2026-12-06'}]}));assert.equal(zero.status,200);
   const zeroTrip=(await zero.json()).data.trips[0]; assert.equal(zeroTrip.driverPaySatang,0); assert.equal(zeroTrip.driverRateSource,'STANDARD'); assert.equal(zeroTrip.billingRateSource,'MANUAL'); assert.equal(zeroTrip.billingSatang,0);
   const priceAudit=[...docs.entries()].find(([path,value])=>path.startsWith(`${shop}/audit/`)&&value.action==='CREATE_TRUCK_RECORD'&&value.entityKey==='2026-11-28_truck');
   assert.equal((priceAudit?.[1].after as any)?.trips[0].billingSatang,100001,'the direct flat-price amount is retained in the after snapshot');

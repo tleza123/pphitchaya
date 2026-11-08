@@ -11,7 +11,14 @@ import { getTripCustomerChargeSatang } from '@/lib/truck/pricing';
 import { useModalInteraction } from '@/components/shared/useModalInteraction';
 
 export default function TruckBillingPage() {
-  const [month, setMonth] = useState(getBangkokMonth());
+  const [start, setStart] = useState(getBangkokMonth() + '-01');
+  const [end, setEnd] = useState(getBangkokToday());
+  const [range, setRange] = useState({ start, end });
+  const [loading, setLoading] = useState(false);
+  const sequence = useRef(0);
+  const query = new URLSearchParams(range).toString();
+  const activeQuery = useRef(query); activeQuery.current = query;
+  const month = range.start + ' ถึง ' + range.end;
   const [trips, setTrips] = useState<any[]>([]);
   const [legacyPricingReview, setLegacyPricingReview] = useState<any[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -68,19 +75,17 @@ export default function TruckBillingPage() {
   }, []);
 
   const load = async () => {
+    if (activeQuery.current !== query) return;
+    const current = ++sequence.current; setLoading(true); setSelected([]); setTrips([]); setInvoices([]);
     try {
-      const data = await getJson(`/api/truck/billing?month=${month}`);
-      setTrips(data.trips || []);
-      setLegacyPricingReview(data.legacyPricingReview || []);
-      setInvoices(data.invoices || []);
-    } catch (e) {
-      setError(errMsg(e));
-    }
+      const data = await getJson(`/api/truck/billing?${query}`);
+      if (current !== sequence.current) return;
+      setTrips(data.trips || []); setLegacyPricingReview(data.legacyPricingReview || []); setInvoices(data.invoices || []); setError('');
+    } catch (e) { if (current === sequence.current) setError(errMsg(e)); }
+    finally { if (current === sequence.current) setLoading(false); }
   };
-
-  useEffect(() => {
-    void load();
-  }, [month]);
+  useEffect(() => { void load(); return () => { ++sequence.current; }; }, [query]);
+  const search = () => { if (!start || !end || start > end) { setError('กรุณาเลือกช่วงวันที่ให้ถูกต้อง'); return; } if (range.start === start && range.end === end) { void load(); return; } setRange({ start, end }); };
 
   // Derived customer list from unbilled trips and settings
   const customers = useMemo(() => {
@@ -164,6 +169,7 @@ export default function TruckBillingPage() {
     try {
       const payload = {
         action: 'INVOICE',
+        ...range,
         tripIds: selectedTripIds,
         issueDate: invoiceIssueDate,
         dueDate: invoiceDueDate,
@@ -300,17 +306,14 @@ export default function TruckBillingPage() {
     <main className={styles.stack} style={{ maxWidth: 1000, margin: '2rem auto', padding: '1rem' }}>
       <a href="/truck">กลับหน้ารถบรรทุก</a>
       <h1>วางบิลและรับชำระ</h1>
+      <p className={styles.hint}>ช่วงที่แสดง: {month} · ค้นหาตามวันที่ออกเดินทาง รวมวันเริ่มและวันสิ้นสุด</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', alignItems: 'end' }}>
         <div>
-          <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>เดือนเริ่มงาน</label>
-          <input
-            type="month"
-            className={settings.formInput}
-            value={month}
-            onChange={event => { setMonth(event.target.value); setSelected([]); }}
-          />
+          <label>จากวันที่<input type="date" className={settings.formInput} value={start} max={end} onChange={e => setStart(e.target.value)} /></label>
         </div>
+        <div><label>ถึงวันที่<input type="date" className={settings.formInput} value={end} min={start} onChange={e => setEnd(e.target.value)} /></label></div>
+        <button type="button" className={settings.secondaryBtn} disabled={loading} onClick={search}>ค้นหาเที่ยววางบิล</button>
         <div>
           <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>ลูกค้า</label>
           <select
@@ -326,6 +329,7 @@ export default function TruckBillingPage() {
         </div>
       </div>
 
+      {loading && <p role="status">กำลังค้นหาเที่ยววางบิล</p>}
       {error && <p role="alert" style={{ color: 'var(--team-absent)' }}>{error}</p>}
 
       {legacyPricingReview.length > 0 && (
@@ -371,7 +375,7 @@ export default function TruckBillingPage() {
           <p className={styles.empty}>กรุณาเลือกลูกค้าเพื่อดูเที่ยววิ่งที่ยังไม่วางบิล</p>
         )}
         {selectedCustomerId && displayedTrips.length === 0 && (
-          <p className={styles.empty}>ไม่มีเที่ยวพร้อมวางบิลสำหรับลูกค้ารายนี้ในเดือน {month}</p>
+          <p className={styles.empty}>ไม่มีเที่ยวพร้อมวางบิลสำหรับลูกค้ารายนี้ในช่วง {month}</p>
         )}
         {customers.length === 0 && (
           <p className={styles.empty}>ไม่มีเที่ยวพร้อมวางบิล</p>
@@ -417,7 +421,7 @@ export default function TruckBillingPage() {
             ))}
           </article>
         ))}
-        {invoices.length === 0 && <p className={styles.empty}>ยังไม่มีใบวางบิลในเดือนนี้</p>}
+        {invoices.length === 0 && <p className={styles.empty}>ยังไม่มีใบวางบิลในช่วงวันที่นี้</p>}
       </section>
 
       {/* Invoice Modal */}

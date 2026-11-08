@@ -99,13 +99,15 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
 
       {totals && (
         <div className={styles.panel}>
-          <p className={styles.hint} style={{ marginTop: 0 }}>{formatThaiMonth(month)} · ยอดสรุปเฉพาะเที่ยวที่ถึงแล้วและมีค่าเที่ยวคนขับ ตามเดือนวันที่ออก</p>
+          <p className={styles.hint} style={{ marginTop: 0 }}>{formatThaiMonth(month)} · ยอดสรุปจากเที่ยวที่บันทึกแล้ว ตามเดือนวันที่ออก ไม่ต้องระบุวันที่ถึง</p>
           <div className={styles.figures}>
             <div className={styles.fig}><small>เที่ยววิ่งรวม</small><strong>{totals.totalTrips}</strong></div>
             <div className={styles.fig}><small>ค่าเที่ยวคนขับ (บาท)</small><strong>{formatMoney(totals.totalDriverPaySatang)}</strong></div>
           </div>
         </div>
       )}
+
+      {Boolean(report?.unpricedTripCount) && <p className={styles.hint}>ยังไม่ตั้งค่าเที่ยวคนขับ {report?.unpricedTripCount} เที่ยว · นับจำนวนเที่ยวแล้ว แต่ยังไม่รวมเงินของเที่ยวเหล่านี้</p>}
 
       {report && report.perTruck.length > 0 && (
         <div className={styles.panel}>
@@ -129,7 +131,7 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
 
       <div className={styles.panel}>
         <h3 className={reports.sectionTitle}>ประวัติใบงานรายวัน</h3>
-        <p className={styles.hint}>แสดงใบงานตามวันที่บันทึก รวมเที่ยวค้างและเที่ยวที่ยังไม่ได้ตั้งราคา เที่ยวค้างยังไม่รวมในยอดสรุปด้านบน</p>
+        <p className={styles.hint}>บันทึกใบงานแล้วนับเที่ยวทันที วันที่ถึงเป็นข้อมูลเพิ่มเติมเท่านั้น รายการที่ยังไม่ตั้งราคาจะยังไม่มียอดเงินรวม</p>
         {report && history.length === 0 && <p className={styles.empty}>ไม่มีใบงานในเดือนที่เลือก</p>}
         {history.map(r => (
           <div className={styles.rec} key={`${r.recordId}-${r.dateKey}-${r.trips[0]?.tripId || "legacy"}`}>
@@ -142,7 +144,7 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
             </div>
             {r.trips.map(t => (
               <div className={styles.recTrip} key={t.tripIndex}>
-                <span>{t.tripIndex}. {t.fromLocation || 'ไม่ระบุต้นทาง'} - {t.destinationName}{t.note ? ` (${t.note})` : ''} · {t.status === 'OPEN' ? 'ค้าง / ยังไม่ระบุวันที่ถึง' : t.status === 'CANCELLED' ? 'ยกเลิก' : 'ถึงแล้ว'}</span>
+                <span>{t.tripIndex}. {t.fromLocation || 'ไม่ระบุต้นทาง'} - {t.destinationName}{t.note ? ` (${t.note})` : ''} · {t.status === 'CANCELLED' ? 'ยกเลิก' : 'บันทึกแล้ว'}</span>
                 <span className={styles.pay}>{t.driverPaySatang == null ? 'ยังไม่ได้ตั้งราคา' : formatMoney(getTripDriverChargeSatang(t))}</span>
               </div>
             ))}

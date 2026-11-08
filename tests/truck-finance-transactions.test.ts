@@ -16,7 +16,7 @@ test('close locks workdays, payment must be voided before reopening, and retry i
   docs.set(`${base}/truckTrips/t1`,{accountingMonth:'2026-11',departureDate:'2026-11-30',arrivalDate:'2026-12-02',driverId:'d1',driverNameSnapshot:'Driver',status:'COMPLETED',driverPaySatang:12000});
   docs.set(`${base}/truckTrips/t2`,{accountingMonth:'2026-12',departureDate:'2026-12-01',arrivalDate:null,driverId:'d1',driverNameSnapshot:'Driver',status:'OPEN',driverPaySatang:null});
   const previewResponse=await getPayroll(new NextRequest('http://localhost/api/truck/payroll?month=2026-12'));
-  const previewBody=await previewResponse.json(); assert.equal(previewResponse.status,200); assert.equal(previewBody.data.preview.pending[0].tripId,'t2'); assert.equal(previewBody.data.preview.canClose,false);
+  const previewBody=await previewResponse.json(); assert.equal(previewResponse.status,200); assert.deepEqual(previewBody.data.preview.pending,[]); assert.deepEqual(previewBody.data.preview.errors,['t2']); assert.equal(previewBody.data.preview.canClose,false);
   const call=(handler:any,body:any)=>handler(new NextRequest('http://localhost/api/truck/payroll',{method:'POST',body:JSON.stringify(body)}));
   assert.equal((await call(workday,{dateKey:'2026-11-30',driverIds:['d1'],expectedRevision:0,requestId:'work-day-1'})).status,200);
   const close={action:'CLOSE',month:'2026-11',expectedRevision:0,requestId:'close-month-1'};

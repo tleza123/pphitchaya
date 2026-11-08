@@ -19,9 +19,8 @@ function MasterSection({ title, fields, items, busy, onSave, onDelete, autoRoute
   onDelete: (item: Item) => Promise<void>;
 }) {
   const [search, setSearch] = useState('');
-  const [limit, setLimit] = useState(50);
   const matching = autoRoutes ? items.filter(item => `${item.title} ${item.sub || ''}`.toLowerCase().includes(search.toLowerCase().trim())) : items;
-  const visible = autoRoutes ? matching.slice(0, limit) : matching;
+
   const [editing, setEditing] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
@@ -35,18 +34,10 @@ function MasterSection({ title, fields, items, busy, onSave, onDelete, autoRoute
     try { await onSave(values, editing === 'new' ? null : editing); setEditing(null); } catch { /* error already shown; keep the form open */ }
   };
 
-  return (
-    <div className={styles.panel}>
-      <div className={styles.sectionHead}>
-        <h3>{title}</h3>
-        {!autoRoutes && <button type="button" className={styles.iconBtn} onClick={() => open()} disabled={busy}><Plus size={18} aria-hidden="true" /> เพิ่ม</button>}
-      </div>
-      {items.length === 0 && editing !== 'new' && <p className={styles.empty}>ยังไม่มีข้อมูล</p>}
-      {autoRoutes && <><p className={styles.hint}>เชื่อมทุกจุดทั้งขาไปและขากลับ เว้นราคาไว้ให้กรอกเอง · {items.length} รายการ</p><input className={settings.formInput} type="search" aria-label={`ค้นหา${title}`} placeholder="ค้นหาจุดรับ–ส่งหรือลูกค้า" value={search} onChange={e => { setSearch(e.target.value); setLimit(50); }} /></>}
-      {visible.map(item => (
+  const renderItem = (item: Item) => (
         <div className={styles.item} key={item.id}>
           <div className={styles.itemText}>
-            <strong>{item.title}</strong>
+            <strong>{autoRoutes ? fields.find(field => field.key === 'destinationId')?.options?.find(option => option.value === item.values.destinationId)?.label || item.title : item.title}</strong>
             {item.sub && <span>{item.sub}</span>}
             {item.flag && <div className={styles.suspended}>{item.flag}</div>}
           </div>
@@ -55,8 +46,24 @@ function MasterSection({ title, fields, items, busy, onSave, onDelete, autoRoute
             {item.values.generated !== 'true' && <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(item)} disabled={busy} aria-label={`ลบ ${item.title}`}><Trash2 size={18} aria-hidden="true" /></button>}
           </div>
         </div>
-      ))}
-      {autoRoutes && matching.length > visible.length && <button type="button" className={styles.iconBtn} onClick={() => setLimit(n => n + 50)}>แสดงเพิ่ม ({visible.length}/{matching.length})</button>}
+  );
+
+  return (
+    <div className={styles.panel}>
+      <div className={styles.sectionHead}>
+        <h3>{title}</h3>
+        {!autoRoutes && <button type="button" className={styles.iconBtn} onClick={() => open()} disabled={busy}><Plus size={18} aria-hidden="true" /> เพิ่ม</button>}
+      </div>
+      {items.length === 0 && editing !== 'new' && <p className={styles.empty}>ยังไม่มีข้อมูล</p>}
+      {autoRoutes && <><p className={styles.hint}>เชื่อมทุกจุดทั้งขาไปและขากลับ เว้นราคาไว้ให้กรอกเอง · {items.length} รายการ</p><input className={settings.formInput} type="search" aria-label={`ค้นหา${title}`} placeholder="ค้นหาจุดรับ–ส่งหรือลูกค้า" value={search} onChange={e => { setSearch(e.target.value); }} /></>}
+      {autoRoutes ? <div className={styles.routeGroups} aria-label={`หมวด${title}`}>
+        {[...new Set(matching.map(item => item.values.originId))].map(originId => {
+          const routes = matching.filter(item => item.values.originId === originId);
+          const label = fields.find(field => field.key === 'originId')?.options?.find(option => option.value === originId)?.label || originId;
+          return <details key={originId} className={styles.routeGroup} open={search.trim() ? true : undefined}><summary>{label} · {routes.length} เส้นทาง</summary><div className={styles.routeGroupItems}>{routes.map(renderItem)}</div></details>;
+        })}
+        {matching.length === 0 && <p className={styles.empty}>ไม่พบเส้นทางที่ค้นหา</p>}
+      </div> : items.map(renderItem)}
       {editing && (
         <form ref={formRef} onSubmit={submit} style={{ marginTop: '1rem' }}>
           {fields.map(f => (

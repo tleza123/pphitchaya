@@ -198,10 +198,7 @@ test('calculateTruckRecordTotals: trip driverPaySatang boundaries - rejects nega
     () => calculateTruckRecordTotals([createMockTrip(1, '50000' as any)], 0),
     /INVALID_MONEY/
   );
-  assert.throws(
-    () => calculateTruckRecordTotals([createMockTrip(1, null as any)], 0),
-    /MISSING_PRICE/
-  );
+  assert.deepEqual(calculateTruckRecordTotals([createMockTrip(1, null as any)], 0), {totalDriverPaySatang:0,tripCount:1}, 'An unpriced saved trip counts without inventing a price');
   assert.throws(
     () => calculateTruckRecordTotals([createMockTrip(1, undefined as any)], 0),
     /INVALID_MONEY/

@@ -1,3 +1,4 @@
+import { assertPayrollDatesOpen } from '@/lib/server/truck-payroll-lock';
 import { assertTruckWritable } from '@/lib/server/truck-control';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
@@ -113,6 +114,7 @@ export async function DELETE(
       const months = [...new Set<string>([monthKey, ...(current?.trips || []).map((t: {accountingMonth?: string}) => t.accountingMonth || monthKey)])].filter(m => /^\d{4}-\d{2}$/.test(m));
       const locks = await tx.getAll(...months.map(m => getShopDocRef(shopId).collection('truckPayrollMonths').doc(m)));
       if (locks.some(lock => lock.data()?.state === 'CLOSED')) throw new Error('MONTH_CLOSED');
+      await assertPayrollDatesOpen(tx, shopId, [current?.dateKey, ...(current?.trips || []).map((t: any) => t.departureDate || current?.dateKey)]);
       const migrated = await tx.get(getTruckTripsCol(shopId).where('legacyRecordId', '==', recordId));
       if (!migrated.empty) throw new Error('RECORD_MIGRATED');
       const trips: {tripId?: string}[] = current?.trips || [];

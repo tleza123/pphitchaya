@@ -29,6 +29,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
       if (company.phone) doc.text(`โทรศัพท์ ${company.phone}`);
       if (company.taxId) doc.text(`เลขประจำตัวผู้เสียภาษี ${company.taxId}`);
       doc.text(`เลขที่ ${invoice.documentNo}  วันที่ ${invoice.issueDate}  ครบกำหนด ${invoice.dueDate}`);
+      if (invoice.start && invoice.end) doc.text(`ช่วงวันที่ ${invoice.start} ถึง ${invoice.end}`);
       doc.text(`ลูกค้า ${invoice.customerName}`).moveDown(.5);
       const version = Number(invoice.snapshotVersion);
       const columns = version >= 3

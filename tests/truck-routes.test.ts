@@ -11,6 +11,14 @@ import { POST as postPhotos } from '../src/app/api/truck/photos/route';
 import { GET as getPhotoById, DELETE as deletePhotoById } from '../src/app/api/truck/photos/[id]/route';
 import { GET as getBackup, POST as postBackup } from '../src/app/api/truck/backup/route';
 import { GET as getTripsForReview, PATCH as reviewTrip } from '../src/app/api/truck/trips/route';
+import { GET as getPayroll, POST as postPayroll } from '../src/app/api/truck/payroll/route';
+import { POST as postWorkday } from '../src/app/api/truck/workdays/route';
+import { GET as getBilling, POST as postBilling } from '../src/app/api/truck/billing/route';
+import { GET as payrollPdf } from '../src/app/api/truck/payroll/pdf/route';
+import { GET as billingPdf } from '../src/app/api/truck/billing/[id]/pdf/route';
+import { GET as truckReports } from '../src/app/api/truck/reports/route';
+import { GET as truckAnalytics } from '../src/app/api/truck/reports/analytics/route';
+import { fetchTruckDailySummary } from '../src/lib/line/daily-summary';
 
 interface MockStore {
   docs: Map<string, any>;
@@ -89,6 +97,10 @@ function setupMockDb(): MockStore {
             path: r.path,
             data: options?.merge && docs.has(r.path) ? { ...docs.get(r.path), ...value } : value
           });
+        },
+        create: (r: any, value: any) => {
+          assert.equal(docs.has(r.path), false);
+          stagedWrites.push({ type: 'set', path: r.path, data: value });
         },
         update: (r: any, value: any) => {
           stagedWrites.push({
@@ -814,3 +826,78 @@ test('Truck Routes: Input validation and error handling', async () => {
   assert.equal(emptyPhotoRes.status, 422);
 });
 
+
+
+test('Custom payroll spans months, freezes its exact dates, rejects overlapping periods and preserves payment history', async () => {
+  const store = setupMockDb(), shop = `shops/${process.env.SHOP_ID || 'main'}`;
+  store.docs.set(`${shop}/truckDrivers/d`, { name: 'คนขับทดสอบ', status: 'ACTIVE', baseWageSatang: 30000 });
+  for (const [date, wage] of [['2026-11-28',30000],['2026-11-30',30000],['2026-12-01',40000],['2026-12-03',40000]] as const) store.docs.set(`${shop}/truckMonths/${date.slice(0,7)}/workDays/${date}`, {dateKey:date, drivers:[{driverId:'d',name:'คนขับทดสอบ',baseWageSatang:wage}],revision:1});
+  for (const [id,date,pay] of [['t1','2026-11-29',15000],['t2','2026-12-02',20000],['outside','2026-11-20',99000]] as const) store.docs.set(`${shop}/truckTrips/${id}`, {driverId:'d',driverNameSnapshot:'คนขับทดสอบ',departureDate:date,arrivalDate:date,accountingMonth:date.slice(0,7),pricingVersion:3,status:'COMPLETED',driverPaySatang:pay,fromLocation:'ต้นทาง',destinationName:'ปลายทาง',plateNumberSnapshot:'TEST'});
+  store.docs.set(`${shop}/truckTrips/unrelated-legacy`,{status:'OPEN'});
+  const range = {start:'2026-11-28',end:'2026-12-02'};
+  const req = (path:string, body:any) => new NextRequest('http://localhost'+path,{method:'POST',body:JSON.stringify(body)});
+  const preview = await getPayroll(new NextRequest('http://localhost/api/truck/payroll?'+new URLSearchParams(range)));
+  assert.equal(preview.status,200);
+  const open=(await preview.json()).data;
+  assert.equal(open.preview.drivers[0].totalSatang,135000);
+  assert.equal(open.preview.drivers[0].days.length,3);
+  const payload={...range,action:'CLOSE',expectedRevision:0,requestId:'close-custom-range'};
+  const closed=await postPayroll(req('/api/truck/payroll',payload)); assert.equal(closed.status,200);
+  assert.equal((await closed.json()).data.snapshot.drivers[0].totalSatang,135000);
+  assert.equal((await postPayroll(req('/api/truck/payroll',payload))).status,200,'Receipt replay cannot duplicate a closure');
+  const overlap=await postPayroll(req('/api/truck/payroll',{start:'2026-12-02',end:'2026-12-05',action:'CLOSE',expectedRevision:0,requestId:'close-overlap'}));
+  assert.equal((await overlap.json()).error.code,'PAYROLL_OVERLAP');
+  assert.equal((await postPayroll(req('/api/truck/payroll',{month:'2026-11',action:'CLOSE',expectedRevision:0,requestId:'monthly-overlap'}))).status,422);
+  assert.equal((await postWorkday(req('/api/truck/workdays',{dateKey:'2026-11-30',driverIds:['d'],expectedRevision:1,requestId:'edit-closed-day'}))).status,409);
+  assert.equal((await postWorkday(req('/api/truck/workdays',{dateKey:'2026-12-03',driverIds:['d'],expectedRevision:1,requestId:'edit-open-day'}))).status,200,'Another day in the same month stays editable');
+  const sourceId = '2026-11-29_t';
+  store.docs.set(`${shop}/truckMonths/2026-11/records/${sourceId}`, { dateKey: '2026-11-29', revision: 1, trips: [{ tripId: 't1', departureDate: '2026-11-29', accountingMonth: '2026-11' }] });
+  const deleted = await deleteRecordById(new NextRequest('http://localhost/api/truck/records/'+sourceId, { method:'DELETE', body:JSON.stringify({expectedRevision:1,requestId:'delete-period-record'}) }), {params:Promise.resolve({id:sourceId})});
+  assert.equal(deleted.status,409);
+  const lateRecord = await postRecords(req('/api/truck/records', {dateKey:'2026-12-05',truckId:'t',driverId:'d',expectedRevision:0,requestId:'late-closed-period-trip',trips:[{tripIndex:1,pricingVersion:3,billingPricingMode:'PER_TRIP',originId:'a',destinationId:'b',destinationMode:'LOC_b',departureDate:'2026-11-29',arrivalDate:null,billable:false,weightKg:null}]}));
+  assert.equal(lateRecord.status,409,'A different sheet date cannot bypass the closed departure range');
+  const pdf=await payrollPdf(new NextRequest('http://localhost/api/truck/payroll/pdf?'+new URLSearchParams({...range,driverId:'d'}))); assert.equal(pdf.status,200); assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0,4).toString(),'%PDF');
+  const pay=await postPayroll(req('/api/truck/payroll',{...range,action:'PAY',driverId:'d',paidDate:'2026-12-04',expectedRevision:1,requestId:'pay-custom-range'})); assert.equal(pay.status,200);
+  const blocked=await postPayroll(req('/api/truck/payroll',{...range,action:'REOPEN',reason:'test',expectedRevision:2,requestId:'reopen-paid-range'})); assert.equal((await blocked.json()).error.code,'PAYROLL_PAID');
+  assert.equal((await postPayroll(req('/api/truck/payroll',{...range,action:'VOID_PAYMENT',driverId:'d',reason:'test',expectedRevision:2,requestId:'void-range-pay'}))).status,200);
+  assert.equal((await postPayroll(req('/api/truck/payroll',{...range,action:'REOPEN',reason:'test',expectedRevision:3,requestId:'reopen-custom-range'}))).status,200);
+  assert.equal((await postWorkday(req('/api/truck/workdays',{dateKey:'2026-11-30',driverIds:['d'],expectedRevision:1,requestId:'edit-reopened-day'}))).status,200);
+});
+
+test('Billing searches and snapshots a date range across months and refuses trips outside it', async () => {
+  const store=setupMockDb(),shop=`shops/${process.env.SHOP_ID || 'main'}`;
+  for (const [id,date] of [['a','2026-11-30'],['b','2026-12-01'],['outside','2026-12-03']] as const) store.docs.set(`${shop}/truckTrips/${id}`,{departureDate:date,accountingMonth:date.slice(0,7),status:'COMPLETED',pricingVersion:3,customerId:'c',customerName:'ลูกค้าทดสอบ',weightKg:1000,billingSatang:100000,fromLocation:'ต้นทาง',destinationName:'ปลายทาง',plateNumberSnapshot:'TEST'});
+  const range={start:'2026-11-30',end:'2026-12-01'};
+  const listing=await getBilling(new NextRequest('http://localhost/api/truck/billing?'+new URLSearchParams(range)));
+  assert.equal(listing.status,200); assert.equal((await listing.json()).data.trips.length,2);
+  const create=(tripIds:string[],requestId:string)=>postBilling(new NextRequest('http://localhost/api/truck/billing',{method:'POST',body:JSON.stringify({...range,action:'INVOICE',tripIds,issueDate:'2026-12-05',dueDate:'2026-12-20',requestId})}));
+  const bad=await create(['outside'],'outside-range-bill'); assert.equal((await bad.json()).error.code,'TRIP_OUTSIDE_RANGE');
+  const result=await create(['a','b'],'cross-month-invoice'); assert.equal(result.status,200);
+  const invoice=(await result.json()).data; assert.equal(invoice.start,range.start); assert.equal(invoice.end,range.end); assert.equal(invoice.totalSatang,200000);
+  assert.equal((await create(['a'],'duplicate-range-invoice')).status,409);
+  const pdf=await billingPdf(new NextRequest('http://localhost/api/truck/billing/'+invoice.invoiceId+'/pdf'),{params:Promise.resolve({id:invoice.invoiceId})}); assert.equal(pdf.status,200); assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0,4).toString(),'%PDF');
+});
+
+
+test('A saved trip without arrival immediately enters reports, charts, LINE, payroll and invoicing', async () => {
+  const store=setupMockDb(),shop=`shops/${process.env.SHOP_ID || 'main'}`;
+  store.docs.set(`${shop}/trucks/t`,{plateNumber:'89-1924',driverId:'d',driverName:'Driver',status:'ACTIVE'});
+  store.docs.set(`${shop}/truckDrivers/d`,{name:'Driver',status:'ACTIVE'});
+  store.docs.set(`${shop}/truckCustomers/c`,{name:'Customer',status:'ACTIVE'});
+  for(const id of ['a','b']) store.docs.set(`${shop}/truckLocations/${id}`,{code:id,name:id,status:'ACTIVE'});
+  store.docs.set(`${shop}/truckTariffs/driver`,{originId:'a',destinationId:'b',customerId:null,driverPaySatang:20000,status:'ACTIVE',revision:1});
+  const request=(path:string,body:any)=>new NextRequest('http://localhost'+path,{method:'POST',body:JSON.stringify(body)});
+  const saved=await postRecords(request('/api/truck/records',{dateKey:'2026-11-08',truckId:'t',driverId:'d',expectedRevision:0,requestId:'save-without-arrival',trips:[{tripIndex:1,pricingVersion:3,billingPricingMode:'PER_TRIP',originId:'a',destinationId:'b',destinationMode:'LOC_b',departureDate:'2026-11-08',arrivalDate:null,weightKg:1000,billable:true,customerId:'c',billingSatang:100000,note:''}]}));
+  assert.equal(saved.status,200); const trip=(await saved.json()).data.trips[0]; assert.equal(trip.arrivalDate,null); assert.equal(trip.status,'OPEN');
+  const report=await truckReports(new NextRequest('http://localhost/api/truck/reports?month=2026-11')); const reportData=(await report.json()).data;
+  assert.equal(reportData.totals.totalTrips,1); assert.equal(reportData.totals.totalDriverPaySatang,20000);
+  const chart=await truckAnalytics(new NextRequest('http://localhost/api/truck/reports/analytics?period=day&month=2026-11')); assert.equal((await chart.json()).data.totals.tripCount,1);
+  const line=await fetchTruckDailySummary(process.env.SHOP_ID || 'main','2026-11-08'); assert.equal(line.totalTrips,1); assert.equal(line.totalDriverPaySatang,20000);
+  const range={start:'2026-11-08',end:'2026-11-08'};
+  const payroll=await getPayroll(new NextRequest('http://localhost/api/truck/payroll?'+new URLSearchParams(range))); const preview=(await payroll.json()).data.preview;
+  assert.equal(preview.canClose,true); assert.deepEqual(preview.pending,[]); assert.equal(preview.drivers[0].totalSatang,20000);
+  const closed=await postPayroll(request('/api/truck/payroll',{...range,action:'CLOSE',expectedRevision:0,requestId:'close-without-arrival'})); assert.equal(closed.status,200);
+  const wages=await payrollPdf(new NextRequest('http://localhost/api/truck/payroll/pdf?'+new URLSearchParams({...range,driverId:'d'}))); assert.equal(wages.status,200);
+  const ready=await getBilling(new NextRequest('http://localhost/api/truck/billing?'+new URLSearchParams(range))); assert.equal((await ready.json()).data.trips[0].tripId,trip.tripId);
+  const invoice=await postBilling(request('/api/truck/billing',{...range,action:'INVOICE',tripIds:[trip.tripId],issueDate:'2026-11-08',requestId:'invoice-without-arrival'})); assert.equal(invoice.status,200); assert.equal((await invoice.json()).data.totalSatang,100000);
+});

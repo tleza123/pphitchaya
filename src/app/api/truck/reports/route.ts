@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
       report.perTruck = report.perTruck.filter(t => t.truckId === truckId);
     }
 
-    return createSuccessResponse({ ...report, savedRecords: truckId ? savedRecords.filter(r => r.truckId === truckId) : savedRecords });
+    return createSuccessResponse({ ...report, unpricedTripCount: targetRecords.reduce((sum, record) => sum + record.trips.filter(trip => trip.driverPaySatang == null).length, 0), savedRecords: truckId ? savedRecords.filter(r => r.truckId === truckId) : savedRecords });
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; statusCode?: number };
     return createErrorResponse(

@@ -51,7 +51,7 @@ function setupMockDatabase(): MockDbSetup {
   return { docs, reads };
 }
 
-test('Saved sheet history includes open and unpriced trips while accounting totals count completed trips only', async () => {
+test('Saved trips enter summaries without arrival dates, including counts for unpriced trips', async () => {
   const { docs } = setupMockDatabase();
   const shop = `shops/${process.env.SHOP_ID || 'main'}`;
   const recordId = '2026-11-08_truck-1';
@@ -59,7 +59,8 @@ test('Saved sheet history includes open and unpriced trips while accounting tota
   const trips = [
     { tripId: 'open', tripIndex: 1, status: 'OPEN', departureDate: '2026-11-08', arrivalDate: null, driverPaySatang: 20000 },
     { tripId: 'pending', tripIndex: 2, status: 'OPEN', departureDate: '2026-11-08', arrivalDate: null, driverPaySatang: null },
-    { tripId: 'completed', tripIndex: 3, status: 'COMPLETED', departureDate: '2026-11-08', arrivalDate: '2026-11-08', driverPaySatang: 20000 }
+    { tripId: 'completed', tripIndex: 3, status: 'COMPLETED', departureDate: '2026-11-08', arrivalDate: '2026-11-08', driverPaySatang: 20000 },
+    { tripId: 'cancelled', tripIndex: 4, status: 'CANCELLED', departureDate: '2026-11-08', arrivalDate: null, driverPaySatang: 90000 }
   ];
   docs.set(`${shop}/truckMonths/2026-11`, { monthKey: '2026-11' });
   docs.set(`${shop}/truckMonths/2026-11/records/${recordId}`, { recordId, dateKey: '2026-11-08', monthKey: '2026-11', truckId: 'truck-1', plateNumberSnapshot: '89-1924', trips, photos: [], revision: 7, fuelCostSatang: 0, totalDriverPaySatang: 40000, tripCount: 3 });
@@ -69,10 +70,11 @@ test('Saved sheet history includes open and unpriced trips while accounting tota
   const { data } = await response.json();
   assert.equal(data.savedRecords.length, 1);
   assert.equal(data.savedRecords[0].revision, 7);
-  assert.equal(data.savedRecords[0].trips.length, 3);
+  assert.equal(data.savedRecords[0].trips.length, 4);
   assert.equal(data.savedRecords[0].trips[1].driverPaySatang, null);
-  assert.equal(data.totals.totalTrips, 1);
-  assert.equal(data.totals.totalDriverPaySatang, 20000);
+  assert.equal(data.totals.totalTrips, 3);
+  assert.equal(data.totals.totalDriverPaySatang, 40000);
+  assert.equal(data.unpricedTripCount, 1);
   const filtered = await getReports(new NextRequest('http://localhost/api/truck/reports?month=2026-11&truckId=other'));
   assert.equal((await filtered.json()).data.savedRecords.length, 0);
   const otherMonth = await getReports(new NextRequest('http://localhost/api/truck/reports?month=2026-10'));

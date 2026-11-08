@@ -1,3 +1,4 @@
+import { assertPayrollDatesOpen } from '@/lib/server/truck-payroll-lock';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
 import { getAdminFirestore } from '@/lib/firebase/admin';
@@ -42,6 +43,7 @@ export async function PATCH(req:NextRequest){try{
     if((current.revision||0)!==body.expectedRevision)throw new Error('CONFLICT');if(current.invoiceId)throw new Error('TRIP_BILLED');
     const months=[...new Set([current.accountingMonth||current.departureDate?.slice(0,7),departureDate.slice(0,7),...(linkedRecord?[current.recordId.slice(0,7)]:[])])].filter((m:any)=>typeof m==='string');
     const locks=await tx.getAll(...months.map(m=>getShopDocRef(shop).collection('truckPayrollMonths').doc(m)));if(locks.some(l=>l.data()?.state==='CLOSED'))throw new Error('MONTH_CLOSED');
+    await assertPayrollDatesOpen(tx,shop,[current.departureDate || current.accountingDate,departureDate]);
     if(body.customerId&&!id(body.customerId))throw new Error('INVALID_INPUT');
     const [driver,origin,destination,...customers]=await tx.getAll(getTruckDriversCol(shop).doc(body.driverId),getTruckLocationsCol(shop).doc(body.originId),getTruckLocationsCol(shop).doc(body.destinationId),...(body.customerId?[getTruckCustomersCol(shop).doc(body.customerId)]:[]));
     if([driver,origin,destination,...customers].some(s=>!s.exists||s.data()?.status!=='ACTIVE'))throw new Error('INVALID_REFERENCE');

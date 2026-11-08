@@ -7,7 +7,9 @@ test('cross-month trip stays in departure month while daily wages follow confirm
   const days=['2026-11-30','2026-12-01','2026-12-02'].map(date=>({date,driverId:'d1',driverName:'สมชาย',baseSatang:30000}));
   assert.equal(calculateTruckPayroll('2026-11',days,[trip]).drivers[0].totalSatang,45000);
   assert.equal(calculateTruckPayroll('2026-12',days,[trip]).drivers[0].totalSatang,60000);
-  assert.equal(calculateTruckPayroll('2026-11',days,[{...trip,status:'OPEN',arrivalDate:null}]).canClose,false);
+  const withoutArrival=calculateTruckPayroll('2026-11',days,[{...trip,status:'OPEN',arrivalDate:null}]);
+  assert.equal(withoutArrival.canClose,true); assert.equal(withoutArrival.drivers[0].totalSatang,45000); assert.deepEqual(withoutArrival.pending,[]);
+  assert.equal(calculateTruckPayroll('2026-11',days,[{...trip,status:'OPEN',arrivalDate:null,driverPaySatang:null}]).canClose,false,'Missing wages still need review before closing');
   assert.throws(()=>calculateTruckPayroll('2026-11',[days[0],days[0]],[trip]),/DUPLICATE_WORKDAY/);
 });
 

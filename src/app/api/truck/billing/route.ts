@@ -1,3 +1,4 @@
+import { truckDateRange, inTruckRange } from '@/lib/truck/date-range';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
 import { createErrorResponse, createSuccessResponse } from '@/lib/server/errors';
@@ -14,14 +15,14 @@ const validId = (x: unknown): x is string => typeof x === 'string' && x.length >
 export async function GET(req: NextRequest) {
   try {
     await verifyOwner(req);
-    const month = monthKey(req.nextUrl.searchParams.get('month') || getBangkokToday().slice(0, 7));
+    const range = truckDateRange({start:req.nextUrl.searchParams.get('start'),end:req.nextUrl.searchParams.get('end'),month:req.nextUrl.searchParams.get('month') || getBangkokToday().slice(0,7)}); const month=range.start.slice(0,7);
     const shop = getShopId();
-    const [tripSnap, invoiceSnap] = await Promise.all([getTruckTripsCol(shop).where('accountingMonth', '==', month).get(), getTruckInvoicesCol(shop).get()]);
-    const allTrips = tripSnap.docs.map(d => ({ ...d.data(), tripId: d.id }));
-    const trips = allTrips.filter((t: any) => t.pricingVersion === 3 && !Object.prototype.hasOwnProperty.call(t, 'billingExtraSatang') && !Object.prototype.hasOwnProperty.call(t, 'billingExtraNote') && t.status === 'COMPLETED' && t.billingSatang != null && Number.isSafeInteger(t.weightKg) && t.weightKg >= 0 && t.customerId && !t.invoiceId && t.billable !== false);
-    const legacyPricingReview = allTrips.filter((t: any) => needsLegacyPricingReview(t) && t.status === 'COMPLETED' && !t.invoiceId && t.billable !== false);
+    const [tripSnap, invoiceSnap] = await Promise.all([range.custom ? getTruckTripsCol(shop).get() : getTruckTripsCol(shop).where('accountingMonth', '==', month).get(), getTruckInvoicesCol(shop).get()]);
+    const allTrips = tripSnap.docs.map(d => ({ ...d.data(), tripId: d.id })).filter((t: any) => !range.custom || inTruckRange(t.departureDate, range));
+    const trips = allTrips.filter((t: any) => t.pricingVersion === 3 && !Object.prototype.hasOwnProperty.call(t, 'billingExtraSatang') && !Object.prototype.hasOwnProperty.call(t, 'billingExtraNote') && t.status !== 'CANCELLED' && t.billingSatang != null && Number.isSafeInteger(t.weightKg) && t.weightKg >= 0 && t.customerId && !t.invoiceId && t.billable !== false);
+    const legacyPricingReview = allTrips.filter((t: any) => needsLegacyPricingReview(t) && t.status !== 'CANCELLED' && !t.invoiceId && t.billable !== false);
     const invoices = await Promise.all(invoiceSnap.docs.map(async d => { const value = d.data(); const payments = await d.ref.collection('payments').get(); return { ...value, invoiceId: d.id, balanceSatang: value.totalSatang - (value.paidSatang || 0), payments:payments.docs.map(p=>({...p.data(),paymentId:p.id})) }; }));
-    return createSuccessResponse({ trips, legacyPricingReview, invoices });
+    return createSuccessResponse({ trips, legacyPricingReview, invoices: range.custom ? invoices.filter((invoice:any) => invoice.start && invoice.end ? invoice.start <= range.end && invoice.end >= range.start : (invoice.lines || []).some((line:any) => inTruckRange(line.departureDate || line.dateKey, range))) : invoices });
   } catch (e: any) { return createErrorResponse(e.code || 'INTERNAL_ERROR', e.message, e.statusCode || 500); }
 }
 
@@ -37,21 +38,23 @@ export async function POST(req: NextRequest) {
       const now = new Date().toISOString(); let result: any;
       if (body.action === 'INVOICE') {
         if (!Array.isArray(body.tripIds) || !body.tripIds.length || body.tripIds.length > 150 || !body.tripIds.every(validId) || new Set(body.tripIds).size !== body.tripIds.length) throw new Error('INVALID_TRIPS');
+        const range = body.start != null || body.end != null ? truckDateRange(body) : null;
         const issueDate = dateKey(body.issueDate || getBangkokToday()); const dueDate = dateKey(body.dueDate || issueDate);
         if (dueDate < issueDate) throw new Error('INVALID_DUE_DATE');
         const refs = body.tripIds.map((id: string) => getTruckTripsCol(shop).doc(id));
         const [profile, ...snaps] = await tx.getAll(getTruckProfileRef(shop), ...refs);
         const trips = snaps.map((snap, i) => {
           const t = snap.data();
-          if (!snap.exists || !t || t.status !== 'COMPLETED' || t.invoiceId || t.billable === false || !validId(t.customerId) || typeof t.customerName !== 'string' || !t.customerName.trim() || t.billingSatang == null || !Number.isSafeInteger(t.weightKg) || t.weightKg < 0) throw new Error('TRIP_NOT_READY');
+          if (!snap.exists || !t || t.status === 'CANCELLED' || t.invoiceId || t.billable === false || !validId(t.customerId) || typeof t.customerName !== 'string' || !t.customerName.trim() || t.billingSatang == null || !Number.isSafeInteger(t.weightKg) || t.weightKg < 0) throw new Error('TRIP_NOT_READY');
           if (t.pricingVersion !== 3 || hasLegacyFeeFields(t)) throw new Error('LEGACY_PRICING_REVIEW_REQUIRED');
+          if (range && !inTruckRange(dateKey(t.departureDate), range)) throw new Error('TRIP_OUTSIDE_RANGE');
           const base = validateSatang(t.billingSatang);
           return { tripId: refs[i].id, pricingVersion: 3, customerId: t.customerId, customerName: t.customerName, departureDate: dateKey(t.departureDate), fromLocation: t.fromLocation || '', destinationName: t.destinationName || '', plateNumberSnapshot: t.plateNumberSnapshot || '', weightKg:t.weightKg, quantity:1, billingPricingMode:'PER_TRIP', billingSatang: base, note: t.note || '' };
         });
         if (trips.some(t => t.customerId !== trips[0].customerId)) throw new Error('MIXED_CUSTOMERS');
         const totalSatang = trips.reduce((sum,t) => sum + t.billingSatang, 0); if (!Number.isSafeInteger(totalSatang)) throw new Error('MONEY_OVERFLOW');
         const ref = getTruckInvoicesCol(shop).doc();
-        result = { invoiceId: ref.id, documentNo: `INV-${issueDate.replaceAll('-', '')}-${ref.id.toUpperCase()}`, snapshotVersion:3, pricingVersion:3, billingPricingMode:'PER_TRIP', customerId: trips[0].customerId, customerName: trips[0].customerName, company: profile.data() || {}, lines: trips, tripIds: body.tripIds, totalSatang, paidSatang: 0, issueDate, dueDate, note: String(body.note || '').slice(0,1000), status: 'OPEN', revision: 1, createdAt: now };
+        result = { ...(range ? {start:range.start,end:range.end} : {}), invoiceId: ref.id, documentNo: `INV-${issueDate.replaceAll('-', '')}-${ref.id.toUpperCase()}`, snapshotVersion:3, pricingVersion:3, billingPricingMode:'PER_TRIP', customerId: trips[0].customerId, customerName: trips[0].customerName, company: profile.data() || {}, lines: trips, tripIds: body.tripIds, totalSatang, paidSatang: 0, issueDate, dueDate, note: String(body.note || '').slice(0,1000), status: 'OPEN', revision: 1, createdAt: now };
         tx.create(ref, result); for (const tripRef of refs) tx.update(tripRef, { invoiceId: result.invoiceId });
         recordAudit(tx, shop, owner.uid, 'CREATE_TRUCK_INVOICE', ref.id, null, result, body.requestId);
       } else if (body.action === 'VOID_INVOICE') {

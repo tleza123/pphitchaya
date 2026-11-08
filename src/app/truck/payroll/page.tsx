@@ -44,12 +44,22 @@ export default function TruckPayrollPage() {
       await sendJson('/api/truck/workdays', 'POST', payload, workIntent.current.requestId(payload));
       workIntent.current.complete();
       await loadWork();
+      await load();
     } catch (e) {
       setError(errMsg(e));
     }
   };
 
-  const [month, setMonth] = useState(getBangkokMonth());
+  const [start, setStart] = useState(getBangkokMonth() + '-01');
+  const [end, setEnd] = useState(getBangkokToday());
+  const [range, setRange] = useState({ start, end });
+  const [legacyMonth, setLegacyMonth] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const loadSequence = useRef(0);
+  const query = legacyMonth ? 'month=' + legacyMonth : new URLSearchParams(range).toString();
+  const activeQuery = useRef(query); activeQuery.current = query;
+  const month = legacyMonth || range.start + ' ถึง ' + range.end;
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState<string>('');
@@ -76,28 +86,30 @@ export default function TruckPayrollPage() {
   });
 
   const load = async () => {
+    if (activeQuery.current !== query) return;
+    const sequence = ++loadSequence.current;
+    setLoading(true); setData(null);
     try {
-      const res = await getJson(`/api/truck/payroll?month=${month}`);
-      setData(res);
-      setError('');
-    } catch (e) {
-      setError(errMsg(e));
-    }
+      const res = await getJson(`/api/truck/payroll?${query}`);
+      if (sequence === loadSequence.current) { setData(res); setError(''); }
+    } catch (e) { if (sequence === loadSequence.current) setError(errMsg(e)); }
+    finally { if (sequence === loadSequence.current) setLoading(false); }
   };
-
-  useEffect(() => {
-    void load();
-  }, [month]);
-
+  useEffect(() => { void load(); return () => { ++loadSequence.current; }; }, [query]);
+  const search = () => {
+    if (!start || !end || start > end) { setError('กรุณาเลือกช่วงวันที่ให้ถูกต้อง'); return; }
+    if (!legacyMonth && range.start === start && range.end === end) { void load(); return; }
+    setLegacyMonth(''); setRange({ start, end });
+  };
   const action = async (act: string, extra: object = {}) => {
+    if (loading || actionBusy || !data) return;
+    setActionBusy(true);
     try {
-      const payload = { action: act, month, expectedRevision: data?.revision ?? 0, ...extra };
+      const payload = { action: act, ...(legacyMonth ? {month:legacyMonth} : range), expectedRevision: data.revision ?? 0, ...extra };
       await sendJson('/api/truck/payroll', 'POST', payload, payrollIntent.current.requestId(payload));
-      payrollIntent.current.complete();
-      await load();
-    } catch (e) {
-      setError(errMsg(e));
-    }
+      payrollIntent.current.complete(); await load();
+    } catch (e) { setError(errMsg(e)); throw e; }
+    finally { setActionBusy(false); }
   };
 
   const drivers = useMemo(() => {
@@ -219,9 +231,10 @@ export default function TruckPayrollPage() {
       {/* Month & Driver selectors */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', alignItems: 'end', marginTop: '0.5rem' }}>
         <label style={{ display: 'block' }}>
-          <span style={{ fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>เดือนงาน</span>
-          <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={{ width: '100%' }} />
+          <span>จากวันที่</span><input type="date" value={start} max={end} onChange={e => setStart(e.target.value)} />
         </label>
+        <label>ถึงวันที่<input type="date" value={end} min={start} onChange={e => setEnd(e.target.value)} /></label>
+        <button type="button" disabled={loading || actionBusy} onClick={search}>ค้นหาและสรุปค่าแรง</button>
         <label style={{ display: 'block' }}>
           <span style={{ fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>เลือกคนขับ</span>
           <select
@@ -239,6 +252,13 @@ export default function TruckPayrollPage() {
         </label>
       </div>
 
+      <p className={styles.hint}>รอบที่แสดง: {month} · ค่าแรงฐานตามวันที่ยืนยันทำงาน ค่าเที่ยวตามวันที่ออกเดินทาง รวมวันเริ่มและวันสิ้นสุด</p>
+      {data?.periods?.length > 0 && <label>รอบที่บันทึกไว้<select disabled={actionBusy || loading} value={data.periodId || legacyMonth || ''} onChange={e => {
+        const period = data.periods.find((p: any) => p.id === e.target.value);
+        if (!period) return;
+        setStart(period.start); setEnd(period.end); setRange({ start: period.start, end: period.end }); setLegacyMonth(/^20\d{2}-\d{2}$/.test(period.id) ? period.id : '');
+      }}><option value="">เลือกรอบเดิม</option>{data.periods.map((p: any) => <option key={p.id} value={p.id}>{p.start} ถึง {p.end} · {p.state === 'CLOSED' ? 'ปิดแล้ว' : 'เปิดรอบ'}</option>)}</select></label>}
+      {loading && <p role="status">กำลังค้นหาข้อมูลค่าแรง</p>}
       {error && <p role="alert">{error}</p>}
 
       {data && (
@@ -248,7 +268,7 @@ export default function TruckPayrollPage() {
               สถานะรอบค่าแรง: {data.state === 'CLOSED' ? <strong style={{ color: 'var(--team-primary-dark)' }}>ปิดรอบแล้ว</strong> : <span style={{ color: 'var(--team-half, #d97706)' }}>ยังเปิดรอบ</span>}
             </p>
             {data.state === 'CLOSED' && (
-              <button type="button" onClick={openReopenModal}>เปิดรอบแก้ไข</button>
+              <button type="button" disabled={actionBusy} onClick={openReopenModal}>เปิดรอบแก้ไข</button>
             )}
           </div>
 
@@ -261,7 +281,7 @@ export default function TruckPayrollPage() {
                   Block 1: วันทำงานฐาน ({selectedDriver.days?.length || 0} วัน · รวม {formatMoney(selectedDriver.baseSatang || 0)} บาท)
                 </h3>
                 {(!selectedDriver.days || selectedDriver.days.length === 0) ? (
-                  <p className={styles.hint}>ไม่มีวันทำงานฐานในเดือนนี้</p>
+                  <p className={styles.hint}>ไม่มีวันทำงานฐานในช่วงวันที่นี้</p>
                 ) : (
                   <div className={styles.tableWrap} style={{ marginTop: '0.5rem' }}>
                     <table className={styles.table}>
@@ -298,7 +318,7 @@ export default function TruckPayrollPage() {
                   Block 2: เที่ยววิ่ง ({selectedDriver.trips?.length || 0} เที่ยว · รวม {formatMoney(selectedDriver.tripSatang || 0)} บาท)
                 </h3>
                 {(!selectedDriver.trips || selectedDriver.trips.length === 0) ? (
-                  <p className={styles.hint}>ไม่มีเที่ยววิ่งในเดือนนี้</p>
+                  <p className={styles.hint}>ไม่มีเที่ยววิ่งในช่วงวันที่นี้</p>
                 ) : (
                   <div className={styles.tableWrap} style={{ marginTop: '0.5rem' }}>
                     <table className={styles.table}>
@@ -376,20 +396,20 @@ export default function TruckPayrollPage() {
                       {data.state === 'CLOSED' && (
                         <button
                           type="button"
-                          onClick={() => void download(`/api/truck/payroll/pdf?month=${month}&driverId=${encodeURIComponent(selectedDriver.driverId)}`, `payroll-${month}-${selectedDriver.driverName}.pdf`).catch(e => setError(errMsg(e)))}
+                          onClick={() => void download(`/api/truck/payroll/pdf?${query}&driverId=${encodeURIComponent(selectedDriver.driverId)}`, `payroll-${month}-${selectedDriver.driverName}.pdf`).catch(e => setError(errMsg(e)))}
                         >
                           ดาวน์โหลด PDF
                         </button>
                       )}
 
                       {data.state === 'CLOSED' && payment?.status === 'PAID' && (
-                        <button type="button" onClick={() => openVoidPaymentModal(selectedDriver)}>
+                        <button type="button" disabled={actionBusy} onClick={() => openVoidPaymentModal(selectedDriver)}>
                           ยกเลิกบันทึกจ่าย
                         </button>
                       )}
 
                       {data.state === 'CLOSED' && payment?.status !== 'PAID' && (
-                        <button type="button" onClick={() => openPayModal(selectedDriver)}>
+                        <button type="button" disabled={actionBusy} onClick={() => openPayModal(selectedDriver)}>
                           บันทึกจ่าย
                         </button>
                       )}
@@ -407,14 +427,6 @@ export default function TruckPayrollPage() {
             <section className={styles.payrollSection} aria-labelledby="payroll-preview-title" style={{ marginTop: '1.5rem' }}>
               <h2 id="payroll-preview-title">ตรวจสอบก่อนปิดรอบ</h2>
               {data.legacyReviewRequired && <p role="alert">มีใบงานเดิมที่ต้องตรวจและย้ายข้อมูลก่อนปิดรอบ</p>}
-              {data.preview.pending.length > 0 && (
-                <div role="alert">
-                  <h3>เที่ยวค้าง {data.preview.pending.length} เที่ยว</h3>
-                  {data.preview.pending.map((trip: any) => (
-                    <p key={trip.tripId}>{trip.departureDate} · {trip.plate || 'ไม่ระบุรถ'} · {trip.origin} → {trip.destination}</p>
-                  ))}
-                </div>
-              )}
               {data.preview.errors.length > 0 && (
                 <div role="alert">
                   <p>ข้อมูลคนขับหรือค่าเที่ยวไม่ครบ {data.preview.errors.length} เที่ยว</p>
@@ -423,8 +435,8 @@ export default function TruckPayrollPage() {
               )}
               <button
                 type="button"
-                disabled={!data.preview.canClose || data.legacyReviewRequired}
-                onClick={() => void action('CLOSE')}
+                disabled={actionBusy || loading || !data.preview.canClose || data.legacyReviewRequired}
+                onClick={() => void action('CLOSE').catch(() => {})}
               >
                 ปิดรอบค่าแรง
               </button>
@@ -480,7 +492,7 @@ export default function TruckPayrollPage() {
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
               <button type="button" onClick={() => setPayDriverTarget(null)} style={{ background: 'var(--team-surface)', color: 'var(--team-text)', border: '1px solid var(--team-border-strong)' }}>ยกเลิก</button>
-              <button type="submit">ยืนยันบันทึกจ่าย</button>
+              <button type="submit" disabled={actionBusy}>ยืนยันบันทึกจ่าย</button>
             </div>
           </form>
         </div>
@@ -542,7 +554,7 @@ export default function TruckPayrollPage() {
           >
             <h3 id="reopen-modal-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-primary-dark)' }}>เปิดรอบแก้ไขค่าแรง</h3>
             <p style={{ margin: '0 0 1rem', color: 'var(--team-text)' }}>
-              เดือน <strong>{month}</strong> · การเปิดรอบแก้ไขจะอนุญาตให้แก้ไขวันทำงานและค่าเที่ยววิ่งได้
+              ช่วงวันที่ <strong>{month}</strong> · การเปิดรอบแก้ไขจะอนุญาตให้แก้ไขวันทำงานและค่าเที่ยววิ่งได้
             </p>
 
             <div style={{ marginBottom: '1rem' }}>
@@ -561,7 +573,7 @@ export default function TruckPayrollPage() {
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
               <button type="button" onClick={() => setReopenModalOpen(false)} style={{ background: 'var(--team-surface)', color: 'var(--team-text)', border: '1px solid var(--team-border-strong)' }}>ยกเลิก</button>
-              <button type="submit">ยืนยันเปิดรอบแก้ไข</button>
+              <button type="submit" disabled={actionBusy}>ยืนยันเปิดรอบแก้ไข</button>
             </div>
           </form>
         </div>

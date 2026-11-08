@@ -1,3 +1,4 @@
+import { truckDateRange } from '@/lib/truck/date-range';
 import { NextRequest } from 'next/server';
 import PDFDocument from 'pdfkit';
 import path from 'node:path';
@@ -10,7 +11,7 @@ import { createErrorResponse } from '@/lib/server/errors';
 export const dynamic='force-dynamic';
 export async function GET(req:NextRequest) {
   try {
-    await verifyOwner(req); const month=monthKey(req.nextUrl.searchParams.get('month')||''); const driverId=req.nextUrl.searchParams.get('driverId');
+    await verifyOwner(req); const range=truckDateRange({start:req.nextUrl.searchParams.get('start'),end:req.nextUrl.searchParams.get('end'),month:req.nextUrl.searchParams.get('month')}); const month=range.id; const driverId=req.nextUrl.searchParams.get('driverId');
     if(!driverId || driverId.includes('/')) throw new Error('INVALID_INPUT');
     const snap=await getShopDocRef().collection('truckPayrollMonths').doc(month).get(); const data=snap.data();
     if(data?.state!=='CLOSED') return createErrorResponse('PAYROLL_NOT_CLOSED','รอบค่าแรงยังไม่ปิด',409);
@@ -20,9 +21,9 @@ export async function GET(req:NextRequest) {
     doc.registerFont('thai',path.join(process.cwd(),'src/assets/fonts/THSarabunNew.ttf')); doc.font('thai').fontSize(18);
     let section='วันทำงานและค่าแรงฐาน';
     const header=()=>{
-      doc.font('thai').fontSize(18).text('ใบสรุปค่าแรงคนขับ',{align:'center'}).text(`รอบ ${month}   คนขับ ${row.driverName}`);
+      doc.font('thai').fontSize(18).text('ใบสรุปค่าแรงคนขับ',{align:'center'}).text(`รอบ ${data.start || range.start} ถึง ${data.end || range.end}   คนขับ ${row.driverName}`);
       const payment=data?.payments?.[driverId]; if(payment?.status==='PAID') doc.text(`วันที่จ่าย ${payment.paidDate}`);
-      doc.fontSize(14).text('ค่าเที่ยวอยู่รอบเดือนตามวันที่ออกเดินทาง').moveDown(.3).text(section).moveDown(.3);
+      doc.fontSize(14).text('ค่าเที่ยวรวมตามวันที่ออกเดินทางในช่วงที่เลือก').moveDown(.3).text(section).moveDown(.3);
     };
     const line=(text:string)=>{
       doc.fontSize(15);
@@ -35,7 +36,7 @@ export async function GET(req:NextRequest) {
     for(const day of row.days) line(`${day.date}   ${formatMoney(day.baseSatang)} บาท`);
     startSection('รายละเอียดเที่ยว — วันออก / วันถึง / ทะเบียน / เส้นทาง / ค่าเที่ยว');
     const routeCounts=new Map<string,number>();
-    for(const trip of row.trips) { const route=`${trip.origin} ไป ${trip.destination}`; const isV3=trip.pricingVersion===3; const oldExtra=isV3?(trip.legacyDriverExtraSatang??0):(trip.driverExtraSatang??0); routeCounts.set(route,(routeCounts.get(route)||0)+1); line(`${trip.departureDate} ถึง ${trip.arrivalDate}  ${trip.plate}  ${route}  ${formatMoney(trip.driverPaySatang)}${oldExtra>0?` + ${formatMoney(oldExtra)} เงินเพิ่มเดิม`:' บาท'}`); }
+    for(const trip of row.trips) { const route=`${trip.origin} ไป ${trip.destination}`; const isV3=trip.pricingVersion===3; const oldExtra=isV3?(trip.legacyDriverExtraSatang??0):(trip.driverExtraSatang??0); routeCounts.set(route,(routeCounts.get(route)||0)+1); line(`${trip.departureDate}${trip.arrivalDate ? ' ถึง ' + trip.arrivalDate : ''}  ${trip.plate}  ${route}  ${formatMoney(trip.driverPaySatang)}${oldExtra>0?` + ${formatMoney(oldExtra)} เงินเพิ่มเดิม`:' บาท'}`); }
     startSection('จำนวนเที่ยวตามเส้นทาง');
     for(const [route,count] of routeCounts) line(`${route}: ${count} เที่ยว`);
     startSection('สรุปค่าแรง');
