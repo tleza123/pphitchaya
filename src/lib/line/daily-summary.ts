@@ -47,8 +47,8 @@ export async function fetchAttendanceDailySummary(
   const calendarVersions: CalendarVersion[] = (Array.isArray((calendarVersionsSnap as any)?.docs) ? (calendarVersionsSnap as any).docs : [])
     .map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc;
-      return d && Array.isArray(d.workDays) && typeof d.effectiveDate === 'string'
-        ? { versionId: doc.id, workDays: d.workDays, effectiveDate: d.effectiveDate }
+      return d && Array.isArray(d.weekdays ?? d.workDays) && typeof (d.effectiveFrom || d.effectiveDate) === 'string'
+        ? { versionId: doc.id, weekdays: d.weekdays ?? d.workDays, effectiveFrom: d.effectiveFrom || d.effectiveDate, revision: d.revision || 1 }
         : null;
     })
     .filter(Boolean) as CalendarVersion[];
@@ -61,7 +61,7 @@ export async function fetchAttendanceDailySummary(
     if (d && (d.kind === 'WORKDAY' || d.kind === 'HOLIDAY')) {
       overrides[doc.id] = d.kind;
       if (doc.id === dateKey && d.kind === 'HOLIDAY') {
-        holidayReason = d.name || d.reason;
+        holidayReason = d.name || d.reason || d.note;
       }
     }
   });
@@ -73,7 +73,7 @@ export async function fetchAttendanceDailySummary(
     if (holidayData && (holidayData.kind === 'WORKDAY' || holidayData.kind === 'HOLIDAY')) {
       overrides[dateKey] = holidayData.kind;
       if (holidayData.kind === 'HOLIDAY') {
-        holidayReason = holidayData.name || holidayData.reason;
+        holidayReason = holidayData.name || holidayData.reason || holidayData.note;
       }
     }
   }

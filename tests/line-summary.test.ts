@@ -80,6 +80,27 @@ function createMockDb(initialDocs: Map<string, any>) {
   };
 }
 
+test('LINE respects current calendar versions on Sundays and special shop holidays', async () => {
+  const globals = globalThis as unknown as { adminDb?: unknown };
+  const previous = globals.adminDb;
+  const shop = 'sunday-calendar';
+  const path = `shops/${shop}`;
+  const mock = createMockDb(new Map([
+    [`${path}/calendarVersions/current`, { effectiveFrom: '2026-11-01', weekdays: [0,1,2,3,4,5,6], revision: 1 }],
+    [`${path}/calendarVersions/old`, { effectiveDate: '2026-01-01', workDays: [1,2,3,4,5,6], revision: 1 }]
+  ]));
+  globals.adminDb = mock.db;
+  try {
+    assert.equal((await fetchAttendanceDailySummary(shop, '2026-11-08')).isHoliday, false);
+    mock.docs.set(`${path}/calendarOverrides/2026-11-08`, { kind: 'HOLIDAY', note: 'วันหยุดเฉพาะกิจ' });
+    const holiday = await fetchAttendanceDailySummary(shop, '2026-11-08');
+    assert.equal(holiday.isHoliday, true);
+    assert.equal(holiday.holidayName, 'วันหยุดเฉพาะกิจ');
+    mock.docs.set(`${path}/calendarOverrides/2026-11-08`, { kind: 'WORKDAY' });
+    assert.equal((await fetchAttendanceDailySummary(shop, '2026-11-08')).isHoliday, false);
+  } finally { globals.adminDb = previous; }
+});
+
 test('resolveLineConfig prioritizes Firestore and falls back to environment variables', async () => {
   const globals = globalThis as unknown as { adminDb?: unknown };
   const prevDb = globals.adminDb;

@@ -14,10 +14,12 @@ export interface ReportAdjustment {
   month: string; extraId: string; label: string; type: 'BONUS' | 'DEDUCTION'; amountSatang: number;
 }
 export interface AnalyticsEmployee {
+  workdayCount?: number;
   employeeId: string; name: string; nickname?: string; position: string;
   totals: ReportTotals; buckets: ReportBucket[]; adjustments: ReportAdjustment[];
 }
 export interface AnalyticsReport {
+  workdayCount?: number;
   period: ReportPeriod; today: string; months: string[]; closedMonths: string[];
   totals: ReportTotals; buckets: ReportBucket[]; employees: AnalyticsEmployee[];
 }
@@ -61,10 +63,17 @@ export function buildAnalytics(results: AnalyticsMonth[], period: ReportPeriod, 
   const dailyRates = new Map<string, number>();
   const totals = emptyTotals();
   const seen = new Set<string>();
+  const workdays = new Set<string>();
+  const employeeWorkdays = new Map<string, Set<string>>();
   for (const result of results) {
     const key = `${result.month}|${result.employeeId}`;
     requireCondition(!seen.has(key), 'DUPLICATE_REPORT');
     seen.add(key);
+    if (!employeeWorkdays.has(result.employeeId)) employeeWorkdays.set(result.employeeId, new Set());
+    for (const day of result.days) if (['FULL', 'HALF', 'ABSENT'].includes(day.status)) {
+      workdays.add(day.dateKey);
+      employeeWorkdays.get(result.employeeId)!.add(day.dateKey);
+    }
     let employee = people.get(result.employeeId);
     if (!employee) {
       employee = { employeeId: result.employeeId, name: result.name, nickname: result.nickname, position: result.position,
@@ -100,7 +109,8 @@ export function buildAnalytics(results: AnalyticsMonth[], period: ReportPeriod, 
     const rate = dailyRates.get(`${employee.employeeId}|${bucket.key}`);
     return rate === undefined ? bucket : { ...bucket, dailyRateSatang: rate };
   });
-  return { period, today, months, closedMonths, totals, buckets: buckets(globalBuckets),
+  for (const employee of people.values()) employee.workdayCount = employeeWorkdays.get(employee.employeeId)?.size || 0;
+  return { period, today, months, closedMonths, totals, workdayCount: workdays.size, buckets: buckets(globalBuckets),
     employees: [...people.values()].sort((a, b) => (a.nickname || a.name).localeCompare(b.nickname || b.name, 'th')) };
 }
 

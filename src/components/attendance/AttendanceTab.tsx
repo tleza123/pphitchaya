@@ -244,8 +244,8 @@ export function AttendanceTab({
     catch { alert('กรุณากรอกเงินหักให้ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง'); }
   };
 
-  const handleAddWorkday = async () => {
-    if (!idToken || isClosed) return;
+  const handleAddWorkday = async (kind: 'WORKDAY' | 'HOLIDAY' = 'WORKDAY') => {
+    if (!idToken || isClosed || loading || pendingWrites.current.size > 0) return;
     const requestId = crypto.randomUUID();
     try {
       const res = await fetch('/api/calendar', {
@@ -257,8 +257,8 @@ export function AttendanceTab({
         body: JSON.stringify({
           type: 'OVERRIDE',
           dateKey: selectedDate,
-          kind: 'WORKDAY',
-          note: 'เพิ่มวันทำงานพิเศษ',
+          kind,
+          note: kind === 'HOLIDAY' ? 'วันหยุดร้านเฉพาะกิจ' : 'เพิ่มวันทำงานพิเศษ',
           requestId
         })
       });
@@ -359,7 +359,7 @@ export function AttendanceTab({
           <strong>วันหยุดตามตาราง</strong>
           <span>หากพนักงานมาทำงานจริง กรุณากดบันทึกวันทำงานเพิ่มก่อนเริ่มเช็คชื่อ</span>
           {!isClosed && (
-            <button type="button" className={styles.noticeBtn} disabled={loading || Boolean(calendarPending)} onClick={() => runCalendarAction('กำลังเพิ่มวันทำงาน', handleAddWorkday)} aria-busy={Boolean(calendarPending)}>
+            <button type="button" className={styles.noticeBtn} disabled={loading || Boolean(calendarPending)} onClick={() => runCalendarAction('กำลังเพิ่มวันทำงาน', () => handleAddWorkday())} aria-busy={Boolean(calendarPending)}>
               บันทึกวันทำงานเพิ่ม
             </button>
           )}
@@ -596,7 +596,12 @@ export function AttendanceTab({
         })}
         </div>
       )}
-      <div style={{ marginTop: '1.5rem' }}><LineSendButton scope="attendance" className={styles.noticeBtn} /></div>
+      <div style={{ marginTop: '1.5rem', display: 'grid', gap: '.75rem' }}>
+        <button type="button" className={styles.noticeBtn} disabled={loading || isClosed || !isWorkday || Boolean(calendarPending) || Object.values(pendingMap).some(Boolean)} onClick={() => {
+          if (window.confirm(`กำหนด ${formatThaiDate(selectedDate)} เป็นวันหยุดร้าน? วันนี้จะไม่คิดค่าแรงตามปฏิทิน ข้อมูลเช็คชื่อเดิมจะยังเก็บไว้ และเปลี่ยนกลับเป็นวันทำงานได้`)) void runCalendarAction('กำลังบันทึกวันหยุดร้าน', () => handleAddWorkday('HOLIDAY'));
+        }}>{!isWorkday ? 'วันที่เลือกเป็นวันหยุดร้าน' : 'วันหยุดร้านเฉพาะกิจ'}</button>
+        <LineSendButton scope="attendance" className={styles.noticeBtn} />
+      </div>
     </div>
   );
 }

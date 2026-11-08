@@ -44,6 +44,10 @@ test('Monthly and yearly reports reconcile all money and keep individuals separa
   for (const period of ['month', 'year'] as const) {
     const report = buildAnalytics(results, period, '2026-10-06', ['2026-10'], ['2026-10']);
     assert.equal(report.totals.totalSatang, 192000);
+    assert.equal(report.workdayCount, 5, 'Calendar days must not multiply by employee count');
+    assert.equal(report.employees[0].workdayCount, 5);
+    assert.equal(report.totals.workedDays / report.employees.length, 4);
+    assert.equal(report.totals.baseSatang / report.workdayCount!, 56000, 'Average daily shop wage excludes monthly adjustments');
     assert.equal(report.buckets[0].totalSatang, report.totals.totalSatang);
     assert.equal(report.totals.totalSatang, report.employees.reduce((sum, employee) => sum + employee.totals.totalSatang, 0));
     assert.equal(report.employees[0].buckets[0].deductionSatang, 4000);

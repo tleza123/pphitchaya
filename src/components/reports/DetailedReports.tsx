@@ -21,10 +21,10 @@ function periodLabel(key: string, period: ReportPeriod, short = false) {
   return formatThaiDate(key, short ? { day: 'numeric' } : { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function Chart({ rows, period, metric, title, money, individualDaily = false }: { rows: ReportBucket[]; period: ReportPeriod; metric: keyof ReportTotals; title: string; money: boolean; individualDaily?: boolean }) {
+function Chart({ rows, period, metric, title, money, individualDaily = false, divisor = 1 }: { rows: ReportBucket[]; period: ReportPeriod; metric: keyof ReportTotals; title: string; money: boolean; individualDaily?: boolean; divisor?: number }) {
   const points = rows.map(row => {
     const halfDay = individualDaily && !money && period === 'day' && row.half > 0 && (metric === 'workedDays' || metric === 'half');
-    return { row, value: halfDay ? 0.5 : row[metric], halfDay };
+    return { row, value: halfDay ? 0.5 : row[metric] / Math.max(1, divisor), halfDay };
   });
   const values = points.map(point => point.value);
   const high = Math.max(1, ...values);
@@ -37,31 +37,35 @@ function Chart({ rows, period, metric, title, money, individualDaily = false }: 
   return <figure className={styles.figure}>
     <div className={styles.chartScroll}>
       <svg viewBox={`0 0 ${width} 245`} className={styles.chart} style={{ minWidth: `${width / 20}rem` }} role="img" aria-label={`${title} ${periodLabels[period]}`}>
-        {[low, (high + low) / 2, high].map((value, index) => <g key={index}>
+        {Array.from({ length: 5 }, (_, index) => low + (high - low) * index / 4).map((value, index) => <g key={index}>
           <line x1="65" x2={width - 15} y1={y(value)} y2={y(value)} stroke="#d7e0ea" strokeDasharray="3 4" />
           <text x="58" y={y(value) + 4} textAnchor="end" fontSize="11" fill="#526277">{new Intl.NumberFormat('th-TH', { maximumFractionDigits: money ? 0 : 1 }).format(money ? value / 100 : value)}</text>
         </g>)}
         {points.map(({ row, value, halfDay }, index) => <g key={row.key}>
           <rect x={70 + index * step + step * 0.12} y={Math.min(zero, y(value))} width={step * 0.7}
             height={Math.max(value === 0 ? 0 : 1, Math.abs(y(value) - zero))} rx="3"
-            fill={halfDay ? '#ffc300' : value < 0 ? '#991b1b' : money ? '#003566' : '#166534'}>
-            <title>{periodLabel(row.key, period)}: {money ? formatMoney(value) + ' บาท' : value + ' วัน'}</title>
+            fill={halfDay || metric === 'half' ? '#b77909' : value < 0 || metric === 'absent' ? '#b91c1c' : metric === 'holiday' ? '#64748b' : money ? '#0369a1' : '#15803d'}>
+            <title>{periodLabel(row.key, period)}: {money ? formatMoney(value) + ' บาท' : new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 }).format(value) + ' วัน'}</title>
           </rect>
+          <text x={70 + index * step + step * 0.47} y={Math.max(14, Math.min(zero, y(value)) - 6)} textAnchor="middle" fontSize="11" fill="#003566">{new Intl.NumberFormat('th-TH', { maximumFractionDigits: money ? 0 : 2, notation: money ? 'compact' : 'standard' }).format(money ? value / 100 : value)}</text>
           <text x={70 + index * step + step * 0.47} y="232" textAnchor="middle" fontSize="12" fill="#526277">{periodLabel(row.key, period, true)}</text>
         </g>)}
       </svg>
     </div>
-    <figcaption>{title} · {money ? 'จำนวนเงินเป็นบาท' : 'จำนวนวันรวมของพนักงาน'}</figcaption>
+    <figcaption>{title} · {money ? 'จำนวนเงินเป็นบาท' : divisor > 1 ? 'วันเฉลี่ยต่อพนักงาน' : 'จำนวนวันต่อพนักงาน'}</figcaption>
   </figure>;
 }
 
-function Totals({ totals }: { totals: ReportTotals }) {
+function Totals({ totals, employeeCount, workdayCount, average }: { totals: ReportTotals; employeeCount: number; workdayCount: number; average: boolean }) {
+  const days = (value: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 }).format(value / Math.max(1, employeeCount));
+  const label = (value: string) => average ? value + 'เฉลี่ยต่อคน' : value;
   const tiles: Array<[string, string, boolean?]> = [
     ['ค่าแรงสะสม', formatMoney(totals.baseSatang), true], ['เงินพิเศษ', formatMoney(totals.extraSatang), true],
     ['ค่าแรงรวมเงินพิเศษ', formatMoney(totals.grossSatang), true], ['เงินเบิก', formatMoney(totals.advanceSatang), true],
     ['เงินหัก', formatMoney(totals.deductionSatang), true], ['ค่าจ้างสุทธิ', formatMoney(totals.totalSatang), true],
-    ['มาทำงาน', String(totals.workedDays)], ['เต็มวัน', String(totals.full)], ['ครึ่งวัน', String(totals.half)],
-    ['ไม่มาทำงาน', String(totals.absent)], ['วันหยุดตามตาราง', String(totals.holiday)], ['วันคิดค่าแรง', String(totals.paidDayUnits)]
+    [label('มาทำงาน'), days(totals.workedDays)], [label('เต็มวัน'), days(totals.full)], [label('ครึ่งวัน'), days(totals.half)],
+    [label('ไม่มาทำงาน'), days(totals.absent)], [label('วันหยุดตามตาราง'), days(totals.holiday)], [label('วันคิดค่าแรง'), days(totals.paidDayUnits)],
+    ['ค่าแรงเฉลี่ยที่จ่ายต่อวัน', formatMoney(workdayCount ? Math.round(totals.baseSatang / workdayCount) : 0), true]
   ];
   return <div className={styles.totals}>{tiles.map(([label, value, money]) => <article className={styles.tile} key={label}>
     <span>{label}</span><strong>{value}</strong><span>{money ? 'บาท' : 'วัน'}</span>
@@ -128,13 +132,14 @@ export default function DetailedReports({ active, attendanceVersion, onBack }: {
     {loading && !data ? <div aria-busy="true" aria-label="กำลังโหลดรายงานละเอียด"><div className={styles.totals}>{Array.from({ length: 12 }, (_, index) => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}</div><div className={styles.charts}>{[0, 1].map(index => <div className={styles.chartSkeleton} key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}</div></div>
       : data && totals ? <>
         <p className={styles.context}>{selected ? selected.nickname || selected.name : 'พนักงานทุกคน'} · {period === 'day' ? formatThaiMonth(month) : period === 'month' ? `ปี ${Number(year) + 543}` : `ปี ${Number(fromYear) + 543}–${Number(toYear) + 543}`}</p>
-        <Totals totals={totals} />
+        <Totals totals={totals} employeeCount={selected ? 1 : data.employees.length} workdayCount={(selected || data).workdayCount || 0} average={!selected} />
+        <p className={styles.context}>จำนวนวันเฉลี่ย = วันรวม ÷ จำนวนพนักงานในช่วงที่เลือก · ค่าแรงเฉลี่ยต่อวัน = ค่าแรงสะสม ÷ จำนวนวันทำงานของร้านในช่วงที่เลือก (ไม่รวมเงินพิเศษ เงินเบิก และเงินหัก)</p>
         <p className={styles.context}>ค่าจ้างสุทธิ = ค่าแรงสะสม + เงินพิเศษ − เงินเบิก − เงินหัก</p>
         {period === 'day' && adjustments.length > 0 && <p className={styles.notice}>ยอดรวมรวมเงินพิเศษและเงินหักประจำเดือน ส่วนกราฟรายวันแสดงเฉพาะรายการที่ระบุวันที่</p>}
         {data.closedMonths.length > 0 && <p className={styles.context}>เดือนที่ปิดบัญชีใช้ยอดที่บันทึกไว้ตอนปิดเดือน</p>}
         <div className={styles.charts}>
           <section className={styles.panel}><h3>จำนวนเงิน {periodLabels[period]}</h3><label>ประเภทเงิน<select value={moneyMetric} onChange={event => setMoneyMetric(event.target.value as MoneyMetric)}>{Object.entries(moneyMetrics).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><Chart rows={rows} period={period} metric={moneyMetric} title={moneyMetrics[moneyMetric]} money /></section>
-          <section className={styles.panel}><h3>การทำงานและหยุดงาน {periodLabels[period]}</h3><label>สถานะ<select value={attendanceMetric} onChange={event => setAttendanceMetric(event.target.value as AttendanceMetric)}>{Object.entries(attendanceMetrics).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><Chart rows={rows} period={period} metric={attendanceMetric} title={attendanceMetrics[attendanceMetric]} money={false} individualDaily={Boolean(selected) && period === 'day'} /></section>
+          <section className={styles.panel}><h3>การทำงานและหยุดงาน {periodLabels[period]}</h3><label>สถานะ<select value={attendanceMetric} onChange={event => setAttendanceMetric(event.target.value as AttendanceMetric)}>{Object.entries(attendanceMetrics).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><Chart rows={rows} period={period} metric={attendanceMetric} title={attendanceMetrics[attendanceMetric]} money={false} divisor={selected ? 1 : data.employees.length} individualDaily={Boolean(selected) && period === 'day'} /></section>
         </div>
         <section className={styles.panel}><h3>รายละเอียด {periodLabels[period]}</h3>
           {rows.length === 0 ? <p>ไม่มีข้อมูลในช่วงที่เลือก</p> : <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="ตารางรายละเอียดรายงาน"><table><thead><tr><th scope="col">ช่วงเวลา</th>{selected && period === 'day' && <th scope="col">ค่าแรงต่อวัน</th>}<th scope="col">เต็มวัน</th><th scope="col">ครึ่งวัน</th><th scope="col">ไม่มา</th><th scope="col">วันหยุด</th><th scope="col">ค่าแรง</th><th scope="col">เงินพิเศษ</th><th scope="col">เงินเบิก</th><th scope="col">เงินหัก</th><th scope="col">สุทธิ</th></tr></thead><tbody>{rows.map(row => <tr key={row.key}><th scope="row">{periodLabel(row.key, period)}</th>{selected && period === 'day' && <td>{row.dailyRateSatang === undefined ? '—' : formatMoney(row.dailyRateSatang)}</td>}<td>{row.full}</td><td>{row.half}</td><td>{row.absent}</td><td>{row.holiday}</td><td>{formatMoney(row.baseSatang)}</td><td>{formatMoney(row.extraSatang)}</td><td>{formatMoney(row.advanceSatang)}</td><td>{formatMoney(row.deductionSatang)}</td><td>{formatMoney(row.totalSatang)}</td></tr>)}</tbody></table></div>}
