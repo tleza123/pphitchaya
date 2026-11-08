@@ -272,6 +272,14 @@ test('Settings automatically lists missing routes and saves driver and customer 
   assert.equal(expanded.truckTariffs.length, 12);
   assert.equal(expanded.truckTariffs.find((row: any) => row.customerId === null && row.originId === 'a' && row.destinationId === 'b').driverPaySatang, 20000);
   assert.equal(expanded.truckTariffs.find((row: any) => row.customerId === 'c' && row.originId === 'a' && row.destinationId === 'b').customerRateSatang, 45000);
+  const customer = await postSettings(new NextRequest('http://localhost/api/truck/settings', { method:'POST', body:JSON.stringify({ action:'UPSERT_CUSTOMER', customer:{name:'New customer'}, expectedRevision:0, requestId:'auto-new-customer' }) }));
+  assert.equal(customer.status,200);
+  const customerId=(await customer.json()).data.customerId;
+  const withCustomer=await read();
+  assert.equal(withCustomer.truckTariffs.length,18);
+  const customerRoutes=withCustomer.truckTariffs.filter((row:any)=>row.customerId===customerId);
+  assert.equal(customerRoutes.length,6,'The new customer automatically gets every directed pair of existing locations');
+  assert.ok(customerRoutes.every((row:any)=>row.customerRateSatang===null && row.generated));
 });
 
 test('Truck Routes: Settings manages fleet, origins, destinations, and companyName', async () => {

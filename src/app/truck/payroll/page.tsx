@@ -9,6 +9,8 @@ import { formatMoney } from '@/lib/payroll/money';
 import { formatThaiDate, getBangkokMonth, getBangkokToday } from '@/lib/payroll/dates';
 import { useModalInteraction } from '@/components/shared/useModalInteraction';
 import styles from '@/components/truck/truck.module.css';
+import docStyles from '@/components/truck/truck-documents.module.css';
+import { ArrowLeft, Search, Check, FileDown } from 'lucide-react';
 
 export default function TruckPayrollPage() {
   const [workDate, setWorkDate] = useState(getBangkokToday());
@@ -211,37 +213,36 @@ export default function TruckPayrollPage() {
   };
 
   return (
-    <main className={styles.payrollPage}>
-      <Link href="/truck/reports">กลับหน้ารายงาน</Link>
-      <h1>รอบค่าแรงคนขับ</h1>
+    <main className={docStyles.page} data-app-theme="truck">
+      <header className={docStyles.pageHeader}><Link className={docStyles.backLink} href="/truck/reports"><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารายงาน</Link><h1>วันทำงานและรอบค่าแรงคนขับ</h1><p className={docStyles.context}>ยืนยันวันทำงาน เลือกช่วงสรุปค่าแรง และจัดการการจ่ายเงิน</p></header>
 
       {/* Workday confirmation section (retained first section for QA) */}
-      <section className={styles.payrollSection}>
+      <section className={docStyles.block}>
         <h2>ยืนยันวันทำงานคนขับ</h2>
         <label>วันที่ <input type="date" value={workDate} onChange={e => setWorkDate(e.target.value)} /></label>
         <p>คำแนะนำจากเที่ยวที่ครอบคลุมวันนี้ ต้องตรวจสอบก่อนยืนยัน</p>
+        <div className={docStyles.driverGrid}>
         {workDrivers.filter(d => d.status === 'ACTIVE' || chosen.includes(d.driverId)).map(d => (
-          <label key={d.driverId} style={{ display: 'block' }}>
+          <label key={d.driverId} className={docStyles.driverChoice}>
             <input type="checkbox" checked={chosen.includes(d.driverId)} onChange={e => setChosen(v => e.target.checked ? [...v, d.driverId] : v.filter(id => id !== d.driverId))} />
             {' '}{d.name} {suggested.includes(d.driverId) ? ' (แนะนำจากเที่ยว)' : ''}
           </label>
         ))}
-        <button type="button" onClick={() => void saveWork()}>ยืนยันวันทำงาน</button>
+        </div>
+        <div className={docStyles.buttonRow}><button type="button" className={docStyles.primaryButton} onClick={() => void saveWork()}><Check size={18} aria-hidden="true" />ยืนยันวันทำงาน</button></div>
       </section>
 
       {/* Month & Driver selectors */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', alignItems: 'end', marginTop: '0.5rem' }}>
-        <label style={{ display: 'block' }}>
+      <section className={docStyles.block}><h2>ค้นหาและสรุปค่าแรง</h2><div className={docStyles.filterGrid}>
+        <label>
           <span>จากวันที่</span><input type="date" value={start} max={end} onChange={e => setStart(e.target.value)} />
         </label>
         <label>ถึงวันที่<input type="date" value={end} min={start} onChange={e => setEnd(e.target.value)} /></label>
-        <button type="button" disabled={loading || actionBusy} onClick={search}>ค้นหาและสรุปค่าแรง</button>
-        <label style={{ display: 'block' }}>
+        <label>
           <span style={{ fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>เลือกคนขับ</span>
           <select
             value={selectedDriverId}
             onChange={e => setSelectedDriverId(e.target.value)}
-            style={{ width: '100%', minHeight: '48px', padding: '.6rem .75rem', border: '1px solid var(--team-border-strong)', borderRadius: 'var(--team-radius-small)', background: 'var(--team-surface)', color: 'var(--team-text)', fontSize: '16px' }}
           >
             {drivers.length === 0 && <option value="">-- ไม่พบข้อมูลคนขับในรอบนี้ --</option>}
             {drivers.map((d: any) => (
@@ -251,6 +252,7 @@ export default function TruckPayrollPage() {
             ))}
           </select>
         </label>
+        <button type="button" className={docStyles.primaryButton} disabled={loading || actionBusy} onClick={search}><Search size={18} aria-hidden="true" />ค้นหาและสรุปค่าแรง</button>
       </div>
 
       <p className={styles.hint}>รอบที่แสดง: {month} · ค่าแรงฐานตามวันที่ยืนยันทำงาน ค่าเที่ยวตามวันที่ออกเดินทาง รวมวันเริ่มและวันสิ้นสุด</p>
@@ -259,12 +261,13 @@ export default function TruckPayrollPage() {
         if (!period) return;
         setStart(period.start); setEnd(period.end); setRange({ start: period.start, end: period.end }); setLegacyMonth(/^20\d{2}-\d{2}$/.test(period.id) ? period.id : '');
       }}><option value="">เลือกรอบเดิม</option>{data.periods.map((p: any) => <option key={p.id} value={p.id}>{p.start} ถึง {p.end} · {p.state === 'CLOSED' ? 'ปิดแล้ว' : 'เปิดรอบ'}</option>)}</select></label>}
+      </section>
       {loading && <p role="status">กำลังค้นหาข้อมูลค่าแรง</p>}
       {error && <p role="alert">{error}</p>}
 
       {data && (
         <>
-          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '0.8rem', padding: '0.5rem 0' }}>
+          <div className={`${docStyles.block} ${docStyles.statusBlock}`}>
             <p style={{ margin: 0, fontWeight: 600 }}>
               สถานะรอบค่าแรง: {data.state === 'CLOSED' ? <strong style={{ color: 'var(--team-primary-dark)' }}>ปิดรอบแล้ว</strong> : <span style={{ color: 'var(--team-half, #d97706)' }}>ยังเปิดรอบ</span>}
             </p>
@@ -276,15 +279,16 @@ export default function TruckPayrollPage() {
           {/* Driver specific details: Block 1, 2, 3 */}
           {selectedDriver ? (
             <div style={{ display: 'grid', gap: '1.25rem' }}>
-              {/* Block 1: วันทำงานฐาน */}
-              <section className={styles.payrollSection}>
-                <h3 style={{ fontSize: '1.2rem', marginBottom: '0.4rem' }}>
-                  Block 1: วันทำงานฐาน ({selectedDriver.days?.length || 0} วัน · รวม {formatMoney(selectedDriver.baseSatang || 0)} บาท)
+              {/* วันทำงานฐาน */}
+              <section className={docStyles.block}>
+                <h3>
+                  วันทำงานฐาน ({selectedDriver.days?.length || 0} วัน · รวม {formatMoney(selectedDriver.baseSatang || 0)} บาท)
                 </h3>
                 {(!selectedDriver.days || selectedDriver.days.length === 0) ? (
                   <p className={styles.hint}>ไม่มีวันทำงานฐานในช่วงวันที่นี้</p>
                 ) : (
-                  <div className={styles.tableWrap} style={{ marginTop: '0.5rem' }}>
+                  <div className={styles.tableWrap} role="region" aria-label="ตารางรายละเอียดค่าแรง เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม" tabIndex={0} style={{ marginTop: '0.5rem' }}>
+                    <p className={docStyles.tableHint}>เลื่อนตารางซ้าย–ขวาเพื่อดูข้อมูลครบ</p>
                     <table className={styles.table}>
                       <thead>
                         <tr>
@@ -313,15 +317,16 @@ export default function TruckPayrollPage() {
                 )}
               </section>
 
-              {/* Block 2: เที่ยววิ่ง */}
-              <section className={styles.payrollSection}>
-                <h3 style={{ fontSize: '1.2rem', marginBottom: '0.4rem' }}>
-                  Block 2: เที่ยววิ่ง ({selectedDriver.trips?.length || 0} เที่ยว · รวม {formatMoney(selectedDriver.tripSatang || 0)} บาท)
+              {/* เที่ยววิ่ง */}
+              <section className={docStyles.block}>
+                <h3>
+                  เที่ยววิ่ง ({selectedDriver.trips?.length || 0} เที่ยว · รวม {formatMoney(selectedDriver.tripSatang || 0)} บาท)
                 </h3>
                 {(!selectedDriver.trips || selectedDriver.trips.length === 0) ? (
                   <p className={styles.hint}>ไม่มีเที่ยววิ่งในช่วงวันที่นี้</p>
                 ) : (
-                  <div className={styles.tableWrap} style={{ marginTop: '0.5rem' }}>
+                  <div className={styles.tableWrap} role="region" aria-label="ตารางรายละเอียดค่าแรง เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม" tabIndex={0} style={{ marginTop: '0.5rem' }}>
+                    <p className={docStyles.tableHint}>เลื่อนตารางซ้าย–ขวาเพื่อดูข้อมูลครบ</p>
                     <table className={styles.table}>
                       <thead>
                         <tr>
@@ -354,12 +359,12 @@ export default function TruckPayrollPage() {
                 )}
               </section>
 
-              {/* Block 3: ยอดรวมสุทธิ */}
-              <section className={styles.payrollSection}>
-                <h3 style={{ fontSize: '1.2rem', marginBottom: '0.6rem' }}>
-                  Block 3: ยอดรวมสุทธิและสถานะการจ่าย
+              {/* ยอดรวมสุทธิ */}
+              <section className={docStyles.block}>
+                <h3>
+                  ยอดรวมสุทธิและสถานะการจ่าย
                 </h3>
-                <div style={{ display: 'grid', gap: '0.6rem', background: 'var(--team-surface)', padding: '1rem', border: '1px solid var(--team-border)', borderRadius: 'var(--team-radius-card)' }}>
+                <div className={docStyles.summary}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>ค่าแรงฐาน ({selectedDriver.days?.length || 0} วัน):</span>
                     <span>{formatMoney(selectedDriver.baseSatang || 0)} บาท</span>
@@ -399,18 +404,18 @@ export default function TruckPayrollPage() {
                           type="button"
                           onClick={() => void download(`/api/truck/payroll/pdf?${query}&driverId=${encodeURIComponent(selectedDriver.driverId)}`, `payroll-${month}-${selectedDriver.driverName}.pdf`).catch(e => setError(errMsg(e)))}
                         >
-                          ดาวน์โหลด PDF
+                          <FileDown size={18} aria-hidden="true" />ดาวน์โหลด PDF
                         </button>
                       )}
 
                       {data.state === 'CLOSED' && payment?.status === 'PAID' && (
-                        <button type="button" disabled={actionBusy} onClick={() => openVoidPaymentModal(selectedDriver)}>
+                        <button type="button" className={docStyles.dangerButton} disabled={actionBusy} onClick={() => openVoidPaymentModal(selectedDriver)}>
                           ยกเลิกบันทึกจ่าย
                         </button>
                       )}
 
                       {data.state === 'CLOSED' && payment?.status !== 'PAID' && (
-                        <button type="button" disabled={actionBusy} onClick={() => openPayModal(selectedDriver)}>
+                        <button type="button" className={docStyles.primaryButton} disabled={actionBusy} onClick={() => openPayModal(selectedDriver)}>
                           บันทึกจ่าย
                         </button>
                       )}
@@ -425,7 +430,7 @@ export default function TruckPayrollPage() {
 
           {/* Open state preview & close button (last button in main) */}
           {data.state === 'OPEN' && data.preview && (
-            <section className={styles.payrollSection} aria-labelledby="payroll-preview-title" style={{ marginTop: '1.5rem' }}>
+            <section className={`${docStyles.block} ${docStyles.closeBlock}`} aria-labelledby="payroll-preview-title">
               <h2 id="payroll-preview-title">ตรวจสอบก่อนปิดรอบ</h2>
               {data.legacyReviewRequired && <p role="alert">มีใบงานเดิมที่ต้องตรวจและย้ายข้อมูลก่อนปิดรอบ</p>}
               {data.preview.errors.length > 0 && (
@@ -436,6 +441,7 @@ export default function TruckPayrollPage() {
               )}
               <button
                 type="button"
+                className={docStyles.primaryButton}
                 disabled={actionBusy || loading || !data.preview.canClose || data.legacyReviewRequired}
                 onClick={() => void action('CLOSE').catch(() => {})}
               >
@@ -492,8 +498,8 @@ export default function TruckPayrollPage() {
             {payError && <p role="alert" style={{ color: 'var(--team-absent)', marginBottom: '0.8rem' }}>{payError}</p>}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
-              <button type="button" onClick={() => setPayDriverTarget(null)} style={{ background: 'var(--team-surface)', color: 'var(--team-text)', border: '1px solid var(--team-border-strong)' }}>ยกเลิก</button>
-              <button type="submit" disabled={actionBusy}>ยืนยันบันทึกจ่าย</button>
+              <button type="button" onClick={() => setPayDriverTarget(null)}>ยกเลิก</button>
+              <button type="submit" className={docStyles.primaryButton} disabled={actionBusy}>ยืนยันบันทึกจ่าย</button>
             </div>
           </form>
         </div>
@@ -534,8 +540,8 @@ export default function TruckPayrollPage() {
             {voidError && <p role="alert" style={{ color: 'var(--team-absent)', marginBottom: '0.8rem' }}>{voidError}</p>}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
-              <button type="button" onClick={() => setVoidDriverTarget(null)} style={{ background: 'var(--team-surface)', color: 'var(--team-text)', border: '1px solid var(--team-border-strong)' }}>ยกเลิก</button>
-              <button type="submit" style={{ background: 'var(--team-absent, #dc2626)', borderColor: 'var(--team-absent, #dc2626)' }}>ยืนยันยกเลิกการจ่าย</button>
+              <button type="button" onClick={() => setVoidDriverTarget(null)}>ยกเลิก</button>
+              <button type="submit" className={docStyles.dangerButton}>ยืนยันยกเลิกการจ่าย</button>
             </div>
           </form>
         </div>
@@ -573,8 +579,8 @@ export default function TruckPayrollPage() {
             {reopenError && <p role="alert" style={{ color: 'var(--team-absent)', marginBottom: '0.8rem' }}>{reopenError}</p>}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
-              <button type="button" onClick={() => setReopenModalOpen(false)} style={{ background: 'var(--team-surface)', color: 'var(--team-text)', border: '1px solid var(--team-border-strong)' }}>ยกเลิก</button>
-              <button type="submit" disabled={actionBusy}>ยืนยันเปิดรอบแก้ไข</button>
+              <button type="button" onClick={() => setReopenModalOpen(false)}>ยกเลิก</button>
+              <button type="submit" className={docStyles.primaryButton} disabled={actionBusy}>ยืนยันเปิดรอบแก้ไข</button>
             </div>
           </form>
         </div>
