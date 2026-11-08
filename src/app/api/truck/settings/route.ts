@@ -23,6 +23,7 @@ import { getAdminFirestore } from '@/lib/firebase/admin';
 import { computePayloadHash, checkRequestReceipt, recordRequestReceipt } from '@/lib/server/idempotency';
 import { validateSatang } from '@/lib/payroll/money';
 import { TruckDoc, TruckOriginDoc, TruckDestinationDoc } from '@/lib/truck/types';
+import { withAutomaticRoutes } from '@/lib/truck/route-tariffs';
 
 export const dynamic = 'force-dynamic';
 
@@ -125,7 +126,11 @@ export async function GET(req: NextRequest) {
       truckDestinations,
       truckDrivers: driversSnap.docs.map(d=>({driverId:d.id,...d.data()})),
       truckCustomers: customersSnap.docs.map(d=>({customerId:d.id,...d.data()})),
-      truckTariffs: tariffsSnap.docs.map(d=>({tariffId:d.id,...d.data()})),
+      truckTariffs: withAutomaticRoutes(
+        locationsSnap.docs.map(d => ({ locationId: d.id, status: d.data().status, code: d.data().code })),
+        customersSnap.docs.map(d => ({ customerId: d.id, status: d.data().status })),
+        tariffsSnap.docs.map(d => ({ ...d.data(), tariffId: d.id, originId: d.data().originId, destinationId: d.data().destinationId }))
+      ),
       truckLocations
     });
   } catch (err: unknown) {

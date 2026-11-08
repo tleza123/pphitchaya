@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import settings from '@/components/settings/settings.module.css';
 import reports from '@/components/reports/reports.module.css';
@@ -13,12 +13,20 @@ import styles from './truck.module.css';
 interface Field { key: string; label: string; kind?: 'text' | 'money' | 'check' | 'select'; required?: boolean; options?: { value: string; label: string }[] }
 interface Item { id: string; title: string; sub?: string; flag?: string; values: Record<string, string> }
 
-function MasterSection({ title, fields, items, busy, onSave, onDelete }: {
-  title: string; fields: Field[]; items: Item[]; busy: boolean;
+function MasterSection({ title, fields, items, busy, onSave, onDelete, autoRoutes = false }: {
+  title: string; fields: Field[]; items: Item[]; busy: boolean; autoRoutes?: boolean;
   onSave: (values: Record<string, string>, id: string | null) => Promise<void>;
   onDelete: (item: Item) => Promise<void>;
 }) {
+  const [search, setSearch] = useState('');
+  const [limit, setLimit] = useState(50);
+  const matching = autoRoutes ? items.filter(item => `${item.title} ${item.sub || ''}`.toLowerCase().includes(search.toLowerCase().trim())) : items;
+  const visible = autoRoutes ? matching.slice(0, limit) : matching;
   const [editing, setEditing] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (autoRoutes && editing) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [autoRoutes, editing]);
   const [values, setValues] = useState<Record<string, string>>({});
   const open = (item?: Item) => { setEditing(item ? item.id : 'new'); setValues(item ? item.values : {}); };
 
@@ -31,10 +39,11 @@ function MasterSection({ title, fields, items, busy, onSave, onDelete }: {
     <div className={styles.panel}>
       <div className={styles.sectionHead}>
         <h3>{title}</h3>
-        <button type="button" className={styles.iconBtn} onClick={() => open()} disabled={busy}><Plus size={18} aria-hidden="true" /> เพิ่ม</button>
+        {!autoRoutes && <button type="button" className={styles.iconBtn} onClick={() => open()} disabled={busy}><Plus size={18} aria-hidden="true" /> เพิ่ม</button>}
       </div>
       {items.length === 0 && editing !== 'new' && <p className={styles.empty}>ยังไม่มีข้อมูล</p>}
-      {items.map(item => (
+      {autoRoutes && <><p className={styles.hint}>เชื่อมทุกจุดทั้งขาไปและขากลับ เว้นราคาไว้ให้กรอกเอง · {items.length} รายการ</p><input className={settings.formInput} type="search" aria-label={`ค้นหา${title}`} placeholder="ค้นหาจุดรับ–ส่งหรือลูกค้า" value={search} onChange={e => { setSearch(e.target.value); setLimit(50); }} /></>}
+      {visible.map(item => (
         <div className={styles.item} key={item.id}>
           <div className={styles.itemText}>
             <strong>{item.title}</strong>
@@ -42,13 +51,14 @@ function MasterSection({ title, fields, items, busy, onSave, onDelete }: {
             {item.flag && <div className={styles.suspended}>{item.flag}</div>}
           </div>
           <div className={styles.itemActions}>
-            <button type="button" className={styles.iconBtn} onClick={() => open(item)} disabled={busy} aria-label={`แก้ไข ${item.title}`}><Pencil size={18} aria-hidden="true" /></button>
-            <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(item)} disabled={busy} aria-label={`ลบ ${item.title}`}><Trash2 size={18} aria-hidden="true" /></button>
+            <button type="button" className={styles.iconBtn} onClick={() => open(item)} disabled={busy} aria-label={`แก้ไข ${item.title}`}><Pencil size={18} aria-hidden="true" />{autoRoutes ? 'กรอกราคา' : null}</button>
+            {item.values.generated !== 'true' && <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(item)} disabled={busy} aria-label={`ลบ ${item.title}`}><Trash2 size={18} aria-hidden="true" /></button>}
           </div>
         </div>
       ))}
+      {autoRoutes && matching.length > visible.length && <button type="button" className={styles.iconBtn} onClick={() => setLimit(n => n + 50)}>แสดงเพิ่ม ({visible.length}/{matching.length})</button>}
       {editing && (
-        <form onSubmit={submit} style={{ marginTop: '1rem' }}>
+        <form ref={formRef} onSubmit={submit} style={{ marginTop: '1rem' }}>
           {fields.map(f => (
             <div className={settings.formGroup} key={f.key}>
               {f.kind === 'check' ? (
@@ -58,7 +68,7 @@ function MasterSection({ title, fields, items, busy, onSave, onDelete }: {
               ) : (
                 <>
                   <label className={settings.formLabel} htmlFor={`ms-${title}-${f.key}`}>{f.label}</label>
-                  {f.kind === 'select' ? <select id={`ms-${title}-${f.key}`} required={f.required} className={settings.formInput} value={values[f.key] || ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}><option value="">เลือก{f.label}</option>{f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select> : <input id={`ms-${title}-${f.key}`} required={f.required} inputMode={f.kind === 'money' ? 'decimal' : undefined} className={settings.formInput}
+                  {f.kind === 'select' ? <select id={`ms-${title}-${f.key}`} required={f.required} disabled={autoRoutes} className={settings.formInput} value={values[f.key] || ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}><option value="">เลือก{f.label}</option>{f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select> : <input id={`ms-${title}-${f.key}`} required={f.required} inputMode={f.kind === 'money' ? 'decimal' : undefined} className={settings.formInput}
                     value={values[f.key] || ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />}
                 </>
               )}
@@ -122,7 +132,7 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
   }));
   const customers: Item[] = ((boot as any).truckCustomers || []).filter((d:any) => d.status !== 'SUSPENDED').map((d: any) => ({ id: d.customerId, title: d.name, values: { name: d.name, revision: String(d.revision) } }));
   const locations: Item[] = ((boot as any).truckLocations || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.locationId,title:`${d.code} — ${d.name}`,values:{code:d.code,name:d.name,detail:d.detail||'',isShop:String(d.isShop === true),revision:String(d.revision)}}));
-  const tariffs: Item[] = ((boot as any).truckTariffs || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.tariffId,title:`${locations.find(x=>x.id===d.originId)?.title || d.originId} → ${locations.find(x=>x.id===d.destinationId)?.title || d.destinationId}`,sub:d.customerId ? `${customers.find(x=>x.id===d.customerId)?.title || d.customerId}: ${d.customerRateSatang == null ? 'ยังไม่ได้ตั้งราคา' : formatMoney(d.customerRateSatang)+' บาท'}` : `ค่าเที่ยว ${formatMoney(d.driverPaySatang)} บาท`,values:{originId:d.originId,destinationId:d.destinationId,customerId:d.customerId||'',pay:d.driverPaySatang == null ? '' : satangToDecimalString(d.driverPaySatang),billing:d.customerRateSatang==null?'':satangToDecimalString(d.customerRateSatang),revision:String(d.revision)}}));
+  const tariffs: Item[] = ((boot as any).truckTariffs || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.tariffId,title:`${locations.find(x=>x.id===d.originId)?.title || d.originId} → ${locations.find(x=>x.id===d.destinationId)?.title || d.destinationId}`,sub:d.customerId ? `${customers.find(x=>x.id===d.customerId)?.title || d.customerId}: ${d.customerRateSatang == null ? 'ยังไม่ได้ตั้งราคา' : formatMoney(d.customerRateSatang)+' บาท'}` : (d.driverPaySatang == null ? 'ยังไม่ได้ตั้งราคา' : `ค่าเที่ยว ${formatMoney(d.driverPaySatang)} บาท`),values:{generated:String(d.generated === true),originId:d.originId,destinationId:d.destinationId,customerId:d.customerId||'',pay:d.driverPaySatang == null ? '' : satangToDecimalString(d.driverPaySatang),billing:d.customerRateSatang==null?'':satangToDecimalString(d.customerRateSatang),revision:String(d.revision)}}));
 
   const backup = () => act(async () => {
     const data = await getJson('/api/truck/backup');
@@ -158,13 +168,13 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
         fields={[{key:'code',label:'รหัสจุด เช่น A',required:true},{key:'name',label:'ชื่อสถานที่',required:true},{key:'detail',label:'ที่อยู่หรือรายละเอียด'},{key:'isShop',label:'ร้านค้า (ไม่เรียกเก็บลูกค้าและไม่ระบุน้ำหนัก)',kind:'check'}]}
         onSave={(v,id)=>act(()=>post({action:'UPSERT_LOCATION',location:{id:id||undefined,code:v.code,name:v.name,detail:v.detail,isShop:v.isShop==='true'},expectedRevision:id?Number(v.revision):0}),'บันทึกจุดแล้ว')}
         onDelete={item=>{setPendingDelete({item,request:{action:'DISABLE_LOCATION',id:item.id,expectedRevision:Number(item.values.revision)},success:'ปิดใช้งานจุดแล้ว'});return Promise.resolve();}} />
-      <MasterSection title="ราคาค่าเที่ยวคนขับ" busy={busy} items={tariffs.filter(t=>!t.values.customerId)}
+      <MasterSection title="ราคาค่าเที่ยวคนขับ" autoRoutes busy={busy} items={tariffs.filter(t=>!t.values.customerId)}
         fields={[{key:'originId',label:'ต้นทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'destinationId',label:'ปลายทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'pay',label:'ค่าเที่ยวคนขับ (บาท)',kind:'money',required:true}]}
-        onSave={(v,id)=>act(()=>post({action:'UPSERT_TARIFF',tariff:{id:id||undefined,originId:v.originId,destinationId:v.destinationId,customerId:null,driverPaySatang:baht(v.pay)},expectedRevision:id?Number(v.revision):0}),'บันทึกราคาแล้ว')}
+        onSave={(v,id)=>act(()=>post({action:'UPSERT_TARIFF',tariff:{id:v.generated === 'true' ? undefined : id||undefined,originId:v.originId,destinationId:v.destinationId,customerId:null,driverPaySatang:baht(v.pay)},expectedRevision:id?Number(v.revision):0}),'บันทึกราคาแล้ว')}
         onDelete={item=>{setPendingDelete({item,request:{action:'DISABLE_TARIFF',id:item.id,expectedRevision:Number(item.values.revision)},success:'ปิดใช้งานราคาแล้ว'});return Promise.resolve();}} />
-      <MasterSection title="ราคาขนส่งลูกค้าต่อเที่ยว" busy={busy} items={tariffs.filter(t=>!!t.values.customerId)}
+      <MasterSection title="ราคาขนส่งลูกค้าต่อเที่ยว" autoRoutes busy={busy} items={tariffs.filter(t=>!!t.values.customerId)}
         fields={[{key:'customerId',label:'ลูกค้า',kind:'select',required:true,options:customers.map(c=>({value:c.id,label:c.title}))},{key:'originId',label:'ต้นทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'destinationId',label:'ปลายทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'billing',label:'ราคาขนส่งต่อเที่ยว (บาท)',kind:'money',required:true}]}
-        onSave={(v,id)=>act(()=>post({action:'UPSERT_TARIFF',tariff:{id:id||undefined,originId:v.originId,destinationId:v.destinationId,customerId:v.customerId,customerRateSatang:baht(v.billing)},expectedRevision:id?Number(v.revision):0}),'บันทึกราคาแล้ว')}
+        onSave={(v,id)=>act(()=>post({action:'UPSERT_TARIFF',tariff:{id:v.generated === 'true' ? undefined : id||undefined,originId:v.originId,destinationId:v.destinationId,customerId:v.customerId,customerRateSatang:baht(v.billing)},expectedRevision:id?Number(v.revision):0}),'บันทึกราคาแล้ว')}
         onDelete={item=>{setPendingDelete({item,request:{action:'DISABLE_TARIFF',id:item.id,expectedRevision:Number(item.values.revision)},success:'ปิดใช้งานราคาแล้ว'});return Promise.resolve();}} />
 
       <MasterSection title="รถและคนขับประจำรถ" busy={busy} items={truckDriversList}

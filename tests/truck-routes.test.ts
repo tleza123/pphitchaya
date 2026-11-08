@@ -239,6 +239,29 @@ test('One-off destinations require a name and explicit driver pay, persist edits
   assert.equal(store.docs.get(`${shop}/truckTrips/${id}`).manualDriverPaySatang, undefined);
 });
 
+test('Settings automatically lists missing routes and saves driver and customer prices independently', async () => {
+  const store = setupMockDb();
+  const shop = `shops/${process.env.SHOP_ID || 'main'}`;
+  for (const id of ['a', 'b']) store.docs.set(`${shop}/truckLocations/${id}`, { code: id, name: id, status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckCustomers/c`, { name: 'Customer', status: 'ACTIVE' });
+  const read = async () => (await (await getSettings(new NextRequest('http://localhost/api/truck/settings'))).json()).data;
+  const initial = await read();
+  assert.equal(initial.truckTariffs.length, 4);
+  assert.ok(initial.truckTariffs.every((row: any) => row.generated && row.driverPaySatang === null && row.customerRateSatang === null));
+  const savePrice = async (customerId: string | null, requestId: string) => postSettings(new NextRequest('http://localhost/api/truck/settings', { method: 'POST', body: JSON.stringify({ action: 'UPSERT_TARIFF', tariff: { originId: 'a', destinationId: 'b', customerId, ...(customerId ? { customerRateSatang: 45000 } : { driverPaySatang: 20000 }) }, expectedRevision: 0, requestId }) }));
+  assert.equal((await savePrice(null, 'auto-driver-price')).status, 200);
+  assert.equal((await savePrice('c', 'auto-customer-price')).status, 200);
+  const priced = await read();
+  assert.equal(priced.truckTariffs.length, 4);
+  assert.equal(priced.truckTariffs.filter((row: any) => row.generated === false).length, 2);
+  const created = await postSettings(new NextRequest('http://localhost/api/truck/settings', { method: 'POST', body: JSON.stringify({ action: 'UPSERT_LOCATION', location: { code: '3', name: 'New location' }, expectedRevision: 0, requestId: 'auto-new-location' }) }));
+  assert.equal(created.status, 200);
+  const expanded = await read();
+  assert.equal(expanded.truckTariffs.length, 12);
+  assert.equal(expanded.truckTariffs.find((row: any) => row.customerId === null && row.originId === 'a' && row.destinationId === 'b').driverPaySatang, 20000);
+  assert.equal(expanded.truckTariffs.find((row: any) => row.customerId === 'c' && row.originId === 'a' && row.destinationId === 'b').customerRateSatang, 45000);
+});
+
 test('Truck Routes: Settings manages fleet, origins, destinations, and companyName', async () => {
   const store = setupMockDb();
   const shop = `shops/${process.env.SHOP_ID || 'main'}`;

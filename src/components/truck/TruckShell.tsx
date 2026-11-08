@@ -21,7 +21,7 @@ export interface TruckBoot {
   truckDrivers: {driverId:string; name:string; status:string; baseWageSatang?: number; revision?: number}[];
   truckCustomers: {customerId:string; name:string; status:string}[];
   truckLocations: { locationId: string; code: string; name: string; status: string; isShop?: boolean }[];
-  truckTariffs: { tariffId: string; originId: string; destinationId: string; customerId: string | null; driverPaySatang: number; customerRateSatang: number | null; status: string }[];
+  truckTariffs: { tariffId: string; originId: string; destinationId: string; customerId: string | null; driverPaySatang: number | null; customerRateSatang: number | null; status: string; generated?: boolean }[];
   serverToday: string;
   monthKey: string;
 }
