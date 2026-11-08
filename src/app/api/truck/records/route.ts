@@ -147,6 +147,14 @@ export async function POST(req: NextRequest) {
     const monthKey = dateKey.slice(0, 7);
     validateDate(dateKey);
     for (const trip of trips as any[]) {
+      if (trip.destinationMode === '__OTHER__') {
+        if (typeof trip.destinationName !== 'string' || !trip.destinationName.trim() || trip.destinationName.trim().length > 200) return createErrorResponse('INVALID_LOCATION', 'กรุณาระบุชื่อสถานที่อื่น ๆ ไม่เกิน 200 ตัวอักษร', 422);
+        try { validateSatang(trip.manualDriverPaySatang); } catch { return createErrorResponse('INVALID_MONEY', 'กรุณาระบุค่าเที่ยวคนขับสำหรับสถานที่อื่น ๆ ให้ถูกต้อง', 422); }
+        trip.destinationId = null;
+        trip.destinationName = trip.destinationName.trim();
+      } else if (trip.manualDriverPaySatang !== undefined) {
+        return createErrorResponse('UNSUPPORTED_PRICING_FIELDS', 'ค่าเที่ยวที่กรอกเองใช้ได้เฉพาะปลายทางอื่น ๆ', 422);
+      }
       if (trip.departureDate) {
         try { validateDate(trip.departureDate); if (trip.arrivalDate) validateDate(trip.arrivalDate); } catch { return createErrorResponse('INVALID_DATE', undefined, 422); }
         if (trip.arrivalDate && trip.arrivalDate < trip.departureDate) return createErrorResponse('INVALID_DATE', 'วันถึงต้องไม่ก่อนวันออก', 422);
@@ -237,7 +245,7 @@ export async function POST(req: NextRequest) {
       if (needsLegacyReview) throw new Error('LEGACY_PRICING_REVIEW_REQUIRED');
       const modern = trips.some((t: any) => !!t.departureDate);
       if (modern && (!driverId || typeof driverId !== 'string')) throw new Error('DRIVER_REQUIRED');
-      const locationIds = [...new Set<string>(trips.filter((t:any)=>t.departureDate).flatMap((t:any)=>[t.originId,t.destinationId]))];
+      const locationIds = [...new Set<string>(trips.filter((t:any)=>t.departureDate).flatMap((t:any)=>t.destinationMode === '__OTHER__' ? [t.originId] : [t.originId,t.destinationId]))];
       if (locationIds.some(id=>typeof id !== 'string' || !id || id.includes('/'))) throw new Error('INVALID_LOCATION');
       const locationSnaps = locationIds.length ? await tx.getAll(...locationIds.map(id=>getTruckLocationsCol(shopId).doc(id))) : [];
       const locations = new Map(locationSnaps.map(s=>[s.id,s.data()]));
@@ -263,6 +271,10 @@ export async function POST(req: NextRequest) {
       const activeTariffs = (tariffSnap?.docs || []).filter((doc: any) => doc.data()?.status === 'ACTIVE').map((doc: any) => ({ tariffId: doc.id, ...doc.data() }));
       const rateSnapshots = trips.map((t: any) => {
         if (!t.departureDate) return {};
+        if (t.destinationMode === '__OTHER__') {
+          t.driverPaySatang = validateSatang(t.manualDriverPaySatang);
+          return { driverTariffId: null, driverTariffRevision: null, driverRateSource: 'OVERRIDE', billingTariffId: null, billingTariffRevision: null, billingRateSource: t.billable === false ? 'NON_BILLABLE' : t.billingSatang == null ? 'PENDING' : 'MANUAL' };
+        }
         const prior = t.tripId ? existingTrips.get(t.tripId) : null;
         const sameDriverRoute = prior && prior.originId === t.originId && prior.destinationId === t.destinationId;
         const sameRoute = sameDriverRoute && (prior.customerId || null) === (t.customerId || null);
@@ -301,14 +313,14 @@ export async function POST(req: NextRequest) {
         t.tripIndex = index + 1;
         const origin=locations.get(t.originId), destination=locations.get(t.destinationId);
         const prior = t.tripId ? existingTrips.get(t.tripId) : null;
-        if (t.departureDate && (t.originId===t.destinationId || (origin?.status !== 'ACTIVE' && prior?.originId !== t.originId) || (destination?.status !== 'ACTIVE' && prior?.destinationId !== t.destinationId))) throw new Error('INVALID_LOCATION');
+        if (t.departureDate && (t.originId===t.destinationId || (origin?.status !== 'ACTIVE' && prior?.originId !== t.originId) || (t.destinationMode !== '__OTHER__' && destination?.status !== 'ACTIVE' && prior?.destinationId !== t.destinationId))) throw new Error('INVALID_LOCATION');
         if (t.billable !== false && t.status === 'COMPLETED' && t.departureDate && (!t.customerId || t.billingSatang == null || t.weightKg == null)) throw new Error('BILLING_INCOMPLETE');
         const legacyDriverExtraSatang = prior?.legacyDriverExtraSatang ?? (prior?.pricingVersion !== 3 ? prior?.driverExtraSatang : undefined);
         const legacyFeeFields = ['driverExtraSatang', 'driverExtraNote', 'billingExtraSatang', 'billingExtraNote'];
         const hadLegacyFeeFields = prior?.pricingVersion !== 3 && legacyFeeFields.some(field => Object.prototype.hasOwnProperty.call(prior || {}, field));
         const legacyPricingSnapshot = prior?.legacyPricingSnapshot ?? (hadLegacyFeeFields ? { pricingVersion: prior?.pricingVersion ?? 2, ...Object.fromEntries(legacyFeeFields.filter(field => Object.prototype.hasOwnProperty.call(prior || {}, field)).map(field => [field, prior?.[field]])) } : undefined);
         const hasLegacyDriverExtra = prior && (Object.prototype.hasOwnProperty.call(prior, 'legacyDriverExtraSatang') || (prior.pricingVersion !== 3 && Object.prototype.hasOwnProperty.call(prior, 'driverExtraSatang')));
-        return { ...t, pricingVersion: 3, ...(prior ? { departureTime: prior.departureTime ?? null, arrivalTime: prior.arrivalTime ?? null, departedAt: prior.departedAt ?? null, arrivedAt: prior.arrivedAt ?? null } : { departureTime: null, arrivalTime: null, departedAt: null, arrivedAt: null }), billingPricingMode: 'PER_TRIP', ...rateSnapshots[index], ...(hasLegacyDriverExtra ? { legacyDriverExtraSatang: legacyDriverExtraSatang ?? 0 } : {}), ...(legacyPricingSnapshot ? { legacyPricingSnapshot } : {}), fromLocation: prior && prior.originId === t.originId ? prior.fromLocation : origin ? `${origin.code} — ${origin.name}` : t.fromLocation, destinationName: prior && prior.destinationId === t.destinationId ? prior.destinationName : destination ? `${destination.code} — ${destination.name}` : t.destinationName, customerName: prior && prior.customerId === t.customerId ? prior.customerName : t.customerId ? customers.get(t.customerId) : '', tripId: t.tripId || randomUUID() };
+        return { ...t, pricingVersion: 3, ...(prior ? { departureTime: prior.departureTime ?? null, arrivalTime: prior.arrivalTime ?? null, departedAt: prior.departedAt ?? null, arrivedAt: prior.arrivedAt ?? null } : { departureTime: null, arrivalTime: null, departedAt: null, arrivedAt: null }), billingPricingMode: 'PER_TRIP', ...rateSnapshots[index], ...(hasLegacyDriverExtra ? { legacyDriverExtraSatang: legacyDriverExtraSatang ?? 0 } : {}), ...(legacyPricingSnapshot ? { legacyPricingSnapshot } : {}), fromLocation: prior && prior.originId === t.originId ? prior.fromLocation : origin ? `${origin.code} — ${origin.name}` : t.fromLocation, destinationName: t.destinationMode === '__OTHER__' ? t.destinationName : prior && prior.destinationId === t.destinationId ? prior.destinationName : destination ? `${destination.code} — ${destination.name}` : t.destinationName, customerName: prior && prior.customerId === t.customerId ? prior.customerName : t.customerId ? customers.get(t.customerId) : '', tripId: t.tripId || randomUUID() };
       });
 
       const recordData: TruckDailyRecordDoc = {
@@ -337,6 +349,7 @@ export async function POST(req: NextRequest) {
       for (const trip of finalTrips) {
         const prior = existingTrips.get(trip.tripId);
         const tripData: any = { ...prior, ...trip, recordId, truckId, plateNumberSnapshot, driverNameSnapshot, driverId: driverId || null, invoiceId: null, photos: finalPhotos, updatedAt: now };
+        if (trip.destinationMode !== '__OTHER__') delete tripData.manualDriverPaySatang;
         for (const field of ['driverExtraSatang', 'driverExtraNote', 'billingExtraSatang', 'billingExtraNote']) delete tripData[field];
         tx.set(getTruckTripsCol(shopId).doc(trip.tripId), tripData);
       }

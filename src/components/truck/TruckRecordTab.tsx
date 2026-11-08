@@ -14,9 +14,9 @@ import { errMsg, getJson, sendJson } from './api';
 import type { TruckBoot } from './TruckShell';
 import styles from './truck.module.css';
 
-interface TripForm { formKey: string; tripId: string; fromLocation: string; originId: string; destinationMode: string; paySatang: number | null; note: string; departureDate: string; arrivalDate: string; billing: string; weight: string; customer: string; customerId:string; billable:boolean; cancelled:boolean }
+interface TripForm { customName: string; manualPay: string; formKey: string; tripId: string; fromLocation: string; originId: string; destinationMode: string; paySatang: number | null; note: string; departureDate: string; arrivalDate: string; billing: string; weight: string; customer: string; customerId:string; billable:boolean; cancelled:boolean }
 
-const blankTrip = (from: string): TripForm => ({ formKey: crypto.randomUUID(), tripId: '', fromLocation: from, originId: '', destinationMode: '', paySatang: null, note: '', departureDate: '', arrivalDate: '', billing: '', weight: '', customer: '', customerId:'', billable:false, cancelled:false });
+const blankTrip = (from: string): TripForm => ({ customName: '', manualPay: '', formKey: crypto.randomUUID(), tripId: '', fromLocation: from, originId: '', destinationMode: '', paySatang: null, note: '', departureDate: '', arrivalDate: '', billing: '', weight: '', customer: '', customerId:'', billable:false, cancelled:false });
 
 function money(text: string, label: string): number {
   try { return optionalMoney(text); } catch { throw new Error(`${label}: จำนวนเงินไม่ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง`); }
@@ -98,7 +98,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
           const isBillable = Boolean(custId);
           return {
             ...blankTrip(t.fromLocation), weight:t.weightKg == null ? '' : formatWeightTons(t.weightKg), billable:isBillable, cancelled:t.status==='CANCELLED',
-            tripId: t.tripId || '', fromLocation: t.fromLocation, originId: t.originId || '', destinationMode: t.originId && t.destinationId ? `LOC_${t.destinationId}` : '',
+            tripId: t.tripId || '', fromLocation: t.fromLocation, originId: t.originId || '', destinationMode: t.destinationMode === '__OTHER__' ? '__OTHER__' : t.originId && t.destinationId ? `LOC_${t.destinationId}` : '', customName: t.destinationMode === '__OTHER__' ? t.destinationName : '', manualPay: t.destinationMode === '__OTHER__' && t.driverPaySatang != null ? satangToDecimalString(t.driverPaySatang) : '',
             paySatang: t.driverPaySatang ?? null, note: t.note || '', departureDate: t.departureDate || (t.departedAt ? new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(t.departedAt)) : date), arrivalDate: t.arrivalDate || (t.arrivedAt ? new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(t.arrivedAt)) : ''), billing: isBillable && t.billingSatang != null ? satangToDecimalString(t.billingSatang) : '', customer: isBillable ? (t.customerName || '') : '', customerId: custId
           };
         }));
@@ -112,6 +112,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
 
   const patchTrip = (i: number, patch: Partial<TripForm>) => setTrips(ts => ts.map((t, j) => (j === i ? { ...t, ...patch } : t)));
   const pickDestination = (i: number, mode: string) => {
+    if (mode === '__OTHER__') { patchTrip(i, { destinationMode: mode, paySatang: null, manualPay: '', customName: '', billing: '' }); return; }
     if (boot.truckLocations?.find(l => `LOC_${l.locationId}` === mode)?.isShop) {
       const tariff = boot.truckTariffs?.find(x => x.status === 'ACTIVE' && x.originId === trips[i].originId && x.destinationId === mode.slice(4) && !x.customerId);
       patchTrip(i, { destinationMode: mode, paySatang: tariff?.driverPaySatang ?? null, customerId: '', customer: '', billable: false, billing: '', weight: '' });
@@ -140,15 +141,19 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
         const label = `เที่ยวที่ ${i + 1}`;
         if (!t.destinationMode) throw new Error(`${label}: กรุณาเลือกปลายทาง`);
         const loc = t.destinationMode.startsWith('LOC_') ? boot.truckLocations?.find(d => d.locationId === t.destinationMode.slice(4)) : undefined;
-        if (!loc) throw new Error(`${label}: กรุณาเลือกปลายทางจากจุดที่ตั้งไว้`);
-        const isBillable = !loc.isShop && Boolean(t.customerId);
+        const other = t.destinationMode === '__OTHER__';
+        if (other && !t.customName.trim()) throw new Error(`${label}: กรุณาระบุชื่อสถานที่อื่น ๆ`);
+        if (other && !t.manualPay.trim()) throw new Error(`${label}: กรุณาระบุค่าเที่ยวคนขับ`);
+        const manualPay = other ? money(t.manualPay, label) : null;
+        if (!loc && !other) throw new Error(`${label}: กรุณาเลือกปลายทางจากจุดที่ตั้งไว้`);
+        const isBillable = !loc?.isShop && Boolean(t.customerId);
         if (!t.originId) throw new Error(`${label}: กรุณาเลือกต้นทาง`);
-        if (t.arrivalDate && t.paySatang == null) throw new Error(`${label}: ยังไม่ได้ตั้งค่าเที่ยวคนขับสำหรับเส้นทางนี้`);
+        if (!other && t.arrivalDate && t.paySatang == null) throw new Error(`${label}: ยังไม่ได้ตั้งค่าเที่ยวคนขับสำหรับเส้นทางนี้`);
         if (isBillable && t.arrivalDate && (!t.billing.trim() || !t.weight.trim())) throw new Error(`${label}: กรุณาระบุราคาขนส่งและน้ำหนักก่อนบันทึกเที่ยวที่ถึงแล้ว`);
         return {
           ...(t.tripId ? {tripId:t.tripId} : {}), tripIndex: i + 1, fromLocation: t.fromLocation.trim(), destinationMode: t.destinationMode,
-          originId: t.originId || null, destinationId: loc.locationId, destinationName: `${loc.code} — ${loc.name}`,
-          pricingVersion: 3, billingPricingMode: 'PER_TRIP', weightKg: loc.isShop ? null : parseTonsToKg(t.weight), note: t.note.trim(), departureDate: t.departureDate || date, arrivalDate: t.arrivalDate || null, status: t.cancelled ? 'CANCELLED' : t.arrivalDate ? 'COMPLETED' : 'OPEN', customerId: isBillable ? t.customerId : null, customerName: isBillable ? t.customer.trim() : '', billable: isBillable, billingSatang: isBillable ? (t.billing.trim() ? money(t.billing, label) : null) : null
+          originId: t.originId || null, destinationId: loc?.locationId || null, destinationName: other ? t.customName.trim() : `${loc!.code} — ${loc!.name}`, ...(other ? { manualDriverPaySatang: manualPay! } : {}),
+          pricingVersion: 3, billingPricingMode: 'PER_TRIP', weightKg: loc?.isShop ? null : parseTonsToKg(t.weight), note: t.note.trim(), departureDate: t.departureDate || date, arrivalDate: t.arrivalDate || null, status: t.cancelled ? 'CANCELLED' : t.arrivalDate ? 'COMPLETED' : 'OPEN', customerId: isBillable ? t.customerId : null, customerName: isBillable ? t.customer.trim() : '', billable: isBillable, billingSatang: isBillable ? (t.billing.trim() ? money(t.billing, label) : null) : null
         };
       });
       const payload = { dateKey: date, truckId, driverId: targetDriverId, trips: items, fuelCostSatang: 0, photos, expectedRevision: revision };
@@ -220,6 +225,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
                 <label className={settings.formLabel} htmlFor={`tr-dest-${i}`}>ปลายทาง</label>
                 <select id={`tr-dest-${i}`} className={settings.formInput} value={t.destinationMode} onChange={e => pickDestination(i, e.target.value)}>
                   <option value="" disabled>เลือกปลายทาง</option>
+                  <option value="__OTHER__">อื่น ๆ / กรอกสถานที่เอง</option>
                   {boot.truckLocations?.filter(x=>x.status==='ACTIVE' && x.locationId!==t.originId).map(l=><option key={l.locationId} value={`LOC_${l.locationId}`}>{l.code} — {l.name}</option>)}
                 </select>
               </div>
@@ -228,6 +234,10 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
               <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-departure-${i}`}>วันที่ออก</label><input id={`tr-departure-${i}`} type="date" className={settings.formInput} value={t.departureDate || date} onChange={e => patchTrip(i, { departureDate: e.target.value })} /></div>
               <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-arrival-${i}`}>วันที่ถึง (เว้นว่างถ้ายังค้าง)</label><input id={`tr-arrival-${i}`} type="date" className={settings.formInput} value={t.arrivalDate} onChange={e => patchTrip(i, { arrivalDate: e.target.value })} /></div>
             </div>
+            {t.destinationMode === '__OTHER__' && <div className={styles.row2}>
+              <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-custom-name-${i}`}>ชื่อสถานที่อื่น ๆ</label><input id={`tr-custom-name-${i}`} className={settings.formInput} maxLength={200} value={t.customName} onChange={e => patchTrip(i, { customName: e.target.value })} placeholder="ระบุชื่อสถานที่ส่งงาน" required /></div>
+              <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-manual-pay-${i}`}>ค่าเที่ยวคนขับ (บาท)</label><input id={`tr-manual-pay-${i}`} className={settings.formInput} inputMode="decimal" value={t.manualPay} onChange={e => { let pay: number | null = null; try { if (e.target.value.trim()) pay = money(e.target.value, 'ค่าเที่ยวคนขับ'); } catch {} patchTrip(i, { manualPay: e.target.value, paySatang: pay }); }} placeholder="กรอกค่าเที่ยวสำหรับงานนี้" required /></div>
+            </div>}
             <p className={styles.hint}>รอบค่าเที่ยว: {(t.departureDate || date).slice(0,7)} — ตามวันที่ออก</p>
             {!isShop && <>
             <div className={settings.formGroup}>

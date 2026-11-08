@@ -51,6 +51,7 @@ export interface TruckTripItem {
   destinationMode: string; // 'DEST_<id>' | '__OTHER__'
   destinationId?: string | null;
   destinationName: string;
+  manualDriverPaySatang?: number; // Explicit per-trip pay for __OTHER__ destinations only.
   driverPaySatang?: number | null; // null means price pending; client writes omit this field
   legacyDriverExtraSatang?: number;
   note: string;

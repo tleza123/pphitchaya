@@ -201,6 +201,44 @@ test('Truck sheets save, reload by day, edit and renumber retained trips with sh
   assert.equal(store.docs.has(`${shop}/truckTrips/${saved.trips[0].tripId}`), false);
 });
 
+test('One-off destinations require a name and explicit driver pay, persist edits and keep standard routes protected', async () => {
+  const store = setupMockDb();
+  const shop = `shops/${process.env.SHOP_ID || 'main'}`;
+  store.docs.set(`${shop}/trucks/t`, { plateNumber: 'TEST', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckDrivers/d`, { name: 'Driver', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/a`, { code: '1', name: 'Origin', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/b`, { code: '2', name: 'Regular destination', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckTariffs/route`, { originId: 'a', destinationId: 'b', customerId: null, driverPaySatang: 10000, status: 'ACTIVE' });
+  const trip = { tripIndex: 1, pricingVersion: 3, billingPricingMode: 'PER_TRIP', originId: 'a', destinationId: null, destinationMode: '__OTHER__', destinationName: ' งานนอกสถานที่ ', manualDriverPaySatang: 12345, departureDate: '2026-11-08', arrivalDate: '2026-11-08', billable: false, weightKg: null, billingSatang: null, note: '' };
+  let sequence = 0;
+  const save = (changes: object, revision: number) => postRecords(new NextRequest('http://localhost/api/truck/records', { method: 'POST', body: JSON.stringify({ dateKey: '2026-11-08', truckId: 't', driverId: 'd', trips: [{ ...trip, ...changes }], expectedRevision: revision, requestId: `one-off-${++sequence}` }) }));
+  for (const invalid of [{ destinationName: ' ' }, { manualDriverPaySatang: undefined }, { manualDriverPaySatang: -1 }, { manualDriverPaySatang: 1.5 }, { manualDriverPaySatang: '100' }]) {
+    assert.equal((await save(invalid, 0)).status, 422);
+  }
+  const created = await save({}, 0);
+  assert.equal(created.status, 200);
+  const saved = (await created.json()).data;
+  const id = saved.trips[0].tripId;
+  assert.equal(saved.trips[0].destinationName, 'งานนอกสถานที่');
+  assert.equal(saved.trips[0].destinationId, null);
+  assert.equal(saved.trips[0].driverPaySatang, 12345);
+  assert.equal(saved.trips[0].driverRateSource, 'OVERRIDE');
+  assert.equal(saved.totalDriverPaySatang, 12345);
+  const loaded = await getRecords(new NextRequest('http://localhost/api/truck/records?date=2026-11-08&truckId=t'));
+  assert.equal((await loaded.json()).data.records[0].trips[0].manualDriverPaySatang, 12345);
+  const edited = await save({ tripId: id, destinationName: 'สถานที่ใหม่', manualDriverPaySatang: 25000 }, 1);
+  assert.equal(edited.status, 200);
+  const updated = (await edited.json()).data;
+  assert.equal(updated.trips[0].destinationName, 'สถานที่ใหม่');
+  assert.equal(updated.totalDriverPaySatang, 25000);
+  assert.equal(store.docs.get(`${shop}/truckTrips/${id}`).driverPaySatang, 25000);
+  assert.equal((await save({ tripId: id, destinationMode: 'LOC_b', destinationId: 'b' }, 2)).status, 422);
+  const standard = await save({ tripId: id, destinationMode: 'LOC_b', destinationId: 'b', manualDriverPaySatang: undefined }, 2);
+  assert.equal(standard.status, 200);
+  assert.equal((await standard.json()).data.trips[0].driverPaySatang, 10000);
+  assert.equal(store.docs.get(`${shop}/truckTrips/${id}`).manualDriverPaySatang, undefined);
+});
+
 test('Truck Routes: Settings manages fleet, origins, destinations, and companyName', async () => {
   const store = setupMockDb();
   const shop = `shops/${process.env.SHOP_ID || 'main'}`;
