@@ -121,7 +121,7 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
     values: { name: d.name, pay: satangToDecimalString(d.driverPaySatang) }
   }));
   const customers: Item[] = ((boot as any).truckCustomers || []).filter((d:any) => d.status !== 'SUSPENDED').map((d: any) => ({ id: d.customerId, title: d.name, values: { name: d.name, revision: String(d.revision) } }));
-  const locations: Item[] = ((boot as any).truckLocations || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.locationId,title:`${d.code} — ${d.name}`,values:{code:d.code,name:d.name,detail:d.detail||'',revision:String(d.revision)}}));
+  const locations: Item[] = ((boot as any).truckLocations || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.locationId,title:`${d.code} — ${d.name}`,values:{code:d.code,name:d.name,detail:d.detail||'',isShop:String(d.isShop === true),revision:String(d.revision)}}));
   const tariffs: Item[] = ((boot as any).truckTariffs || []).filter((d:any) => d.status !== 'SUSPENDED').map((d:any) => ({id:d.tariffId,title:`${locations.find(x=>x.id===d.originId)?.title || d.originId} → ${locations.find(x=>x.id===d.destinationId)?.title || d.destinationId}`,sub:d.customerId ? `${customers.find(x=>x.id===d.customerId)?.title || d.customerId}: ${d.customerRateSatang == null ? 'ยังไม่ได้ตั้งราคา' : formatMoney(d.customerRateSatang)+' บาท'}` : `ค่าเที่ยว ${formatMoney(d.driverPaySatang)} บาท`,values:{originId:d.originId,destinationId:d.destinationId,customerId:d.customerId||'',pay:d.driverPaySatang == null ? '' : satangToDecimalString(d.driverPaySatang),billing:d.customerRateSatang==null?'':satangToDecimalString(d.customerRateSatang),revision:String(d.revision)}}));
 
   const backup = () => act(async () => {
@@ -155,8 +155,8 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
       <h2 className={reports.title}>ตั้งค่าระบบรถสิบล้อ</h2>
 
       <MasterSection title="จุดรับ–ส่ง" busy={busy} items={locations}
-        fields={[{key:'code',label:'รหัสจุด เช่น A',required:true},{key:'name',label:'ชื่อสถานที่',required:true},{key:'detail',label:'ที่อยู่หรือรายละเอียด'}]}
-        onSave={(v,id)=>act(()=>post({action:'UPSERT_LOCATION',location:{id:id||undefined,code:v.code,name:v.name,detail:v.detail},expectedRevision:id?Number(v.revision):0}),'บันทึกจุดแล้ว')}
+        fields={[{key:'code',label:'รหัสจุด เช่น A',required:true},{key:'name',label:'ชื่อสถานที่',required:true},{key:'detail',label:'ที่อยู่หรือรายละเอียด'},{key:'isShop',label:'ร้านค้า (ไม่เรียกเก็บลูกค้าและไม่ระบุน้ำหนัก)',kind:'check'}]}
+        onSave={(v,id)=>act(()=>post({action:'UPSERT_LOCATION',location:{id:id||undefined,code:v.code,name:v.name,detail:v.detail,isShop:v.isShop==='true'},expectedRevision:id?Number(v.revision):0}),'บันทึกจุดแล้ว')}
         onDelete={item=>{setPendingDelete({item,request:{action:'DISABLE_LOCATION',id:item.id,expectedRevision:Number(item.values.revision)},success:'ปิดใช้งานจุดแล้ว'});return Promise.resolve();}} />
       <MasterSection title="ราคาค่าเที่ยวคนขับ" busy={busy} items={tariffs.filter(t=>!t.values.customerId)}
         fields={[{key:'originId',label:'ต้นทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'destinationId',label:'ปลายทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'pay',label:'ค่าเที่ยวคนขับ (บาท)',kind:'money',required:true}]}

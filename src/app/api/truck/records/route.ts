@@ -43,15 +43,17 @@ export async function GET(req: NextRequest) {
       ? monthParam
       : (dateParam ? dateParam.slice(0, 7) : getBangkokMonth());
 
+    // A day's sheet has a deterministic ID; read it directly instead of a compound query.
     let query: any = getTruckRecordsCol(monthKey, shopId);
-    if (dateParam) {
+    if (dateParam && !truckIdParam) {
       query = query.where('dateKey', '==', dateParam);
     }
-    if (truckIdParam) {
+    if (truckIdParam && !dateParam) {
       query = query.where('truckId', '==', truckIdParam);
     }
 
-    const snap = await query.get();
+    const direct = dateParam && truckIdParam ? await getTruckRecordRef(monthKey, `${dateParam}_${truckIdParam}`, shopId).get() : null;
+    const snap = direct ? { docs: direct.exists ? [direct] : [] } : await query.get();
     const docs = snap?.docs || [];
     const records: TruckDailyRecordDoc[] = docs.map((doc: any) => {
       const d = doc.data();
@@ -240,6 +242,13 @@ export async function POST(req: NextRequest) {
       const locationSnaps = locationIds.length ? await tx.getAll(...locationIds.map(id=>getTruckLocationsCol(shopId).doc(id))) : [];
       const locations = new Map(locationSnaps.map(s=>[s.id,s.data()]));
       if (locationSnaps.some(s=>!s.exists)) throw new Error('INVALID_LOCATION');
+      for (const trip of trips) if (locations.get(trip.destinationId)?.isShop === true) {
+        trip.billable = false;
+        trip.customerId = null;
+        trip.customerName = '';
+        trip.billingSatang = null;
+        trip.weightKg = null;
+      }
 
       const customerIds = [...new Set<string>(trips.map((t: any) => t.customerId).filter((id: unknown): id is string => typeof id === 'string' && id.length > 0))];
       if ((driverId && (typeof driverId !== 'string' || driverId.includes('/'))) || customerIds.some(id => id.includes('/'))) throw new Error('INVALID_INPUT');
@@ -289,6 +298,7 @@ export async function POST(req: NextRequest) {
       const newRevision = currentRevision + 1;
       const finalPhotos = Array.isArray(photos) ? photos : (current?.photos || []);
       const finalTrips = trips.map((t: any, index: number) => {
+        t.tripIndex = index + 1;
         const origin=locations.get(t.originId), destination=locations.get(t.destinationId);
         const prior = t.tripId ? existingTrips.get(t.tripId) : null;
         if (t.departureDate && (t.originId===t.destinationId || (origin?.status !== 'ACTIVE' && prior?.originId !== t.originId) || (destination?.status !== 'ACTIVE' && prior?.destinationId !== t.destinationId))) throw new Error('INVALID_LOCATION');

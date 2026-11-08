@@ -14,9 +14,9 @@ import { errMsg, getJson, sendJson } from './api';
 import type { TruckBoot } from './TruckShell';
 import styles from './truck.module.css';
 
-interface TripForm { tripId: string; fromLocation: string; originId: string; destinationMode: string; paySatang: number | null; note: string; departureDate: string; arrivalDate: string; billing: string; weight: string; customer: string; customerId:string; billable:boolean; cancelled:boolean }
+interface TripForm { formKey: string; tripId: string; fromLocation: string; originId: string; destinationMode: string; paySatang: number | null; note: string; departureDate: string; arrivalDate: string; billing: string; weight: string; customer: string; customerId:string; billable:boolean; cancelled:boolean }
 
-const blankTrip = (from: string): TripForm => ({ tripId: '', fromLocation: from, originId: '', destinationMode: '', paySatang: null, note: '', departureDate: '', arrivalDate: '', billing: '', weight: '', customer: '', customerId:'', billable:false, cancelled:false });
+const blankTrip = (from: string): TripForm => ({ formKey: crypto.randomUUID(), tripId: '', fromLocation: from, originId: '', destinationMode: '', paySatang: null, note: '', departureDate: '', arrivalDate: '', billing: '', weight: '', customer: '', customerId:'', billable:false, cancelled:false });
 
 function money(text: string, label: string): number {
   try { return optionalMoney(text); } catch { throw new Error(`${label}: จำนวนเงินไม่ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง`); }
@@ -36,7 +36,8 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
   const [trips, setTrips] = useState<TripForm[]>([blankTrip('')]);
   const [photos, setPhotos] = useState<TruckPhotoMeta[]>([]);
   const [revision, setRevision] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadedSheet, setLoadedSheet] = useState('');
   const [legacyFeeReviewRequired, setLegacyFeeReviewRequired] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ err: boolean; text: string } | null>(null);
@@ -70,12 +71,14 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
     if (!active || !truckId || !date) return;
     let stale = false;
     setLoading(true);
+    setLoadedSheet('');
     setMsg(null);
     getJson(`/api/truck/records?date=${date}&truckId=${encodeURIComponent(truckId)}`)
       .then(d => {
         if (stale) return;
         const b = bootRef.current;
         const rec = d.records?.[0];
+        setLoadedSheet(`${date}_${truckId}`);
         if (rec?.driverId) {
           setDriverId(rec.driverId);
         } else {
@@ -109,6 +112,11 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
 
   const patchTrip = (i: number, patch: Partial<TripForm>) => setTrips(ts => ts.map((t, j) => (j === i ? { ...t, ...patch } : t)));
   const pickDestination = (i: number, mode: string) => {
+    if (boot.truckLocations?.find(l => `LOC_${l.locationId}` === mode)?.isShop) {
+      const tariff = boot.truckTariffs?.find(x => x.status === 'ACTIVE' && x.originId === trips[i].originId && x.destinationId === mode.slice(4) && !x.customerId);
+      patchTrip(i, { destinationMode: mode, paySatang: tariff?.driverPaySatang ?? null, customerId: '', customer: '', billable: false, billing: '', weight: '' });
+      return;
+    }
     if (mode.startsWith('LOC_')) { const rates=boot.truckTariffs?.filter(x=>x.status==='ACTIVE' && x.originId===trips[i].originId && x.destinationId===mode.slice(4)) || []; const tariff=rates.find(x=>!x.customerId); const customerRate=rates.find(x=>x.customerId && x.customerId===trips[i].customerId); patchTrip(i, { destinationMode:mode, paySatang:tariff?.driverPaySatang ?? null, billing: customerRate?.customerRateSatang == null ? '' : satangToDecimalString(customerRate.customerRateSatang) }); return; }
     const dest = boot.truckDestinations.find(d => `DEST_${d.destinationId}` === mode);
     patchTrip(i, { destinationMode: mode, paySatang: dest?.driverPaySatang ?? null });
@@ -116,7 +124,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
   const totalPay = trips.every(t => t.paySatang != null) ? trips.reduce((s, t) => s + (t.paySatang ?? 0), 0) : null;
 
   const save = async () => {
-    if (saving) return;
+    if (saving || loading || loadedSheet !== `${date}_${truckId}`) return;
     setMsg(null);
     try {
       if (!truckId) throw new Error('กรุณาเลือกรถสิบล้อ');
@@ -133,11 +141,14 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
         if (!t.destinationMode) throw new Error(`${label}: กรุณาเลือกปลายทาง`);
         const loc = t.destinationMode.startsWith('LOC_') ? boot.truckLocations?.find(d => d.locationId === t.destinationMode.slice(4)) : undefined;
         if (!loc) throw new Error(`${label}: กรุณาเลือกปลายทางจากจุดที่ตั้งไว้`);
-        const isBillable = Boolean(t.customerId);
+        const isBillable = !loc.isShop && Boolean(t.customerId);
+        if (!t.originId) throw new Error(`${label}: กรุณาเลือกต้นทาง`);
+        if (t.arrivalDate && t.paySatang == null) throw new Error(`${label}: ยังไม่ได้ตั้งค่าเที่ยวคนขับสำหรับเส้นทางนี้`);
+        if (isBillable && t.arrivalDate && (!t.billing.trim() || !t.weight.trim())) throw new Error(`${label}: กรุณาระบุราคาขนส่งและน้ำหนักก่อนบันทึกเที่ยวที่ถึงแล้ว`);
         return {
           ...(t.tripId ? {tripId:t.tripId} : {}), tripIndex: i + 1, fromLocation: t.fromLocation.trim(), destinationMode: t.destinationMode,
           originId: t.originId || null, destinationId: loc.locationId, destinationName: `${loc.code} — ${loc.name}`,
-          pricingVersion: 3, billingPricingMode: 'PER_TRIP', weightKg: parseTonsToKg(t.weight), note: t.note.trim(), departureDate: t.departureDate || date, arrivalDate: t.arrivalDate || null, status: t.cancelled ? 'CANCELLED' : t.arrivalDate ? 'COMPLETED' : 'OPEN', customerId: isBillable ? t.customerId : null, customerName: isBillable ? t.customer.trim() : '', billable: isBillable, billingSatang: isBillable ? (t.billing.trim() ? money(t.billing, label) : null) : null
+          pricingVersion: 3, billingPricingMode: 'PER_TRIP', weightKg: loc.isShop ? null : parseTonsToKg(t.weight), note: t.note.trim(), departureDate: t.departureDate || date, arrivalDate: t.arrivalDate || null, status: t.cancelled ? 'CANCELLED' : t.arrivalDate ? 'COMPLETED' : 'OPEN', customerId: isBillable ? t.customerId : null, customerName: isBillable ? t.customer.trim() : '', billable: isBillable, billingSatang: isBillable ? (t.billing.trim() ? money(t.billing, label) : null) : null
         };
       });
       const payload = { dateKey: date, truckId, driverId: targetDriverId, trips: items, fuelCostSatang: 0, photos, expectedRevision: revision };
@@ -161,7 +172,8 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
   }
 
   return (
-    <div className={styles.stack} aria-busy={loading}>
+    <div className={`${styles.stack} ${styles.recordForm}`} aria-busy={loading}>
+      {msg && <div role={msg.err ? 'alert' : 'status'} className={msg.err ? styles.error : styles.ok}>{msg.text}{msg.err && <button type="button" className={styles.iconBtn} disabled={saving || loading} onClick={() => setReloadKey(k => k + 1)}>โหลดใบงานล่าสุด</button>}</div>}
       <fieldset disabled={saving || loading} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div className={styles.panel}>
         <div className={styles.row2}>
@@ -183,14 +195,14 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
             <p className={styles.hint}>คนขับประจำรถ: {boot.trucks.find(t => t.truckId === truckId)?.driverName || 'ไม่ระบุ'}</p>
           </div>
         </div>
-        {revision > 0 && <div className={styles.editing} role="status">กำลังแก้ไขใบงานที่บันทึกไว้ของวันนี้ แก้ไขหรือเพิ่มเที่ยววิ่งแล้วกดบันทึกเพื่อทับข้อมูลเดิม</div>}
+        {revision > 0 && <div className={styles.editing} role="status">ใบงานวันที่ {formatThaiDate(date)} · แก้ไขหรือเพิ่มเที่ยวแล้วกด “บันทึกการแก้ไขใบงาน”</div>}
         {legacyFeeReviewRequired && <div className={styles.error} role="alert">ใบงานนี้ยังไม่ผ่านการตรวจราคาแบบใหม่ ต้องตรวจข้อมูลเดิมก่อนแก้ไขหรือออกเอกสาร <a href="/truck/review">ไปหน้าตรวจข้อมูลเก่า</a></div>}
       </div>
 
       <div className={styles.panel}>
         <datalist id="tr-origins">{boot.truckOrigins.map(o => <option key={o.originId} value={o.name} />)}</datalist>
-        {trips.map((t, i) => (
-          <div className={styles.trip} key={i}>
+        {trips.map((t, i) => { const isShop = boot.truckLocations?.find(l => `LOC_${l.locationId}` === t.destinationMode)?.isShop === true; return (
+          <div className={styles.trip} key={t.formKey}>
             <div className={styles.tripHead}>
               <span>เที่ยวที่ {i + 1}</span>
               {trips.length > 1 && (
@@ -217,6 +229,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
               <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-arrival-${i}`}>วันที่ถึง (เว้นว่างถ้ายังค้าง)</label><input id={`tr-arrival-${i}`} type="date" className={settings.formInput} value={t.arrivalDate} onChange={e => patchTrip(i, { arrivalDate: e.target.value })} /></div>
             </div>
             <p className={styles.hint}>รอบค่าเที่ยว: {(t.departureDate || date).slice(0,7)} — ตามวันที่ออก</p>
+            {!isShop && <>
             <div className={settings.formGroup}>
               <label className={settings.formLabel} htmlFor={`tr-customer-${i}`}>ลูกค้า</label>
               <select
@@ -256,17 +269,16 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
               />
               <p>จำนวนเงินเที่ยวนี้: {t.billable ? (t.billing.trim() ? (() => { try { return `${formatMoney(money(t.billing, 'ราคา'))} บาท`; } catch { return 'จำนวนเงินไม่ถูกต้อง'; } })() : 'ยังไม่ระบุราคา') : 'ไม่เรียกเก็บลูกค้า'}</p>
             </div>
+            </>}
+            {isShop && <p className={styles.hint}>ส่งเข้าร้านค้า</p>}
             {t.destinationMode && <p>ค่าเที่ยวคนขับ: {t.paySatang == null ? 'ยังไม่ได้ตั้งราคา' : `${formatMoney(t.paySatang)} บาท`}</p>}
             <div className={settings.formGroup}>
               <label className={settings.formLabel} htmlFor={`tr-note-${i}`}>หมายเหตุ</label>
               <input id={`tr-note-${i}`} className={settings.formInput} value={t.note} placeholder="เช่น เลขใบส่งของ น้ำหนักบรรทุก" onChange={e => patchTrip(i, { note: e.target.value })} />
             </div>
-            <label className={styles.checkRow}>
-              <input type="checkbox" checked={t.cancelled} onChange={e => patchTrip(i, { cancelled: e.target.checked })} />
-              <span>ยกเลิกเที่ยว</span>
-            </label>
+
           </div>
-        ))}
+        ); })}
         <button type="button" className={styles.addBtn} onClick={() => setTrips(ts => { const previous=ts[ts.length-1]; const location=previous?.destinationMode.startsWith('LOC_') ? boot.truckLocations?.find(l=>l.locationId===previous.destinationMode.slice(4)) : undefined; return [...ts, {...blankTrip(location ? `${location.code} — ${location.name}` : ''), originId:location?.locationId || ''}]; })}>
           <Plus size={20} aria-hidden="true" /> เพิ่มเที่ยววิ่งที่ {trips.length + 1}
         </button>
@@ -280,12 +292,11 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
           </div>
         </div>
         <div className={styles.actions}>
-          <button type="button" className={settings.primaryBtn} onClick={save} disabled={saving || loading || legacyFeeReviewRequired} aria-busy={saving}>
+          <button type="button" className={settings.primaryBtn} onClick={save} disabled={saving || loading || loadedSheet !== `${date}_${truckId}` || legacyFeeReviewRequired} aria-busy={saving}>
             {saving ? 'กำลังบันทึก...' : revision > 0 ? 'บันทึกการแก้ไขใบงาน' : 'บันทึกใบงาน'}
           </button>
           <LineSendButton scope="truck" className={settings.secondaryBtn} />
         </div>
-        <div role={msg?.err ? 'alert' : 'status'} className={msg?.err ? styles.error : styles.ok}>{msg?.text}</div>
       </div>
       </fieldset>
     </div>

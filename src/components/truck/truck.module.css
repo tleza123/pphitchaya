@@ -1,4 +1,15 @@
 .stack { display: flex; flex-direction: column; gap: 1rem; }
+.recordForm > fieldset { display: flex; flex-direction: column; gap: 1.2rem; }
+.recordForm .panel { padding: clamp(.85rem, 2vw, 1.4rem); min-width: 0; }
+.recordForm .trip { display: flex; flex-direction: column; gap: 1rem; padding-top: 1.25rem; margin-top: 1.25rem; }
+.recordForm .trip:first-of-type { margin-top: 0; padding-top: 0; }
+.recordForm .tripHead { margin-bottom: 0; min-height: var(--team-btn-height-secondary); }
+.recordForm .row2 { gap: 1rem; align-items: start; }
+.recordForm label { display: flex; flex-direction: column; gap: .45rem; }
+.recordForm input, .recordForm select { max-width: 100%; font-size: var(--team-copy); min-height: var(--team-btn-height-secondary); }
+.recordForm p { margin: 0; overflow-wrap: anywhere; }
+.recordForm button { cursor: pointer; }
+.recordForm button:disabled { cursor: default; opacity: .6; }
 .panel { background: var(--team-surface); border: 1px solid var(--team-border); border-radius: var(--team-radius-card); padding: 1rem; }
 .docNav { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
 .docNav a { display: inline-flex; align-items: center; min-height: 48px; padding: 0 .85rem; border: 1px solid var(--team-border-strong); border-radius: var(--team-radius-small); background: var(--team-surface); color: var(--team-primary); font-size: 16px; font-weight: 700; text-decoration: none; }

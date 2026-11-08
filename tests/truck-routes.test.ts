@@ -168,6 +168,39 @@ test('Truck Routes: Bootstrap returns fleet, origins, destinations, profile, and
   assert.equal(body.data.truckDestinations[0].driverPaySatang, 65000);
 });
 
+test('Truck sheets save, reload by day, edit and renumber retained trips with shop destinations', async () => {
+  const store = setupMockDb();
+  const shop = `shops/${process.env.SHOP_ID || 'main'}`;
+  store.docs.set(`${shop}/trucks/t`, { plateNumber: 'TEST', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckDrivers/d`, { name: 'Driver', status: 'ACTIVE' });
+  store.docs.set(`${shop}/truckLocations/a`, { code: '1', name: 'Origin', status: 'ACTIVE' });
+  const locationRes = await postSettings(new NextRequest('http://localhost/api/truck/settings', {
+    method: 'POST', body: JSON.stringify({ action: 'UPSERT_LOCATION', location: { code: '2', name: 'Shop', isShop: true }, expectedRevision: 0, requestId: 'create-shop-location' })
+  }));
+  assert.equal(locationRes.status, 200);
+  const location = (await locationRes.json()).data;
+  const destinationId = location.locationId;
+  assert.equal(location.isShop, true);
+  store.docs.set(`${shop}/truckTariffs/route`, { originId: 'a', destinationId, customerId: null, driverPaySatang: 10000, status: 'ACTIVE' });
+  const trip = { pricingVersion: 3, billingPricingMode: 'PER_TRIP', originId: 'a', destinationId, destinationMode: `LOC_${destinationId}`, departureDate: '2026-11-08', arrivalDate: '2026-11-08', billable: true, customerId: 'ignored-for-shop', weightKg: 100, billingSatang: 50000, fromLocation: 'Origin', destinationName: 'Shop', note: '' };
+  const save = async (trips: any[], revision: number) => postRecords(new NextRequest('http://localhost/api/truck/records', { method: 'POST', body: JSON.stringify({ dateKey: '2026-11-08', truckId: 't', driverId: 'd', trips, expectedRevision: revision, requestId: `save-shop-sheet-${revision}` }) }));
+  const created = await save([{ ...trip, tripIndex: 1 }, { ...trip, tripIndex: 2 }], 0);
+  assert.equal(created.status, 200);
+  const saved = (await created.json()).data;
+  assert.equal(saved.trips[0].billable, false);
+  assert.equal(saved.trips[0].customerId, null);
+  assert.equal(saved.trips[0].weightKg, null);
+  const loaded = await getRecords(new NextRequest('http://localhost/api/truck/records?date=2026-11-08&truckId=t'));
+  assert.equal((await loaded.json()).data.records[0].revision, 1);
+  const updated = await save([{ ...trip, tripId: saved.trips[1].tripId, tripIndex: 1, note: 'Moved up' }], 1);
+  assert.equal(updated.status, 200);
+  const edited = (await updated.json()).data;
+  assert.equal(edited.revision, 2);
+  assert.equal(edited.trips[0].tripId, saved.trips[1].tripId);
+  assert.equal(edited.trips[0].tripIndex, 1);
+  assert.equal(store.docs.has(`${shop}/truckTrips/${saved.trips[0].tripId}`), false);
+});
+
 test('Truck Routes: Settings manages fleet, origins, destinations, and companyName', async () => {
   const store = setupMockDb();
   const shop = `shops/${process.env.SHOP_ID || 'main'}`;
