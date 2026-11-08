@@ -1,0 +1,17 @@
+.page { max-width: 36rem; margin: clamp(2rem, 10vh, 6rem) auto; padding: 1.25rem; color: var(--team-text); }
+.page h1 { margin: 0 0 .5rem; font-size: var(--team-heading); color: var(--team-primary-dark); }
+.hint { color: var(--team-muted); margin: 0 0 1.5rem; }
+.systems { display: grid; gap: .85rem; }
+.page button { min-height: var(--team-btn-height); border: 1px solid var(--team-border-strong); border-radius: var(--team-radius-button); background: var(--team-surface); color: var(--team-primary); padding: .75rem 1rem; font: inherit; cursor: pointer; }
+.page button:disabled { opacity: .6; cursor: default; }
+.system { display: flex; align-items: center; gap: .85rem; text-align: left; font-weight: 700 !important; }
+.system span { flex: 1; }
+.system[aria-pressed="true"] { border-color: var(--team-primary); background: var(--team-accent-soft); }
+.panel { margin-top: 1.5rem; border: 1px solid var(--team-border); border-radius: var(--team-radius-card); background: var(--team-surface); padding: 1.25rem; }
+.panel h2 { margin: 0 0 1rem; font-size: var(--team-name); }
+.panel label { display: block; margin-bottom: .5rem; }
+.panel input { width: 100%; min-height: var(--team-btn-height); border: 1px solid var(--team-input-border); border-radius: var(--team-radius-small); padding: .6rem .8rem; font: inherit; }
+.actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+.page .submit { background: var(--team-primary); color: white; flex: 1; }
+.error { color: var(--team-absent); margin: .65rem 0 0; }
+.page button:focus-visible, .panel input:focus-visible { outline: 3px solid var(--team-accent); outline-offset: 3px; }

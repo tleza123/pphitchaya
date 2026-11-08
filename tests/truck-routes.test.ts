@@ -884,7 +884,7 @@ test('A saved trip without arrival immediately enters reports, charts, LINE, pay
   store.docs.set(`${shop}/trucks/t`,{plateNumber:'89-1924',driverId:'d',driverName:'Driver',status:'ACTIVE'});
   store.docs.set(`${shop}/truckDrivers/d`,{name:'Driver',status:'ACTIVE'});
   store.docs.set(`${shop}/truckCustomers/c`,{name:'Customer',status:'ACTIVE'});
-  for(const id of ['a','b']) store.docs.set(`${shop}/truckLocations/${id}`,{code:id,name:id,status:'ACTIVE'});
+  for(const id of ['a','b']) store.docs.set(`${shop}/truckLocations/${id}`,{code:'CODE_'+id,name:id==='a'?'โรงงานต้นทาง':'คลังปลายทาง',status:'ACTIVE'});
   store.docs.set(`${shop}/truckTariffs/driver`,{originId:'a',destinationId:'b',customerId:null,driverPaySatang:20000,status:'ACTIVE',revision:1});
   const request=(path:string,body:any)=>new NextRequest('http://localhost'+path,{method:'POST',body:JSON.stringify(body)});
   const saved=await postRecords(request('/api/truck/records',{dateKey:'2026-11-08',truckId:'t',driverId:'d',expectedRevision:0,requestId:'save-without-arrival',trips:[{tripIndex:1,pricingVersion:3,billingPricingMode:'PER_TRIP',originId:'a',destinationId:'b',destinationMode:'LOC_b',departureDate:'2026-11-08',arrivalDate:null,weightKg:1000,billable:true,customerId:'c',billingSatang:100000,note:''}]}));
@@ -892,12 +892,12 @@ test('A saved trip without arrival immediately enters reports, charts, LINE, pay
   const report=await truckReports(new NextRequest('http://localhost/api/truck/reports?month=2026-11')); const reportData=(await report.json()).data;
   assert.equal(reportData.totals.totalTrips,1); assert.equal(reportData.totals.totalDriverPaySatang,20000);
   const chart=await truckAnalytics(new NextRequest('http://localhost/api/truck/reports/analytics?period=day&month=2026-11')); assert.equal((await chart.json()).data.totals.tripCount,1);
-  const line=await fetchTruckDailySummary(process.env.SHOP_ID || 'main','2026-11-08'); assert.equal(line.totalTrips,1); assert.equal(line.totalDriverPaySatang,20000);
+  const line=await fetchTruckDailySummary(process.env.SHOP_ID || 'main','2026-11-08'); assert.equal(line.totalTrips,1); assert.equal(line.totalDriverPaySatang,20000); assert.equal(line.trucks[0].routesSummary,'จาก โรงงานต้นทาง ไป คลังปลายทาง');
   const range={start:'2026-11-08',end:'2026-11-08'};
   const payroll=await getPayroll(new NextRequest('http://localhost/api/truck/payroll?'+new URLSearchParams(range))); const preview=(await payroll.json()).data.preview;
-  assert.equal(preview.canClose,true); assert.deepEqual(preview.pending,[]); assert.equal(preview.drivers[0].totalSatang,20000);
+  assert.equal(preview.canClose,true); assert.deepEqual(preview.pending,[]); assert.equal(preview.drivers[0].totalSatang,20000); assert.equal(preview.drivers[0].trips[0].origin,'โรงงานต้นทาง'); assert.equal(preview.drivers[0].trips[0].destination,'คลังปลายทาง');
   const closed=await postPayroll(request('/api/truck/payroll',{...range,action:'CLOSE',expectedRevision:0,requestId:'close-without-arrival'})); assert.equal(closed.status,200);
   const wages=await payrollPdf(new NextRequest('http://localhost/api/truck/payroll/pdf?'+new URLSearchParams({...range,driverId:'d'}))); assert.equal(wages.status,200);
   const ready=await getBilling(new NextRequest('http://localhost/api/truck/billing?'+new URLSearchParams(range))); assert.equal((await ready.json()).data.trips[0].tripId,trip.tripId);
-  const invoice=await postBilling(request('/api/truck/billing',{...range,action:'INVOICE',tripIds:[trip.tripId],issueDate:'2026-11-08',requestId:'invoice-without-arrival'})); assert.equal(invoice.status,200); assert.equal((await invoice.json()).data.totalSatang,100000);
+  const invoice=await postBilling(request('/api/truck/billing',{...range,action:'INVOICE',tripIds:[trip.tripId],issueDate:'2026-11-08',requestId:'invoice-without-arrival'})); assert.equal(invoice.status,200); const invoiceData=(await invoice.json()).data; assert.equal(invoiceData.totalSatang,100000); assert.equal(invoiceData.lines[0].fromLocation,'โรงงานต้นทาง'); assert.equal(invoiceData.lines[0].destinationName,'คลังปลายทาง');
 });

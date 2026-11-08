@@ -1,3 +1,5 @@
+import { TruckDocumentTable } from '@/lib/server/truck-document-table';
+import { tripLocationNames } from '@/lib/truck/location-names';
 import { NextRequest } from 'next/server';
 import PDFDocument from 'pdfkit';
 import path from 'node:path';
@@ -16,47 +18,43 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     if (!snap.exists || !invoice) return createErrorResponse('NOT_FOUND', undefined, 404);
     const regular = path.join(process.cwd(), 'src/assets/fonts/THSarabunNew.ttf');
     const bold = path.join(process.cwd(), 'src/assets/fonts/THSarabunNew-Bold.ttf');
-    const doc = new PDFDocument({ size:'A4', margin:40, bufferPages:true, font:regular });
+    const doc = new PDFDocument({ size:'A4', margin:0, bufferPages:true, font:regular });
     doc.registerFont('Regular', regular); doc.registerFont('Bold', bold);
     const chunks: Buffer[] = [];
     const done = new Promise<Buffer>((resolve,reject) => { doc.on('data', c=>chunks.push(c)); doc.on('end',()=>resolve(Buffer.concat(chunks))); doc.on('error',reject); });
-    const hasLegacyFeeLines = (invoice.lines || []).some((line: any) => Object.prototype.hasOwnProperty.call(line, 'billingExtraSatang') || Object.prototype.hasOwnProperty.call(line, 'billingExtraNote'));
-    const header = () => {
-      doc.font('Bold').fontSize(23).text('ใบวางบิล');
+    const layout = new TruckDocumentTable(doc, page => {
+      page.headerText('ใบวางบิล', 23, true);
       const company = invoice.company || {};
-      doc.font('Regular').fontSize(15).text(String(company.companyName || ''));
-      if (company.address) doc.text(`ที่อยู่ ${company.address}`);
-      if (company.phone) doc.text(`โทรศัพท์ ${company.phone}`);
-      if (company.taxId) doc.text(`เลขประจำตัวผู้เสียภาษี ${company.taxId}`);
-      doc.text(`เลขที่ ${invoice.documentNo}  วันที่ ${invoice.issueDate}  ครบกำหนด ${invoice.dueDate}`);
-      if (invoice.start && invoice.end) doc.text(`ช่วงวันที่ ${invoice.start} ถึง ${invoice.end}`);
-      doc.text(`ลูกค้า ${invoice.customerName}`).moveDown(.5);
+      page.headerText(String(company.companyName || ''), 16, true);
+      if (company.address) page.headerText(`ที่อยู่ ${company.address}`);
+      if (company.phone) page.headerText(`โทรศัพท์ ${company.phone}`);
+      if (company.taxId) page.headerText(`เลขประจำตัวผู้เสียภาษี ${company.taxId}`);
+      page.headerText(`เลขที่ ${invoice.documentNo || '-'}   วันที่ ${invoice.issueDate || '-'}   ครบกำหนด ${invoice.dueDate || '-'}`);
+      if (invoice.start && invoice.end) page.headerText(`ช่วงวันที่ ${invoice.start} ถึง ${invoice.end}`);
+      page.headerText(`ลูกค้า ${invoice.customerName || '-'}`, 16, true); page.y += 8;
+    });
+    const rows = (invoice.lines || []).map((line: any) => {
+      const names = tripLocationNames(line);
+      let route = `จาก ${names.origin}\nไป ${names.destination}`;
       const version = Number(invoice.snapshotVersion);
-      const columns = version >= 3
-        ? 'วันที่รถออก | ทะเบียน | เส้นทาง | น้ำหนักตัน | จำนวนเที่ยว | ราคาเหมา/เที่ยว | จำนวนเงิน'
-        : version === 2 || hasLegacyFeeLines
-          ? 'วันที่รถออก | ทะเบียน | เส้นทาง | น้ำหนัก | จำนวนเที่ยว | ราคา/เที่ยว | เงินเพิ่ม | รวม'
-          : 'วันที่รถออก | ทะเบียน | เส้นทาง | รายละเอียดตามเอกสารเดิม';
-      doc.font('Bold').text(columns, { width:510 });
-      doc.moveTo(40,doc.y).lineTo(555,doc.y).stroke(); doc.moveDown(.4);
-    };
-    header();
-    for (const line of invoice.lines || []) {
-      const route = `${line.departureDate || line.dateKey || '-'}  |  ${line.plateNumberSnapshot || '-'}  |  ${line.fromLocation || '-'} ไป ${line.destinationName || '-'}`;
-      const version = Number(invoice.snapshotVersion);
-      const description = version >= 3
-        ? `${route}\nน้ำหนัก ${formatWeightTons(line.weightKg)} ตัน  |  ${line.quantity ?? 1} เที่ยว  |  ราคาเหมา ${formatMoney(line.billingSatang)} บาท  |  จำนวนเงิน ${formatMoney(line.billingSatang)} บาท`
-        : version === 2 || line.billingPricingMode === 'PER_TRIP' || Object.prototype.hasOwnProperty.call(line, 'billingExtraSatang') || Object.prototype.hasOwnProperty.call(line, 'billingExtraNote')
-          ? `${route}\nน้ำหนัก ${formatWeightTons(line.weightKg)} ตัน  |  ${line.quantity ?? 1} เที่ยว  |  ราคา ${formatMoney(line.billingSatang)} บาท  |  เพิ่ม ${formatMoney(line.billingExtraSatang ?? 0)} บาท  |  รวม ${formatMoney(line.billingSatang + (line.billingExtraSatang ?? 0))} บาท${line.billingExtraNote ? ` (${line.billingExtraNote})` : ''}`
-          : `${route}\n${Number.isSafeInteger(line.totalSatang ?? line.amountSatang ?? line.billingSatang) ? `ยอดตามเอกสารเดิม ${formatMoney(line.totalSatang ?? line.amountSatang ?? line.billingSatang)} บาท` : 'ยอดตามเอกสารเดิม'}${line.note ? ` (${line.note})` : ''}`;
-      const height = doc.font('Regular').fontSize(14).heightOfString(description,{width:510});
-      if (doc.y + height > 760) { doc.addPage(); header(); }
-      doc.font('Regular').fontSize(14).text(description,{width:510}).moveDown(.3);
-    }
-    if (doc.y > 720) { doc.addPage(); header(); }
-    doc.moveDown(.5).font('Bold').fontSize(18).text(`ยอดรวม ${Number.isSafeInteger(invoice.totalSatang) ? `${formatMoney(invoice.totalSatang)} บาท` : 'ตาม snapshot เดิม'}`,{align:'right'});
-    if (invoice.note) doc.font('Regular').fontSize(14).text(`หมายเหตุ: ${invoice.note}`);
-    const pages=doc.bufferedPageRange(); for(let i=0;i<pages.count;i++){doc.switchToPage(i);doc.page.margins.bottom=0;doc.font('Regular').fontSize(11).text(`หน้า ${i+1} / ${pages.count}`,40,810,{width:515,align:'right',lineBreak:false});}
+      let amount: string;
+      if (version >= 3) {
+        route += `\nน้ำหนัก ${formatWeightTons(line.weightKg)} ตัน · ${line.quantity ?? 1} เที่ยว\nราคาเหมา/เที่ยว ${formatMoney(line.billingSatang)} บาท`;
+        amount = formatMoney(line.billingSatang);
+      } else if (version === 2 || line.billingPricingMode === 'PER_TRIP' || Object.prototype.hasOwnProperty.call(line, 'billingExtraSatang')) {
+        route += `\nน้ำหนัก ${formatWeightTons(line.weightKg)} ตัน · ${line.quantity ?? 1} เที่ยว\nราคา/เที่ยว ${formatMoney(line.billingSatang)} บาท\nเงินเพิ่มเดิม ${formatMoney(line.billingExtraSatang ?? 0)} บาท${line.billingExtraNote ? ' ('+line.billingExtraNote+')' : ''}`;
+        amount = formatMoney(line.billingSatang + (line.billingExtraSatang ?? 0));
+      } else {
+        const value = line.totalSatang ?? line.amountSatang ?? line.billingSatang;
+        amount = Number.isSafeInteger(value) ? formatMoney(value) : 'ตามเอกสารเดิม';
+        if (line.note) route += '\n' + line.note;
+      }
+      return [line.departureDate || line.dateKey || '-', line.plateNumberSnapshot || '-', route, amount];
+    });
+    layout.table([{title:'วันที่',width:75},{title:'ทะเบียนรถ',width:80},{title:'ต้นทาง - ปลายทาง / รายละเอียด',width:270},{title:'ยอดเงิน (บาท)',width:90,align:'right'}], rows);
+    layout.paragraph(`ยอดรวม ${Number.isSafeInteger(invoice.totalSatang) ? formatMoney(invoice.totalSatang)+' บาท' : 'ตาม snapshot เดิม'}`, 18, true, 'right');
+    if (invoice.note) layout.paragraph(`หมายเหตุ: ${invoice.note}`);
+    layout.footers();
     doc.end(); const buffer=await done;
     return new Response(new Uint8Array(buffer),{headers:{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="invoice-${id}.pdf"`}});
   } catch(e:any) { return createErrorResponse(e.code || 'INTERNAL_ERROR',e.message,e.statusCode||500); }

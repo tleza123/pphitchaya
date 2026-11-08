@@ -1,5 +1,6 @@
 'use client';
 
+import { tripLocationNames } from '@/lib/truck/location-names';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { MutationIntent } from '@/lib/client/mutation-intent';
@@ -337,7 +338,7 @@ export default function TruckPayrollPage() {
                             <td>{idx + 1}</td>
                             <td>{trip.departureDate || '-'}</td>
                             <td>{trip.plate || 'ไม่ระบุ'}</td>
-                            <td>{trip.origin} → {trip.destination}</td>
+                            <td>{tripLocationNames(trip).origin} → {tripLocationNames(trip).destination}</td>
                             <td className={styles.num}>{formatMoney(trip.driverPaySatang)} บาท</td>
                           </tr>
                         ))}

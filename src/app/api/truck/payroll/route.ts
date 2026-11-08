@@ -1,3 +1,4 @@
+import { tripLocationNames } from '@/lib/truck/location-names';
 import { truckDateRange } from '@/lib/truck/date-range';
 import { assertPayrollRangesOpen } from '@/lib/server/truck-payroll-lock';
 import { NextRequest } from 'next/server';
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
 function preparePayroll(month:string,legacy:any,tripSnap:any,daySnap:any,range?:{start:string;end:string}) {
   const legacyReviewRequired=legacy.docs.some((d:any)=>(d.data().trips||[]).some((t:any)=>!t.tripId && (!range || (t.departureDate || d.data().dateKey) >= range.start && (t.departureDate || d.data().dateKey) <= range.end)));
   const days:PayrollDay[]=daySnap.docs.flatMap((d:any)=>{const x=d.data();return (x.drivers||[]).map((v:{driverId:string;name:string;baseWageSatang?:number})=>({date:x.dateKey,driverId:v.driverId,driverName:v.name,baseSatang:v.baseWageSatang??x.baseWageSatang}));});
-  const trips:PayrollTrip[]=tripSnap.docs.filter((d:any)=>!range || d.data().departureDate >= range.start && d.data().departureDate <= range.end).map((d:any)=>{const x=d.data();return {tripId:d.id,pricingVersion:x.pricingVersion===3?3:undefined,driverId:x.driverId??null,driverName:x.driverNameSnapshot||'',departureDate:x.departureDate,arrivalDate:x.arrivalDate??null,status:x.status,driverPaySatang:x.driverPaySatang??null,...(x.pricingVersion===3?{}:{driverExtraSatang:x.driverExtraSatang??0}),legacyDriverExtraSatang:x.legacyDriverExtraSatang??0,origin:x.originNameSnapshot||x.fromLocation||'',destination:x.destinationNameSnapshot||x.destinationName||'',plate:x.plateNumberSnapshot||''};});
+  const trips:PayrollTrip[]=tripSnap.docs.filter((d:any)=>!range || d.data().departureDate >= range.start && d.data().departureDate <= range.end).map((d:any)=>{const x=d.data(),names=tripLocationNames(x);return {tripId:d.id,pricingVersion:x.pricingVersion===3?3:undefined,driverId:x.driverId??null,driverName:x.driverNameSnapshot||'',departureDate:x.departureDate,arrivalDate:x.arrivalDate??null,status:x.status,driverPaySatang:x.driverPaySatang??null,...(x.pricingVersion===3?{}:{driverExtraSatang:x.driverExtraSatang??0}),legacyDriverExtraSatang:x.legacyDriverExtraSatang??0,locationNamesOnly:true,origin:names.origin,destination:names.destination,...(x.destinationMode === '__OTHER__' ? {destinationMode:'__OTHER__'} : {}),plate:x.plateNumberSnapshot||''};});
   return {preview:calculateTruckPayroll(month,days,trips,range),legacyReviewRequired};
 }
 export async function GET(req: NextRequest) {

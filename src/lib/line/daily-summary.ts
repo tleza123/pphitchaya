@@ -1,4 +1,6 @@
 import { loadTruckReportRecords } from '../server/truck-report-data';
+import { tripLocationNames } from '../truck/location-names';
+import { getTripDriverChargeSatang } from '../truck/pricing';
 import { getAdminFirestore } from '../firebase/admin';
 import { isWorkday, resolveWeekdaysForDate, type CalendarVersion } from '../payroll/calendar';
 import { monthDates } from '../payroll/dates';
@@ -296,11 +298,22 @@ export async function fetchTruckDailySummary(
   const totalTrips = todayRecords.reduce((sum, r) => sum + r.tripCount, 0);
   const totalDriverPaySatang = todayRecords.reduce((sum, r) => sum + r.totalDriverPaySatang, 0);
   const activeTruckCount = new Set(todayRecords.map(r => r.truckId)).size;
-  const trucksList = todayRecords.map(r => ({
-    plateNumber: r.plateNumberSnapshot || r.truckId, driverName: r.driverNameSnapshot || 'คนขับ',
-    tripCount: r.tripCount, routesSummary: r.trips.map(t => (t.fromLocation || 'ต้นทาง') + ' -> ' + (t.destinationName || 'ปลายทาง')).slice(0, 3).join(', '),
-    driverPaySatang: r.totalDriverPaySatang, fuelCostSatang: 0
-  }));
+  const byTruck = new Map<string, typeof todayRecords>();
+  for (const record of todayRecords) {
+    const group = byTruck.get(record.truckId) || []; group.push(record); byTruck.set(record.truckId, group);
+  }
+  const trucksList = [...byTruck.values()].map(group => {
+    const ordered = group.flatMap(record => record.trips.map(trip => ({ trip, source: record.sourceDateKey || record.dateKey, recordId: record.recordId })))
+      .sort((a, b) => a.source.localeCompare(b.source) || a.recordId.localeCompare(b.recordId) || a.trip.tripIndex - b.trip.tripIndex);
+    return {
+      plateNumber: group[0].plateNumberSnapshot || group[0].truckId,
+      driverName: [...new Set(group.map(record => record.driverNameSnapshot || 'คนขับ'))].join(', '),
+      tripCount: group.reduce((sum, record) => sum + record.tripCount, 0),
+      routesSummary: ordered.map(({ trip }) => { const names = tripLocationNames(trip); return `จาก ${names.origin} ไป ${names.destination}`; }).join('\n'),
+      tripRows: ordered.map(({ trip }) => { const names = tripLocationNames(trip); return { route: `จาก ${names.origin} ไป ${names.destination}`, driverPaySatang: trip.driverPaySatang == null ? null : getTripDriverChargeSatang(trip) }; }),
+      driverPaySatang: group.reduce((sum, record) => sum + record.totalDriverPaySatang, 0), fuelCostSatang: 0
+    };
+  });
   const totalFuelCostSatang = 0, monthFuelCostSatang = 0;
 
   return {

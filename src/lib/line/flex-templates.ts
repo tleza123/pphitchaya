@@ -26,6 +26,7 @@ export interface TruckTripSummary {
   driverName: string;
   tripCount: number;
   routesSummary?: string;
+  tripRows?: Array<{ route: string; driverPaySatang: number | null }>;
   driverPaySatang: number;
   fuelCostSatang: number;
 }
@@ -293,15 +294,22 @@ export function buildTruckDailyFlex(data: TruckDailySummaryData) {
               { type: 'text', text: `${formatMoney(t.driverPaySatang)} บ.`, size: 'xs', color: '#111827', align: 'end', flex: 2 }
             ]
           },
-          t.routesSummary
+          ...(t.tripRows?.length ? t.tripRows.map(trip => ({
+            type: 'box', layout: 'horizontal', margin: 'xs', spacing: 'sm',
+            contents: [
+              { type: 'text', text: trip.route, wrap: true, size: 'xs', color: '#9CA3AF', flex: 3 },
+              { type: 'text', text: trip.driverPaySatang == null ? 'ยังไม่ตั้งราคา' : `${formatMoney(trip.driverPaySatang)} บ.`, wrap: true, size: 'xs', color: '#9CA3AF', align: 'end', flex: 2 }
+            ]
+          })) : [t.routesSummary
             ? {
                 type: 'text',
                 text: t.routesSummary,
-                size: 'xxs',
-                color: '#9CA3AF',
+                wrap: true,
+                size: 'xs',
+                color: '#475569',
                 margin: 'xs'
               }
-            : null
+            : null])
         ].filter(Boolean) as any[]
       });
     });

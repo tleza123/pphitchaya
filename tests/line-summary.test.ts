@@ -15,7 +15,7 @@ import {
   type AttendanceDailySummaryData,
   type TruckDailySummaryData
 } from '../src/lib/line/flex-templates';
-import { fetchAttendanceDailySummary } from '../src/lib/line/daily-summary';
+import { fetchAttendanceDailySummary, fetchTruckDailySummary } from '../src/lib/line/daily-summary';
 import { GET as getLineSettings, PATCH as patchLineSettings } from '../src/app/api/line/settings/route';
 import { POST as postLineNotify } from '../src/app/api/line/notify/route';
 import { POST as postLineWebhook } from '../src/app/api/line/webhook/route';
@@ -658,4 +658,36 @@ test('fetchAttendanceDailySummary counts unmarked employees as present (FULL) wi
   } finally {
     globals.adminDb = prevDb;
   }
+});
+
+
+test('Truck LINE shows every route on its own line using names and keeps one card per truck in trip order', async () => {
+  const previous=(globalThis as any).adminDb,shop='line-route-names',base='shops/'+shop;
+  const docs=new Map<string,any>(); const recordId='2026-11-08_truck';
+  docs.set(base+'/truckMonths/2026-11',{monthKey:'2026-11'});
+  const trips=[5,1,4,2,3].map(i=>({tripId:'trip-'+i,tripIndex:i,recordId,truckId:'truck',departureDate:'2026-11-08',arrivalDate:null,status:'OPEN',pricingVersion:3,driverPaySatang:10000,driverNameSnapshot:'คนขับ',plateNumberSnapshot:'89-1924',fromLocation:i+' — สถานที่'+i,destinationName:(i+1)+' — สถานที่'+(i+1)}));
+  docs.set(base+'/truckMonths/2026-11/records/'+recordId,{recordId,dateKey:'2026-11-08',truckId:'truck',trips,revision:1});
+  for(const trip of trips) docs.set(base+'/truckTrips/'+trip.tripId,trip);
+  (globalThis as any).adminDb=createMockDb(docs).db;
+  try {
+    const summary=await fetchTruckDailySummary(shop,'2026-11-08');
+    assert.equal(summary.trucks.length,1);assert.equal(summary.totalTrips,5);assert.equal(summary.trucks[0].tripCount,5);assert.equal(summary.totalDriverPaySatang,50000);
+    const expected=Array.from({length:5},(_,i)=>'จาก สถานที่'+(i+1)+' ไป สถานที่'+(i+2)).join('\n');
+    assert.equal(summary.trucks[0].routesSummary,expected);
+    const flex=buildTruckDailyFlex(summary);
+    const all=(node:any):any[]=>[node,...(node.contents||[]).flatMap(all)];
+    const routeRows=all(flex.contents.body).filter(node=>node.layout==='horizontal'&&node.contents?.[0]?.text?.startsWith('จาก สถานที่'));
+    assert.equal(routeRows.length,5);
+    routeRows.forEach((node,index)=>{
+      assert.equal(node.contents[0].text,expected.split('\n')[index]);
+      assert.equal(node.contents[0].wrap,true);
+      assert.equal(node.contents[1].text,'100.00 บ.');
+      assert.equal(node.contents[1].align,'end');
+      assert.equal(node.contents[1].color,'#9CA3AF');
+      assert.equal(node.contents[0].color,node.contents[1].color);
+      assert.equal(node.contents[1].weight,undefined);
+    });
+    const missing=buildTruckDailyFlex({...summary,trucks:[{...summary.trucks[0],tripRows:[{route:'จาก ต้นทาง ไป ปลายทาง',driverPaySatang:null}]}]});
+    assert.ok(all(missing.contents.body).some(node=>node.text==='ยังไม่ตั้งราคา'));
+  } finally {(globalThis as any).adminDb=previous;}
 });

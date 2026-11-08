@@ -1,3 +1,4 @@
+import { tripLocationNames } from '@/lib/truck/location-names';
 import { truckDateRange, inTruckRange } from '@/lib/truck/date-range';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
     const range = truckDateRange({start:req.nextUrl.searchParams.get('start'),end:req.nextUrl.searchParams.get('end'),month:req.nextUrl.searchParams.get('month') || getBangkokToday().slice(0,7)}); const month=range.start.slice(0,7);
     const shop = getShopId();
     const [tripSnap, invoiceSnap] = await Promise.all([range.custom ? getTruckTripsCol(shop).get() : getTruckTripsCol(shop).where('accountingMonth', '==', month).get(), getTruckInvoicesCol(shop).get()]);
-    const allTrips = tripSnap.docs.map(d => ({ ...d.data(), tripId: d.id })).filter((t: any) => !range.custom || inTruckRange(t.departureDate, range));
+    const allTrips = tripSnap.docs.map(d => { const value=d.data(),names=tripLocationNames(value); return { ...value, tripId:d.id, locationNamesOnly:true, fromLocation:names.origin, destinationName:names.destination }; }).filter((t: any) => !range.custom || inTruckRange(t.departureDate, range));
     const trips = allTrips.filter((t: any) => t.pricingVersion === 3 && !Object.prototype.hasOwnProperty.call(t, 'billingExtraSatang') && !Object.prototype.hasOwnProperty.call(t, 'billingExtraNote') && t.status !== 'CANCELLED' && t.billingSatang != null && Number.isSafeInteger(t.weightKg) && t.weightKg >= 0 && t.customerId && !t.invoiceId && t.billable !== false);
     const legacyPricingReview = allTrips.filter((t: any) => needsLegacyPricingReview(t) && t.status !== 'CANCELLED' && !t.invoiceId && t.billable !== false);
     const invoices = await Promise.all(invoiceSnap.docs.map(async d => { const value = d.data(); const payments = await d.ref.collection('payments').get(); return { ...value, invoiceId: d.id, balanceSatang: value.totalSatang - (value.paidSatang || 0), payments:payments.docs.map(p=>({...p.data(),paymentId:p.id})) }; }));
@@ -48,8 +49,8 @@ export async function POST(req: NextRequest) {
           if (!snap.exists || !t || t.status === 'CANCELLED' || t.invoiceId || t.billable === false || !validId(t.customerId) || typeof t.customerName !== 'string' || !t.customerName.trim() || t.billingSatang == null || !Number.isSafeInteger(t.weightKg) || t.weightKg < 0) throw new Error('TRIP_NOT_READY');
           if (t.pricingVersion !== 3 || hasLegacyFeeFields(t)) throw new Error('LEGACY_PRICING_REVIEW_REQUIRED');
           if (range && !inTruckRange(dateKey(t.departureDate), range)) throw new Error('TRIP_OUTSIDE_RANGE');
-          const base = validateSatang(t.billingSatang);
-          return { tripId: refs[i].id, pricingVersion: 3, customerId: t.customerId, customerName: t.customerName, departureDate: dateKey(t.departureDate), fromLocation: t.fromLocation || '', destinationName: t.destinationName || '', plateNumberSnapshot: t.plateNumberSnapshot || '', weightKg:t.weightKg, quantity:1, billingPricingMode:'PER_TRIP', billingSatang: base, note: t.note || '' };
+          const base = validateSatang(t.billingSatang); const names=tripLocationNames(t);
+          return { tripId: refs[i].id, pricingVersion: 3, customerId: t.customerId, customerName: t.customerName, departureDate: dateKey(t.departureDate), locationNamesOnly:true, fromLocation: names.origin, destinationName: names.destination, ...(t.destinationMode === '__OTHER__' ? {destinationMode:'__OTHER__'} : {}), plateNumberSnapshot: t.plateNumberSnapshot || '', weightKg:t.weightKg, quantity:1, billingPricingMode:'PER_TRIP', billingSatang: base, note: t.note || '' };
         });
         if (trips.some(t => t.customerId !== trips[0].customerId)) throw new Error('MIXED_CUSTOMERS');
         const totalSatang = trips.reduce((sum,t) => sum + t.billingSatang, 0); if (!Number.isSafeInteger(totalSatang)) throw new Error('MONEY_OVERFLOW');

@@ -811,7 +811,7 @@ test('Stress-test: fetchTruckDailySummary aggregates daily and monthly records c
     assert.equal(summary.monthFuelCostSatang, 0); // 3,750,000 + 750,000 = 4,500,000 satang
 
     // Verify route summary formatted
-    assert.equal(summary.trucks[0].routesSummary, 'บ่อดิน A -> โรงงาน B, โรงงาน B -> ท่าทราย C, ท่าทราย C -> แคมป์ D');
+    assert.equal(summary.trucks[0].routesSummary, 'จาก บ่อดิน A ไป โรงงาน B\nจาก โรงงาน B ไป ท่าทราย C\nจาก ท่าทราย C ไป แคมป์ D');
 
     // Build and validate Flex bubble
     const flex = buildTruckDailyFlex(summary);
