@@ -10,48 +10,10 @@ import { formatThaiDate, getBangkokMonth, getBangkokToday } from '@/lib/payroll/
 import { useModalInteraction } from '@/components/shared/useModalInteraction';
 import styles from '@/components/truck/truck.module.css';
 import docStyles from '@/components/truck/truck-documents.module.css';
-import { ArrowLeft, Search, Check, FileDown } from 'lucide-react';
+import { ArrowLeft, Search, FileDown } from 'lucide-react';
 
 export default function TruckPayrollPage() {
-  const [workDate, setWorkDate] = useState(getBangkokToday());
-  const [workDrivers, setWorkDrivers] = useState<any[]>([]);
-  const [chosen, setChosen] = useState<string[]>([]);
-  const [suggested, setSuggested] = useState<string[]>([]);
-  const [workRevision, setWorkRevision] = useState(0);
-  const workIntent = useRef(new MutationIntent());
   const payrollIntent = useRef(new MutationIntent());
-
-  const loadWork = async () => {
-    try {
-      const [settings, days] = await Promise.all([
-        getJson('/api/truck/settings'),
-        getJson(`/api/truck/workdays?month=${workDate.slice(0, 7)}&date=${workDate}`),
-      ]);
-      setWorkDrivers(settings.truckDrivers || []);
-      const day = days.workDays.find((d: any) => d.dateKey === workDate);
-      setChosen((day?.drivers || []).map((d: any) => d.driverId));
-      setWorkRevision(day?.revision || 0);
-      setSuggested(days.suggestedDriverIds || []);
-    } catch (e) {
-      setError(errMsg(e));
-    }
-  };
-
-  useEffect(() => {
-    void loadWork();
-  }, [workDate]);
-
-  const saveWork = async () => {
-    try {
-      const payload = { dateKey: workDate, driverIds: chosen, expectedRevision: workRevision };
-      await sendJson('/api/truck/workdays', 'POST', payload, workIntent.current.requestId(payload));
-      workIntent.current.complete();
-      await loadWork();
-      await load();
-    } catch (e) {
-      setError(errMsg(e));
-    }
-  };
 
   const [start, setStart] = useState(getBangkokMonth() + '-01');
   const [end, setEnd] = useState(getBangkokToday());
@@ -136,6 +98,8 @@ export default function TruckPayrollPage() {
   }, [drivers, selectedDriverId]);
 
   const payment = data?.payments?.[selectedDriverId];
+  const departureDates = [...new Set<string>((selectedDriver?.trips || []).map((trip: any) => trip.departureDate).filter(Boolean))].sort();
+  const showLegacyBase = Boolean(data?.state === 'CLOSED' && data?.snapshot?.payBasis !== 'TRIPS_ONLY' && (selectedDriver?.days?.length || selectedDriver?.baseSatang > 0));
 
   // Pay modal actions
   const openPayModal = (driver: any) => {
@@ -214,23 +178,7 @@ export default function TruckPayrollPage() {
 
   return (
     <main className={docStyles.page} data-app-theme="truck">
-      <header className={docStyles.pageHeader}><Link className={docStyles.backLink} href="/truck/reports"><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารายงาน</Link><h1>วันทำงานและรอบค่าแรงคนขับ</h1><p className={docStyles.context}>ยืนยันวันทำงาน เลือกช่วงสรุปค่าแรง และจัดการการจ่ายเงิน</p></header>
-
-      {/* Workday confirmation section (retained first section for QA) */}
-      <section className={docStyles.block}>
-        <h2>ยืนยันวันทำงานคนขับ</h2>
-        <label>วันที่ <input type="date" value={workDate} onChange={e => setWorkDate(e.target.value)} /></label>
-        <p>คำแนะนำจากเที่ยวที่ครอบคลุมวันนี้ ต้องตรวจสอบก่อนยืนยัน</p>
-        <div className={docStyles.driverGrid}>
-        {workDrivers.filter(d => d.status === 'ACTIVE' || chosen.includes(d.driverId)).map(d => (
-          <label key={d.driverId} className={docStyles.driverChoice}>
-            <input type="checkbox" checked={chosen.includes(d.driverId)} onChange={e => setChosen(v => e.target.checked ? [...v, d.driverId] : v.filter(id => id !== d.driverId))} />
-            {' '}{d.name} {suggested.includes(d.driverId) ? ' (แนะนำจากเที่ยว)' : ''}
-          </label>
-        ))}
-        </div>
-        <div className={docStyles.buttonRow}><button type="button" className={docStyles.primaryButton} onClick={() => void saveWork()}><Check size={18} aria-hidden="true" />ยืนยันวันทำงาน</button></div>
-      </section>
+      <header className={docStyles.pageHeader}><Link className={docStyles.backLink} href="/truck/reports"><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารายงาน</Link><h1>รอบค่าเที่ยวคนขับ</h1><p className={docStyles.context}>สรุปจากเที่ยววิ่งตามวันที่ออกรถ เลือกช่วงวันที่และจัดการการจ่ายเงิน</p></header>
 
       {/* Month & Driver selectors */}
       <section className={docStyles.block}><h2>ค้นหาและสรุปค่าแรง</h2><div className={docStyles.filterGrid}>
@@ -255,7 +203,7 @@ export default function TruckPayrollPage() {
         <button type="button" className={docStyles.primaryButton} disabled={loading || actionBusy} onClick={search}><Search size={18} aria-hidden="true" />ค้นหาและสรุปค่าแรง</button>
       </div>
 
-      <p className={styles.hint}>รอบที่แสดง: {month} · ค่าแรงฐานตามวันที่ยืนยันทำงาน ค่าเที่ยวตามวันที่ออกเดินทาง รวมวันเริ่มและวันสิ้นสุด</p>
+      <p className={styles.hint}>รอบที่แสดง: {month} · {showLegacyBase ? 'แสดงยอดเดิมตามรอบที่ปิดไว้' : 'รวมค่าเที่ยวตามวันที่ออกรถ ไม่ต้องยืนยันวันทำงาน และไม่เพิ่มค่าแรงรายวัน'}</p>
       {data?.periods?.length > 0 && <label>รอบที่บันทึกไว้<select disabled={actionBusy || loading} value={data.periodId || legacyMonth || ''} onChange={e => {
         const period = data.periods.find((p: any) => p.id === e.target.value);
         if (!period) return;
@@ -279,8 +227,8 @@ export default function TruckPayrollPage() {
           {/* Driver specific details: Block 1, 2, 3 */}
           {selectedDriver ? (
             <div style={{ display: 'grid', gap: '1.25rem' }}>
-              {/* วันทำงานฐาน */}
-              <section className={docStyles.block}>
+              {/* Retain the historical base wage only when viewing an already-closed old snapshot. */}
+              {showLegacyBase && <section className={docStyles.block}>
                 <h3>
                   วันทำงานฐาน ({selectedDriver.days?.length || 0} วัน · รวม {formatMoney(selectedDriver.baseSatang || 0)} บาท)
                 </h3>
@@ -315,12 +263,12 @@ export default function TruckPayrollPage() {
                     </table>
                   </div>
                 )}
-              </section>
+              </section>}
 
               {/* เที่ยววิ่ง */}
               <section className={docStyles.block}>
                 <h3>
-                  เที่ยววิ่ง ({selectedDriver.trips?.length || 0} เที่ยว · รวม {formatMoney(selectedDriver.tripSatang || 0)} บาท)
+                  เที่ยววิ่ง ({selectedDriver.trips?.length || 0} เที่ยว · ออกรถ {departureDates.length} วัน · รวม {formatMoney(selectedDriver.tripSatang || 0)} บาท)
                 </h3>
                 {(!selectedDriver.trips || selectedDriver.trips.length === 0) ? (
                   <p className={styles.hint}>ไม่มีเที่ยววิ่งในช่วงวันที่นี้</p>
@@ -365,10 +313,11 @@ export default function TruckPayrollPage() {
                   ยอดรวมสุทธิและสถานะการจ่าย
                 </h3>
                 <div className={docStyles.summary}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  {showLegacyBase && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>ค่าแรงฐาน ({selectedDriver.days?.length || 0} วัน):</span>
                     <span>{formatMoney(selectedDriver.baseSatang || 0)} บาท</span>
-                  </div>
+                  </div>}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>วันที่ออกรถ:</span><span>{departureDates.length} วัน</span></div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>ค่าเที่ยว ({selectedDriver.trips?.length || 0} เที่ยว):</span>
                     <span>{formatMoney(selectedDriver.tripSatang || 0)} บาท</span>
@@ -561,7 +510,7 @@ export default function TruckPayrollPage() {
           >
             <h3 id="reopen-modal-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-primary-dark)' }}>เปิดรอบแก้ไขค่าแรง</h3>
             <p style={{ margin: '0 0 1rem', color: 'var(--team-text)' }}>
-              ช่วงวันที่ <strong>{month}</strong> · การเปิดรอบแก้ไขจะอนุญาตให้แก้ไขวันทำงานและค่าเที่ยววิ่งได้
+              ช่วงวันที่ <strong>{month}</strong> · การเปิดรอบแก้ไขจะอนุญาตให้แก้ไขเที่ยววิ่ง และปิดรอบใหม่ตามค่าเที่ยว
             </p>
 
             <div style={{ marginBottom: '1rem' }}>
@@ -569,7 +518,7 @@ export default function TruckPayrollPage() {
               <textarea
                 required
                 rows={3}
-                placeholder="ระบุเหตุผล เช่น มีการเพิ่มเที่ยววิ่งย้อนหลัง, แก้ไขวันทำงาน"
+                placeholder="ระบุเหตุผล เช่น มีการเพิ่มเที่ยววิ่งย้อนหลังหรือแก้ไขค่าเที่ยว"
                 value={reopenReason}
                 onChange={e => setReopenReason(e.target.value)}
                 style={{ width: '100%', minHeight: '80px', padding: '.6rem .75rem', border: '1px solid var(--team-border-strong)', borderRadius: 'var(--team-radius-small)' }}

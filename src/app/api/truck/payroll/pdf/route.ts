@@ -28,8 +28,13 @@ export async function GET(req:NextRequest) {
       const payment=data?.payments?.[driverId]; if(payment?.status==='PAID') page.headerText(`วันที่จ่าย ${payment.paidDate}`);
       page.headerText('ค่าเที่ยวรวมตามวันที่ออกเดินทางในช่วงที่เลือก', 13); page.y += 6;
     });
-    layout.section('วันทำงานและค่าแรงฐาน');
-    layout.table([{title:'วันที่ทำงาน',width:425},{title:'ค่าแรง (บาท)',width:90,align:'right'}], (row.days || []).map((day:any)=>[day.date,formatMoney(day.baseSatang)]));
+    const legacyBase = data.snapshot.payBasis !== 'TRIPS_ONLY' && ((row.days || []).length > 0 || row.baseSatang > 0);
+    const departureDays = new Set((row.trips || []).map((trip:any)=>trip.departureDate).filter(Boolean)).size;
+    if (legacyBase) {
+      layout.section('วันทำงานและค่าแรงฐาน');
+      layout.table([{title:'วันที่ทำงาน',width:425},{title:'ค่าแรง (บาท)',width:90,align:'right'}], (row.days || []).map((day:any)=>[day.date,formatMoney(day.baseSatang)]));
+    }
+    layout.paragraph(`วันที่ออกรถ ${departureDays} วัน · ${(row.trips || []).length} เที่ยว`,16);
     layout.section('รายละเอียดค่าเที่ยวคนขับ');
     const routeCounts = new Map<string,number>();
     const rows = (row.trips || []).map((trip:any) => {
@@ -42,7 +47,8 @@ export async function GET(req:NextRequest) {
     layout.section('จำนวนเที่ยวตามเส้นทาง');
     layout.table([{title:'เส้นทาง',width:425},{title:'จำนวนเที่ยว',width:90,align:'right'}],[...routeCounts].map(([route,count])=>[route,String(count)]));
     layout.section('สรุปค่าแรง');
-    const totals = [[`ค่าแรงฐาน (${(row.days || []).length} วัน)`,formatMoney(row.baseSatang)],[`ค่าเที่ยว (${(row.trips || []).length} เที่ยว)`,formatMoney(row.tripSatang)]];
+    const totals = [[`ค่าเที่ยว (${(row.trips || []).length} เที่ยว)`,formatMoney(row.tripSatang)]];
+    if (legacyBase) totals.unshift([`ค่าแรงฐาน (${(row.days || []).length} วัน)`,formatMoney(row.baseSatang)]);
     if(row.extraSatang>0) totals.push(['เงินเพิ่มเดิมจากข้อมูลก่อนรุ่น 3',formatMoney(row.extraSatang)]);
     layout.table([{title:'รายการ',width:425},{title:'จำนวนเงิน (บาท)',width:90,align:'right'}],totals);
     layout.paragraph(`ยอดรวม ${formatMoney(row.totalSatang)} บาท`,18,true,'right');

@@ -20,7 +20,7 @@ test('close locks workdays, payment must be voided before reopening, and retry i
   const call=(handler:any,body:any)=>handler(new NextRequest('http://localhost/api/truck/payroll',{method:'POST',body:JSON.stringify(body)}));
   assert.equal((await call(workday,{dateKey:'2026-11-30',driverIds:['d1'],expectedRevision:0,requestId:'work-day-1'})).status,200);
   const close={action:'CLOSE',month:'2026-11',expectedRevision:0,requestId:'close-month-1'};
-  const first=await call(payroll,close);if(first.status!==200) console.log(await first.clone().text());assert.equal(first.status,200);const closed=(await first.json()).data;assert.equal(closed.snapshot.drivers[0].totalSatang,42000);
+  const first=await call(payroll,close);if(first.status!==200) console.log(await first.clone().text());assert.equal(first.status,200);const closed=(await first.json()).data;assert.equal(closed.snapshot.drivers[0].totalSatang,12000); assert.equal(closed.snapshot.payBasis,'TRIPS_ONLY');
   const closedPdf=await payrollPdf(new NextRequest('http://localhost/api/truck/payroll/pdf?month=2026-11&driverId=d1'));
   assert.equal(closedPdf.status,200);
   assert.equal((await call(payroll,close)).status,200);

@@ -74,7 +74,7 @@ export default function TruckShell({ initialTab, initialDetailed = false }: { in
       <TruckHeader name={name} activeTab={tab} onChangeTab={next => go(next)} />
 
       <main className={styles.mainContent}>
-        <nav className={truckStyles.docNav} aria-label="เอกสารรถบรรทุก"><a href="/truck/payroll">วันทำงานและปิดรอบค่าแรง</a><a href="/truck/billing">วางบิลและรับเงิน</a></nav>
+        <nav className={truckStyles.docNav} aria-label="เอกสารรถบรรทุก"><a href="/truck/payroll">สรุปและปิดรอบค่าเที่ยว</a><a href="/truck/billing">วางบิลและรับเงิน</a></nav>
         {error && <div role="alert" style={{ color: 'var(--team-absent)' }}>{error} <button type="button" onClick={() => void loadBoot()}>ลองใหม่</button></div>}
         {!boot && !error && (
           <div aria-busy="true" aria-label="กำลังเปิดหน้า" className="tabLoading">

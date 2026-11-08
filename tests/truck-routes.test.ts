@@ -836,6 +836,19 @@ test('Truck Routes: Input validation and error handling', async () => {
 
 
 
+test('Historical closed payroll keeps its daily wage snapshot for viewing and payment', async () => {
+  const store=setupMockDb(),shop=`shops/${process.env.SHOP_ID || 'main'}`;
+  const snapshot={drivers:[{driverId:'d',driverName:'คนขับเดิม',days:[{date:'2026-10-01',baseSatang:30000}],baseSatang:30000,tripSatang:12000,totalSatang:42000,trips:[]}]};
+  store.docs.set(`${shop}/truckPayrollMonths/2026-10`,{state:'CLOSED',revision:1,snapshot,payments:{}});
+  const viewed=await getPayroll(new NextRequest('http://localhost/api/truck/payroll?month=2026-10'));
+  assert.deepEqual((await viewed.json()).data.snapshot,snapshot);
+  const paid=await postPayroll(new NextRequest('http://localhost/api/truck/payroll',{method:'POST',body:JSON.stringify({month:'2026-10',action:'PAY',driverId:'d',paidDate:'2026-11-01',expectedRevision:1,requestId:'pay-historical-snapshot'})}));
+  assert.equal(paid.status,200);
+  const data=(await paid.json()).data;
+  assert.equal(data.payments.d.amountSatang,42000);
+  assert.deepEqual(data.snapshot,snapshot);
+});
+
 test('Custom payroll spans months, freezes its exact dates, rejects overlapping periods and preserves payment history', async () => {
   const store = setupMockDb(), shop = `shops/${process.env.SHOP_ID || 'main'}`;
   store.docs.set(`${shop}/truckDrivers/d`, { name: 'คนขับทดสอบ', status: 'ACTIVE', baseWageSatang: 30000 });
@@ -847,11 +860,14 @@ test('Custom payroll spans months, freezes its exact dates, rejects overlapping 
   const preview = await getPayroll(new NextRequest('http://localhost/api/truck/payroll?'+new URLSearchParams(range)));
   assert.equal(preview.status,200);
   const open=(await preview.json()).data;
-  assert.equal(open.preview.drivers[0].totalSatang,135000);
-  assert.equal(open.preview.drivers[0].days.length,3);
+  assert.equal(open.preview.drivers[0].totalSatang,35000);
+  assert.equal(open.preview.drivers[0].days.length,0);
+  assert.equal(open.preview.drivers[0].baseSatang,0);
+  assert.equal(open.preview.payBasis,'TRIPS_ONLY');
+  assert.deepEqual(open.preview.drivers[0].departureDates,['2026-11-29','2026-12-02']);
   const payload={...range,action:'CLOSE',expectedRevision:0,requestId:'close-custom-range'};
   const closed=await postPayroll(req('/api/truck/payroll',payload)); assert.equal(closed.status,200);
-  assert.equal((await closed.json()).data.snapshot.drivers[0].totalSatang,135000);
+  assert.equal((await closed.json()).data.snapshot.drivers[0].totalSatang,35000);
   assert.equal((await postPayroll(req('/api/truck/payroll',payload))).status,200,'Receipt replay cannot duplicate a closure');
   const overlap=await postPayroll(req('/api/truck/payroll',{start:'2026-12-02',end:'2026-12-05',action:'CLOSE',expectedRevision:0,requestId:'close-overlap'}));
   assert.equal((await overlap.json()).error.code,'PAYROLL_OVERLAP');

@@ -4,19 +4,18 @@ import { assertPayrollRangesOpen } from '@/lib/server/truck-payroll-lock';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
 import { getAdminFirestore } from '@/lib/firebase/admin';
-import { getShopDocRef, getShopId, getTruckTripsCol, getTruckWorkDaysCol, getTruckRecordsCol, getRequestsCol, recordAudit } from '@/lib/server/repository';
+import { getShopDocRef, getShopId, getTruckTripsCol, getTruckRecordsCol, getRequestsCol, recordAudit } from '@/lib/server/repository';
 import { createErrorResponse, createSuccessResponse } from '@/lib/server/errors';
 import { checkRequestReceipt, computePayloadHash, recordRequestReceipt } from '@/lib/server/idempotency';
 import { monthKey } from '@/lib/payroll/dates';
 import { assertTruckWritable } from '@/lib/server/truck-control';
-import { calculateTruckPayroll, PayrollDay, PayrollTrip } from '@/lib/truck/payroll';
+import { calculateTruckPayroll, PayrollTrip } from '@/lib/truck/payroll';
 
 export const dynamic = 'force-dynamic';
-function preparePayroll(month:string,legacy:any,tripSnap:any,daySnap:any,range?:{start:string;end:string}) {
+function preparePayroll(month:string,legacy:any,tripSnap:any,range?:{start:string;end:string}) {
   const legacyReviewRequired=legacy.docs.some((d:any)=>(d.data().trips||[]).some((t:any)=>!t.tripId && (!range || (t.departureDate || d.data().dateKey) >= range.start && (t.departureDate || d.data().dateKey) <= range.end)));
-  const days:PayrollDay[]=daySnap.docs.flatMap((d:any)=>{const x=d.data();return (x.drivers||[]).map((v:{driverId:string;name:string;baseWageSatang?:number})=>({date:x.dateKey,driverId:v.driverId,driverName:v.name,baseSatang:v.baseWageSatang??x.baseWageSatang}));});
   const trips:PayrollTrip[]=tripSnap.docs.filter((d:any)=>!range || d.data().departureDate >= range.start && d.data().departureDate <= range.end).map((d:any)=>{const x=d.data(),names=tripLocationNames(x);return {tripId:d.id,pricingVersion:x.pricingVersion===3?3:undefined,driverId:x.driverId??null,driverName:x.driverNameSnapshot||'',departureDate:x.departureDate,arrivalDate:x.arrivalDate??null,status:x.status,driverPaySatang:x.driverPaySatang??null,...(x.pricingVersion===3?{}:{driverExtraSatang:x.driverExtraSatang??0}),legacyDriverExtraSatang:x.legacyDriverExtraSatang??0,locationNamesOnly:true,origin:names.origin,destination:names.destination,...(x.destinationMode === '__OTHER__' ? {destinationMode:'__OTHER__'} : {}),plate:x.plateNumberSnapshot||''};});
-  return {preview:calculateTruckPayroll(month,days,trips,range),legacyReviewRequired};
+  return {preview:calculateTruckPayroll(month,[],trips,range),legacyReviewRequired};
 }
 export async function GET(req: NextRequest) {
   try {
@@ -25,13 +24,13 @@ export async function GET(req: NextRequest) {
       getShopDocRef(shop).collection('truckPayrollMonths').get(),
       getShopDocRef(shop).collection('truckPayrollMonths').doc(range.id).get(),
       range.custom ? getTruckTripsCol(shop).get() : getTruckTripsCol(shop).where('accountingMonth','==',month).get(),
-      ...range.months.map(m=>getTruckRecordsCol(m,shop).get()), ...range.months.map(m=>getTruckWorkDaysCol(m,shop).get())
+      ...range.months.map(m=>getTruckRecordsCol(m,shop).get())
     ]);
-    const legacy={docs:sources.slice(0,range.months.length).flatMap(s=>s.docs)}, daySnap={docs:sources.slice(range.months.length).flatMap(s=>s.docs)};
+    const legacy={docs:sources.flatMap(s=>s.docs)};
     const periods=(periodSnap.docs||[]).map(d=>{const v=d.data();const r=/^20\d{2}-\d{2}$/.test(d.id)?truckDateRange({month:d.id}):v;return {id:d.id,start:r.start,end:r.end,state:v.state};}).filter(v=>v.start&&v.end).sort((a,b)=>b.start.localeCompare(a.start));
     const current=snap.exists?snap.data()!:{month,start:range.start,end:range.end,periodId:range.id,state:'OPEN',revision:0};
     if(current.state==='CLOSED') return createSuccessResponse({...current,periods});
-    return createSuccessResponse({...current,periods,...preparePayroll(month,legacy,tripSnap,daySnap,range)});
+    return createSuccessResponse({...current,periods,...preparePayroll(month,legacy,tripSnap,range)});
   } catch(e: unknown) { const x=e as Error; return createErrorResponse(x.message || 'INTERNAL_ERROR',undefined,400); }
 }
 export async function POST(req: NextRequest) {
@@ -49,9 +48,9 @@ export async function POST(req: NextRequest) {
       if(action==='CLOSE') {
         if(current.state==='CLOSED') throw new Error('MONTH_CLOSED');
         await assertPayrollRangesOpen(tx,shop,[range],range.id,'PAYROLL_OVERLAP');
-        const [tripSnap,...sources]=await Promise.all([tx.get(range.custom?getTruckTripsCol(shop):getTruckTripsCol(shop).where('accountingMonth','==',month)),...range.months.map(m=>tx.get(getTruckRecordsCol(m,shop))),...range.months.map(m=>tx.get(getTruckWorkDaysCol(m,shop)))]);
-        const legacy={docs:sources.slice(0,range.months.length).flatMap(s=>s.docs)},daySnap={docs:sources.slice(range.months.length).flatMap(s=>s.docs)};
-        const {preview:payroll,legacyReviewRequired}=preparePayroll(month,legacy,tripSnap,daySnap,range);
+        const [tripSnap,...sources]=await Promise.all([tx.get(range.custom?getTruckTripsCol(shop):getTruckTripsCol(shop).where('accountingMonth','==',month)),...range.months.map(m=>tx.get(getTruckRecordsCol(m,shop)))]);
+        const legacy={docs:sources.flatMap(s=>s.docs)};
+        const {preview:payroll,legacyReviewRequired}=preparePayroll(month,legacy,tripSnap,range);
         if(legacyReviewRequired) throw new Error('LEGACY_REVIEW_REQUIRED');
         if(!payroll.canClose) throw new Error('PAYROLL_INCOMPLETE');
         value={month,start:range.start,end:range.end,periodId:range.id,state:'CLOSED',revision:current.revision+1,version:(current.version||0)+1,snapshot:payroll,closedAt:now,closedBy:owner.uid,payments:{}};
