@@ -68,6 +68,8 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
   };
 
   const totals = report?.totals;
+  const savedIds = new Set(report?.savedRecords?.map(record => record.recordId) || []);
+  const history = report ? [...(report.savedRecords || []), ...report.records.filter(record => !savedIds.has(record.recordId))] : [];
   return (
     <div className={styles.stack} aria-busy={loading}>
       <h2 className={reports.title}>รายงานงานรถสิบล้อ</h2>
@@ -97,7 +99,7 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
 
       {totals && (
         <div className={styles.panel}>
-          <p className={styles.hint} style={{ marginTop: 0 }}>{formatThaiMonth(month)}</p>
+          <p className={styles.hint} style={{ marginTop: 0 }}>{formatThaiMonth(month)} · ยอดสรุปเฉพาะเที่ยวที่ถึงแล้วและมีค่าเที่ยวคนขับ ตามเดือนวันที่ออก</p>
           <div className={styles.figures}>
             <div className={styles.fig}><small>เที่ยววิ่งรวม</small><strong>{totals.totalTrips}</strong></div>
             <div className={styles.fig}><small>ค่าเที่ยวคนขับ (บาท)</small><strong>{formatMoney(totals.totalDriverPaySatang)}</strong></div>
@@ -127,8 +129,9 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
 
       <div className={styles.panel}>
         <h3 className={reports.sectionTitle}>ประวัติใบงานรายวัน</h3>
-        {report && report.records.length === 0 && <p className={styles.empty}>ไม่มีใบงานในเดือนที่เลือก</p>}
-        {report?.records.map(r => (
+        <p className={styles.hint}>แสดงใบงานตามวันที่บันทึก รวมเที่ยวค้างและเที่ยวที่ยังไม่ได้ตั้งราคา เที่ยวค้างยังไม่รวมในยอดสรุปด้านบน</p>
+        {report && history.length === 0 && <p className={styles.empty}>ไม่มีใบงานในเดือนที่เลือก</p>}
+        {history.map(r => (
           <div className={styles.rec} key={`${r.recordId}-${r.dateKey}-${r.trips[0]?.tripId || "legacy"}`}>
             <div className={styles.recHead}>
               <span>{formatThaiDate(r.dateKey)} - {r.plateNumberSnapshot}</span>
@@ -139,11 +142,11 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
             </div>
             {r.trips.map(t => (
               <div className={styles.recTrip} key={t.tripIndex}>
-                <span>{t.tripIndex}. {t.fromLocation || 'ไม่ระบุต้นทาง'} - {t.destinationName}{t.note ? ` (${t.note})` : ''}</span>
-                <span className={styles.pay}>{formatMoney(getTripDriverChargeSatang(t))}</span>
+                <span>{t.tripIndex}. {t.fromLocation || 'ไม่ระบุต้นทาง'} - {t.destinationName}{t.note ? ` (${t.note})` : ''} · {t.status === 'OPEN' ? 'ค้าง / ยังไม่ระบุวันที่ถึง' : t.status === 'CANCELLED' ? 'ยกเลิก' : 'ถึงแล้ว'}</span>
+                <span className={styles.pay}>{t.driverPaySatang == null ? 'ยังไม่ได้ตั้งราคา' : formatMoney(getTripDriverChargeSatang(t))}</span>
               </div>
             ))}
-            <div className={styles.recMeta}>รวมค่าเที่ยว {formatMoney(r.totalDriverPaySatang)} บาท</div>
+            <div className={styles.recMeta}>ค่าเที่ยวตามใบงาน {formatMoney(r.totalDriverPaySatang)} บาท · บันทึกแล้ว{r.revision ? ` (รุ่นที่ ${r.revision})` : ''}</div>
             {r.photos.length > 0 && (
               <div className={styles.thumbs}>
                 {r.photos.map(p => (

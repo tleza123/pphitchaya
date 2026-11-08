@@ -155,6 +155,7 @@ export interface TruckMonthlyTotals {
 }
 
 export interface TruckMonthlyReport {
+  savedRecords?: TruckDailyRecordDoc[];
   monthKey: string;
   totals: TruckMonthlyTotals;
   perTruck: TruckMonthlyRow[];

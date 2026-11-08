@@ -1,4 +1,4 @@
-import { loadTruckReportRecords } from '@/lib/server/truck-report-data';
+import { loadTruckReportData } from '@/lib/server/truck-report-data';
 import { NextRequest } from 'next/server';
 import { verifyOwner } from '@/lib/server/auth';
 import { createSuccessResponse, createErrorResponse } from '@/lib/server/errors';
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       ...doc.data()
     })) as TruckDoc[];
 
-    const allRecords = await loadTruckReportRecords(shopId, months);
+    const { accountingRecords: allRecords, savedRecords } = await loadTruckReportData(shopId, months);
     const targetRecords = truckId ? allRecords.filter(r => r.truckId === truckId) : allRecords;
 
     const reportMonth = months[0];
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
       report.perTruck = report.perTruck.filter(t => t.truckId === truckId);
     }
 
-    return createSuccessResponse(report);
+    return createSuccessResponse({ ...report, savedRecords: truckId ? savedRecords.filter(r => r.truckId === truckId) : savedRecords });
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; statusCode?: number };
     return createErrorResponse(
