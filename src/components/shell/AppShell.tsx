@@ -16,7 +16,7 @@ const loadReports = () => import('@/components/reports/ReportsTab').then(module 
 const loadSettings = () => import('@/components/settings/SettingsTab');
 const DetailedReports = React.memo(dynamic(() => import('@/components/reports/DetailedReports'), { loading: TabLoading }));
 function TabLoading() {
-  return <div aria-busy="true" aria-label="กำลังเปิดหน้า" className="tabLoading">
+  return <div aria-busy="true" aria-label="กำลังโหลดข้อมูล" className="tabLoading">
     {[0, 1, 2].map(index => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}
   </div>;
 }

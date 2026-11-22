@@ -50,7 +50,7 @@ export interface TruckDailySummaryData {
  */
 export function buildAttendanceDailyFlex(data: AttendanceDailySummaryData) {
   const thaiDate = formatThaiDate(data.dateKey);
-  const altText = `สรุปการเช็คชื่อพนักงานประจำวัน ${thaiDate} (${data.shopName})`;
+  const altText = `สรุปการเช็กชื่อพนักงานประจำวัน ${thaiDate} (${data.shopName})`;
 
   const statusRows: any[] = [];
 
@@ -169,14 +169,14 @@ export function buildAttendanceDailyFlex(data: AttendanceDailySummaryData) {
         contents: [
           {
             type: 'text',
-            text: 'ระบบเช็คชื่อพนักงาน',
+            text: 'ระบบเช็กชื่อพนักงาน',
             color: '#FFC300',
             size: 'xs',
             weight: 'bold'
           },
           {
             type: 'text',
-            text: data.shopName || 'สรุปการเช็คชื่อพนักงาน',
+            text: data.shopName || 'สรุปการเช็กชื่อพนักงาน',
             weight: 'bold',
             size: 'lg',
             color: '#FFFFFF',

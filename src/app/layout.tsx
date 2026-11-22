@@ -3,8 +3,8 @@ import { AuthProvider } from '@/features/auth/AuthContext';
 import '@/styles/globals.css';
 
 export const metadata: Metadata = {
-  title: 'ระบบเช็คชื่อพนักงานและสรุปค่าจ้าง',
-  description: 'ระบบเช็คชื่อพนักงานและคำนวณค่าจ้างรายเดือนสำหรับเจ้าของกิจการ'
+  title: 'เช็กชื่อพนักงานและบันทึกงานรถสิบล้อ',
+  description: 'เช็กชื่อพนักงาน สรุปค่าจ้าง และบันทึกงานรถสิบล้อ'
 };
 
 export const viewport: Viewport = {

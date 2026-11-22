@@ -306,10 +306,10 @@ export default function TruckBillingPage() {
 
   return (
     <main className={docStyles.page} data-app-theme="truck">
-      <header className={docStyles.pageHeader}><a className={docStyles.backLink} href="/truck"><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารถบรรทุก</a><h1>วางบิลและรับเงิน</h1><p className={docStyles.context}>เลือกช่วงงาน ออกใบวางบิล และติดตามยอดรับชำระของลูกค้า</p></header>
-      <p className={styles.hint}>ช่วงที่แสดง: {month} · ค้นหาตามวันที่ออกเดินทาง รวมวันเริ่มและวันสิ้นสุด</p>
+      <header className={docStyles.pageHeader}><a className={docStyles.backLink} href="/truck"><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารถบรรทุก</a><h1>วางบิลและรับเงิน</h1><p className={docStyles.context}>ออกใบวางบิลตามช่วงวันที่และติดตามยอดรับชำระ</p></header>
+      <p className={styles.hint}>ช่วงที่แสดง: {month} · นับตามวันที่ออกรถ รวมวันแรกและวันสุดท้าย</p>
 
-      <section className={docStyles.block}><h2>ค้นหาเที่ยววางบิล</h2><div className={docStyles.filterGrid}>
+      <section className={docStyles.block}><h2>ค้นหาเที่ยววิ่ง</h2><div className={docStyles.filterGrid}>
         <div>
           <label>จากวันที่<input type="date" className={settings.formInput} value={start} max={end} onChange={e => setStart(e.target.value)} /></label>
         </div>
@@ -322,27 +322,27 @@ export default function TruckBillingPage() {
             value={selectedCustomerId}
             onChange={event => { setSelectedCustomerId(event.target.value); setSelected([]); }}
           >
-            {customers.length === 0 && <option value="">-- ไม่พบลูกค้าที่มีเที่ยววิ่ง --</option>}
+            {customers.length === 0 && <option value="">ไม่พบลูกค้าที่มีเที่ยววิ่ง</option>}
             {customers.map(c => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>
-        <button type="button" className={docStyles.primaryButton} disabled={loading} onClick={search}><Search size={18} aria-hidden="true" />ค้นหาเที่ยววางบิล</button>
+        <button type="button" className={docStyles.primaryButton} disabled={loading} onClick={search}><Search size={18} aria-hidden="true" />ค้นหาเที่ยววิ่ง</button>
       </div>
 
       </section>
-      {loading && <p role="status">กำลังค้นหาเที่ยววางบิล</p>}
+      {loading && <p role="status">กำลังค้นหาเที่ยววิ่ง</p>}
       {error && <p role="alert" style={{ color: 'var(--team-absent)' }}>{error}</p>}
 
       {legacyPricingReview.length > 0 && (
         <section className={docStyles.block} role="status">
           <h2>เที่ยวที่ต้องตรวจราคาเดิม</h2>
-          <p>เที่ยวเหล่านี้ยังไม่เข้ารายการวางบิลจนกว่าจะตรวจยอดเดิมและยืนยันราคาเหมา</p>
+          <p>ตรวจยอดเดิมและยืนยันราคาเหมาก่อนวางบิล</p>
           {legacyPricingReview.map(trip => (
             <p key={trip.tripId}>{trip.departureDate} · {trip.plateNumberSnapshot} · {trip.fromLocation} → {trip.destinationName} · {trip.customerName}</p>
           ))}
-          <a href="/truck/review">ไปหน้าตรวจข้อมูลเก่า</a>
+          <a href="/truck/review">ตรวจราคาเดิม</a>
         </section>
       )}
 
@@ -375,10 +375,10 @@ export default function TruckBillingPage() {
         ))}
 
         {!selectedCustomerId && customers.length > 0 && (
-          <p className={styles.empty}>กรุณาเลือกลูกค้าเพื่อดูเที่ยววิ่งที่ยังไม่วางบิล</p>
+          <p className={styles.empty}>เลือกลูกค้าเพื่อดูเที่ยวที่ยังไม่วางบิล</p>
         )}
         {selectedCustomerId && displayedTrips.length === 0 && (
-          <p className={styles.empty}>ไม่มีเที่ยวพร้อมวางบิลสำหรับลูกค้ารายนี้ในช่วง {month}</p>
+          <p className={styles.empty}>ไม่มีเที่ยวพร้อมวางบิลของลูกค้ารายนี้ในช่วง {month}</p>
         )}
         {customers.length === 0 && (
           <p className={styles.empty}>ไม่มีเที่ยวพร้อมวางบิล</p>
@@ -397,7 +397,7 @@ export default function TruckBillingPage() {
       </section>
 
       <section className={docStyles.block}>
-        <h2>ใบวางบิลและประวัติรับเงิน</h2>
+        <h2>ใบวางบิลและประวัติการรับชำระ</h2>
         <div className={docStyles.invoiceList}>
         {invoices.map(invoice => (
           <article key={invoice.invoiceId} className={docStyles.invoice}>
@@ -431,7 +431,7 @@ export default function TruckBillingPage() {
           </article>
         ))}
         </div>
-        {invoices.length === 0 && <p className={styles.empty}>ยังไม่มีใบวางบิลในช่วงวันที่นี้</p>}
+        {invoices.length === 0 && <p className={styles.empty}>ไม่มีใบวางบิลในช่วงที่เลือก</p>}
       </section>
 
       {/* Invoice Modal */}
@@ -548,7 +548,7 @@ export default function TruckBillingPage() {
                 <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.2rem', fontWeight: 600 }}>ช่องทางรับเงิน</label>
                 <input
                   type="text"
-                  placeholder="เช่น โอนเงิน, เงินสด, เช็ค"
+                  placeholder="เช่น โอนเงิน เงินสด หรือเช็ค"
                   className={settings.formInput}
                   value={payChannel}
                   onChange={e => setPayChannel(e.target.value)}
@@ -558,7 +558,7 @@ export default function TruckBillingPage() {
                 <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.2rem', fontWeight: 600 }}>เลขอ้างอิง (ถ้ามี)</label>
                 <input
                   type="text"
-                  placeholder="เลขที่สลิป หรือ เช็ค"
+                  placeholder="เลขที่สลิปหรือเลขที่เช็ค"
                   className={settings.formInput}
                   value={payReference}
                   onChange={e => setPayReference(e.target.value)}
@@ -603,7 +603,7 @@ export default function TruckBillingPage() {
               เลขที่เอกสาร: <strong>{voidInvoiceTarget.documentNo}</strong> ({voidInvoiceTarget.customerName})
             </p>
             <p style={{ margin: '0 0 0.8rem', color: 'var(--team-muted)', fontSize: '0.9rem' }}>
-              ยอดรวม {formatMoney(voidInvoiceTarget.totalSatang)} บาท · เที่ยววิ่งจะกลับไปอยู่ในสถานะยังไม่วางบิล
+              ยอดรวม {formatMoney(voidInvoiceTarget.totalSatang)} บาท · เที่ยววิ่งจะกลับไปอยู่ในรายการที่ยังไม่วางบิล
             </p>
 
             <div style={{ marginBottom: '1rem' }}>
@@ -612,7 +612,7 @@ export default function TruckBillingPage() {
                 required
                 rows={3}
                 className={settings.formInput}
-                placeholder="ระบุเหตุผล เช่น ออกผิดลูกค้า, เปลี่ยนแปลงรายการเที่ยว"
+                placeholder="เช่น ระบุลูกค้าผิดหรือเปลี่ยนรายการเที่ยว"
                 value={voidInvoiceReason}
                 onChange={e => setVoidInvoiceReason(e.target.value)}
               />
@@ -654,7 +654,7 @@ export default function TruckBillingPage() {
                 required
                 rows={3}
                 className={settings.formInput}
-                placeholder="ระบุเหตุผล เช่น บันทึกยอดเงินผิด, สลิปซ้ำ"
+                placeholder="เช่น บันทึกยอดผิดหรือใช้สลิปซ้ำ"
                 value={voidPaymentReason}
                 onChange={e => setVoidPaymentReason(e.target.value)}
               />

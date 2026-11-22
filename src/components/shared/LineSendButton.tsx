@@ -14,7 +14,7 @@ export function LineSendButton({ scope, className }: { scope: 'attendance' | 'tr
     setStatus(null);
     try {
       await sendJson('/api/line/notify', 'POST', { scope });
-      setStatus({ err: false, text: 'ส่งสรุปวันนี้เข้า LINE แล้ว' });
+      setStatus({ err: false, text: 'ส่งสรุปวันนี้ทาง LINE แล้ว' });
     } catch (e) {
       setStatus({ err: true, text: errMsg(e) });
     } finally {
@@ -33,7 +33,7 @@ export function LineSendButton({ scope, className }: { scope: 'attendance' | 'tr
         style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
       >
         <Send size={18} aria-hidden="true" style={{ marginRight: '.5rem', flexShrink: 0 }} />
-        <span>{busy ? 'กำลังส่ง...' : 'ส่งสรุปวันนี้เข้า LINE'}</span>
+        <span>{busy ? 'กำลังส่ง…' : 'ส่งสรุปวันนี้ทาง LINE'}</span>
       </button>
       {status?.text && (
         <div role="status" style={{ fontSize: 'var(--team-secondary)', color: status.err ? 'var(--team-absent)' : 'var(--team-full)', marginTop: '.35rem' }}>

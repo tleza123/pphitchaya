@@ -160,7 +160,7 @@ export async function POST(req: NextRequest) {
       return createErrorResponse('INVALID_INPUT', 'กรุณาระบุ employeeId', 422);
     }
     if (!['FULL', 'HALF', 'ABSENT', 'UNMARKED'].includes(status)) {
-      return createErrorResponse('INVALID_INPUT', 'สถานะการเช็คชื่อไม่ถูกต้อง', 422);
+      return createErrorResponse('INVALID_INPUT', 'สถานะการเช็กชื่อไม่ถูกต้อง', 422);
     }
 
     let parsedAdvance: number | undefined = undefined;
@@ -186,7 +186,7 @@ export async function POST(req: NextRequest) {
     const targetDate = dateKey(rawDate);
     const today = getBangkokToday();
     if (targetDate > today && status !== 'UNMARKED') {
-      return createErrorResponse('INVALID_INPUT', 'ไม่สามารถเช็คชื่อวันอนาคตได้', 422);
+      return createErrorResponse('INVALID_INPUT', 'ไม่สามารถเช็กชื่อวันอนาคตได้', 422);
     }
 
     const monthKey = targetDate.slice(0, 7);
@@ -340,10 +340,10 @@ export async function POST(req: NextRequest) {
       return createErrorResponse('INVALID_INPUT', 'วันที่นี้อยู่นอกช่วงการจ้างงานของพนักงาน', 422);
     }
     if (error.message === 'EMPLOYEE_SUSPENDED') {
-      return createErrorResponse('EMPLOYEE_SUSPENDED', 'พนักงานถูกพักการทำงาน ไม่สามารถเช็คชื่อได้', 422);
+      return createErrorResponse('EMPLOYEE_SUSPENDED', 'พนักงานถูกพักการทำงาน ไม่สามารถเช็กชื่อได้', 422);
     }
     if (error.message === 'ATTENDANCE_ON_HOLIDAY') {
-      return createErrorResponse('INVALID_INPUT', 'วันดังกล่าวเป็นวันหยุดตามตาราง กรุณาเพิ่มวันทำงานพิเศษก่อนเช็คชื่อ', 422);
+      return createErrorResponse('INVALID_INPUT', 'วันดังกล่าวเป็นวันหยุดตามตาราง กรุณาเพิ่มวันทำงานพิเศษก่อนเช็กชื่อ', 422);
     }
     return createErrorResponse(
       error.code || 'INTERNAL_ERROR',

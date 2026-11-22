@@ -77,7 +77,7 @@ export default function TruckShell({ initialTab, initialDetailed = false }: { in
         <nav className={truckStyles.docNav} aria-label="เอกสารรถบรรทุก"><a href="/truck/payroll">สรุปและปิดรอบค่าเที่ยว</a><a href="/truck/billing">วางบิลและรับเงิน</a></nav>
         {error && <div role="alert" style={{ color: 'var(--team-absent)' }}>{error} <button type="button" onClick={() => void loadBoot()}>ลองใหม่</button></div>}
         {!boot && !error && (
-          <div aria-busy="true" aria-label="กำลังเปิดหน้า" className="tabLoading">
+          <div aria-busy="true" aria-label="กำลังโหลดข้อมูล" className="tabLoading">
             {[0, 1, 2].map(i => <div className="loadingCard" key={i}><span className="loadingLine" /><span className="loadingLine" /></div>)}
           </div>
         )}

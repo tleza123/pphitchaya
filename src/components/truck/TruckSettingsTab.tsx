@@ -48,7 +48,7 @@ function MasterSection({ active, title, fields, items, busy, onSave, onDelete, a
     savingRef.current = true; setSaving(true); setFormError('');
     try {
       await onSave(values, editing === 'new' ? null : editing);
-      setNotice(editing === 'new' ? 'เพิ่มข้อมูลเรียบร้อยแล้ว' : 'บันทึกการแก้ไขเรียบร้อยแล้ว'); setEditing(null);
+      setNotice(editing === 'new' ? 'เพิ่มข้อมูลแล้ว' : 'บันทึกการแก้ไขแล้ว'); setEditing(null);
     } catch (error) { setFormError(errMsg(error)); }
     finally { savingRef.current = false; setSaving(false); }
   };
@@ -75,9 +75,9 @@ function MasterSection({ active, title, fields, items, busy, onSave, onDelete, a
       </div>
       {notice && <p className={styles.ok} role="status">{notice}</p>}
       {!autoRoutes && items.length === 0 && <p className={styles.empty}>ยังไม่มีข้อมูล</p>}
-      {autoRoutes && <><p className={styles.hint}>เชื่อมทุกจุดทั้งขาไปและขากลับ เว้นราคาไว้ให้กรอกเอง{customerOptions ? ' แยกตามลูกค้าแต่ละราย' : ''} · {items.length} รายการ</p>
+      {autoRoutes && <><p className={styles.hint}>ระบบสร้างเส้นทางทั้งสองทิศทาง ให้กรอกราคา{customerOptions ? ' แยกตามลูกค้า' : ''} · {items.length} รายการ</p>
         <div className={styles.row2}>
-          {customerOptions && <label className={settings.formLabel}>ลูกค้าที่ต้องการกำหนดราคา<select className={settings.formInput} value={customerFilter} onChange={e => setCustomerFilter(e.target.value)}><option value="all">ลูกค้าทุกคน</option>{customerOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
+          {customerOptions && <label className={settings.formLabel}>ลูกค้าที่ต้องการกำหนดราคา<select className={settings.formInput} value={customerFilter} onChange={e => setCustomerFilter(e.target.value)}><option value="all">ลูกค้าทุกราย</option>{customerOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
           <label className={settings.formLabel}>ค้นหาเส้นทาง<input className={settings.formInput} type="search" aria-label={`ค้นหา${title}`} placeholder="ค้นหาจุดรับ–ส่งหรือลูกค้า" value={search} onChange={e => setSearch(e.target.value)} /></label>
         </div></>}
       {autoRoutes ? <div className={styles.routeGroups} aria-label={`หมวด${title}`}>
@@ -112,7 +112,7 @@ function MasterSection({ active, title, fields, items, busy, onSave, onDelete, a
           {formError && <p className={styles.error} role="alert">{formError}</p>}
           <div className={styles.masterActions}>
             <button type="button" className={settings.secondaryBtn} onClick={close}>ยกเลิก</button>
-            <button type="submit" className={settings.primaryBtn} aria-busy={saving}>{saving ? 'กำลังบันทึก...' : 'บันทึก'}</button>
+            <button type="submit" className={settings.primaryBtn} aria-busy={saving}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button>
           </div>
           </fieldset>
         </form>
@@ -209,7 +209,7 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
         fields={[{key:'originId',label:'ต้นทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'destinationId',label:'ปลายทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'pay',label:'ค่าเที่ยวคนขับ (บาท)',kind:'money',required:true}]}
         onSave={(v,id)=>act(()=>post({action:'UPSERT_TARIFF',tariff:{id:v.generated === 'true' ? undefined : id||undefined,originId:v.originId,destinationId:v.destinationId,customerId:null,driverPaySatang:baht(v.pay)},expectedRevision:id?Number(v.revision):0}),'บันทึกราคาแล้ว')}
         onDelete={item=>{setPendingDelete({item,request:{action:'DISABLE_TARIFF',id:item.id,expectedRevision:Number(item.values.revision)},success:'ปิดใช้งานราคาแล้ว'});return Promise.resolve();}} />
-      <MasterSection active={active} title="ราคาขนส่งลูกค้าต่อเที่ยว" autoRoutes busy={busy} items={tariffs.filter(t=>!!t.values.customerId)}
+      <MasterSection active={active} title="ราคาขนส่งต่อเที่ยวสำหรับลูกค้า" autoRoutes busy={busy} items={tariffs.filter(t=>!!t.values.customerId)}
         fields={[{key:'customerId',label:'ลูกค้า',kind:'select',required:true,options:customers.map(c=>({value:c.id,label:c.title}))},{key:'originId',label:'ต้นทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'destinationId',label:'ปลายทาง',kind:'select',required:true,options:locations.map(l=>({value:l.id,label:l.title}))},{key:'billing',label:'ราคาขนส่งต่อเที่ยว (บาท)',kind:'money',required:true}]}
         onSave={(v,id)=>act(()=>post({action:'UPSERT_TARIFF',tariff:{id:v.generated === 'true' ? undefined : id||undefined,originId:v.originId,destinationId:v.destinationId,customerId:v.customerId,customerRateSatang:baht(v.billing)},expectedRevision:id?Number(v.revision):0}),'บันทึกราคาแล้ว')}
         onDelete={item=>{setPendingDelete({item,request:{action:'DISABLE_TARIFF',id:item.id,expectedRevision:Number(item.values.revision)},success:'ปิดใช้งานราคาแล้ว'});return Promise.resolve();}} />
@@ -257,7 +257,7 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
         </div>
         <button type="button" className={settings.primaryBtn} disabled={busy || !company.trim()}
           onClick={() => act(async () => { await post({ action: 'UPDATE_PROFILE', companyName: company,address,phone,taxId, expectedRevision: boot.truckProfile.revision }); }, 'บันทึกข้อมูลกิจการแล้ว').catch(() => undefined)}>
-          บันทึกชื่อกิจการ
+          บันทึกข้อมูลกิจการ
         </button>
       </div>
 
@@ -280,7 +280,7 @@ export function TruckSettingsTab({ active, boot, onChanged }: { active: boolean;
             <p style={{ margin: '0 0 1rem', color: 'var(--team-text)' }}>
               {pendingDelete
                 ? `ต้องการลบ "${pendingDelete.item.title}" ใช่หรือไม่`
-                : 'การกู้คืนจะเขียนทับข้อมูลที่มีรหัสเดียวกันในคลังข้อมูล ต้องการดำเนินการต่อหรือไม่'}
+                : 'การกู้คืนจะเขียนทับข้อมูลที่มีรหัสเดียวกัน ต้องการกู้คืนหรือไม่'}
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '.6rem' }}>
               <button type="button" className={settings.secondaryBtn} onClick={() => { setPendingDelete(null); setPendingRestore(null); }}>ยกเลิก</button>

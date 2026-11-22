@@ -109,7 +109,7 @@ export function AttendanceTab({
       } catch {
         if (sequence === fetchSequence.current && !controller.signal.aborted) {
           setItems([]);
-          setErrorMsg('ไม่สามารถเชื่อมต่อระบบได้ กรุณาลองใหม่อีกครั้ง');
+          setErrorMsg('เชื่อมต่อระบบไม่ได้ กรุณาลองใหม่');
         }
       } finally {
         if (sequence === fetchSequence.current) setLoading(false);
@@ -213,7 +213,7 @@ export function AttendanceTab({
         fetchDayData(currentDate.current);
       }
     } catch {
-      alert('เกิดข้อผิดพลาดในการส่งข้อมูล กรุณาตรวจสอบอีกครั้ง');
+      alert('ส่งข้อมูลไม่สำเร็จ กรุณาลองใหม่');
       fetchDayData(currentDate.current);
     } finally {
       pendingWrites.current.delete(employeeId);
@@ -293,7 +293,7 @@ export function AttendanceTab({
 
   return (
     <div>
-      <h2 className={styles.title}>เช็คชื่อ</h2>
+      <h2 className={styles.title}>เช็กชื่อ</h2>
 
       <div className={styles.controlsBar}>
         <div className={styles.controlsTopRow}>
@@ -344,7 +344,7 @@ export function AttendanceTab({
         {items.length > 8 && (
           <input
             type="search"
-            placeholder="ค้นหาชื่อพนักงาน หรือตำแหน่ง..."
+            placeholder="ค้นหาชื่อหรือตำแหน่งพนักงาน"
             className={styles.searchInput}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
@@ -357,7 +357,7 @@ export function AttendanceTab({
       {!isWorkday && (
         <div className={styles.notice}>
           <strong>วันหยุดตามตาราง</strong>
-          <span>หากพนักงานมาทำงานจริง กรุณากดบันทึกวันทำงานเพิ่มก่อนเริ่มเช็คชื่อ</span>
+          <span>หากพนักงานมาทำงาน ให้เพิ่มวันทำงานก่อนเช็กชื่อ</span>
           {!isClosed && (
             <button type="button" className={styles.noticeBtn} disabled={loading || Boolean(calendarPending)} onClick={() => runCalendarAction('กำลังเพิ่มวันทำงาน', () => handleAddWorkday())} aria-busy={Boolean(calendarPending)}>
               บันทึกวันทำงานเพิ่ม
@@ -366,7 +366,7 @@ export function AttendanceTab({
         </div>
       )}
 
-      {(loading || calendarPending) && <div className="refreshStatus" role="status">{calendarPending || 'กำลังโหลดข้อมูลเช็คชื่อ'}</div>}
+      {(loading || calendarPending) && <div className="refreshStatus" role="status">{calendarPending || 'กำลังโหลดข้อมูลเช็กชื่อ'}</div>}
       {loading && loadedDate.current !== selectedDate ? (
         <div className={styles.cardGrid} aria-busy="true" aria-label="กำลังโหลดข้อมูลเช็กชื่อ">
           {[0, 1, 2].map(index => <div className={styles.skeletonCard} key={index}>
@@ -376,7 +376,7 @@ export function AttendanceTab({
       ) : errorMsg && items.length === 0 ? null : items.length === 0 ? (
         <div className={styles.notice}>
           <strong>ยังไม่มีรายชื่อพนักงาน</strong>
-          <p>กรุณาเพิ่มพนักงานในแท็บตั้งค่าเพื่อเริ่มใช้งาน</p>
+          <p>เพิ่มพนักงานในเมนูตั้งค่าเพื่อเริ่มใช้งาน</p>
           <button type="button" className={styles.noticeBtn} onClick={onNavigateToSettings}>
             เพิ่มพนักงาน
           </button>
@@ -428,7 +428,7 @@ export function AttendanceTab({
               <div
                 className={styles.statusGrid}
                 role="group"
-                aria-label={`เช็คชื่อ ${emp.nickname || emp.name}`}
+                aria-label={`เช็กชื่อ ${emp.nickname || emp.name}`}
               >
                 <button
                   type="button"
@@ -544,7 +544,7 @@ export function AttendanceTab({
               <div className={styles.cardFooter}>
                 <span className={styles.statusText}>
                   {isPending
-                    ? 'กำลังบันทึก...'
+                    ? 'กำลังบันทึก…'
                     : att.automatic
                     ? 'เต็มวัน · ค่าเริ่มต้น'
                     : att.status !== 'UNMARKED'
@@ -598,7 +598,7 @@ export function AttendanceTab({
       )}
       <div style={{ marginTop: '1.5rem', display: 'grid', gap: '.75rem' }}>
         <button type="button" className={styles.noticeBtn} disabled={loading || isClosed || !isWorkday || Boolean(calendarPending) || Object.values(pendingMap).some(Boolean)} onClick={() => {
-          if (window.confirm(`กำหนด ${formatThaiDate(selectedDate)} เป็นวันหยุดร้าน? วันนี้จะไม่คิดค่าแรงตามปฏิทิน ข้อมูลเช็คชื่อเดิมจะยังเก็บไว้ และเปลี่ยนกลับเป็นวันทำงานได้`)) void runCalendarAction('กำลังบันทึกวันหยุดร้าน', () => handleAddWorkday('HOLIDAY'));
+          if (window.confirm(`กำหนดวันที่ ${formatThaiDate(selectedDate)} เป็นวันหยุดร้านหรือไม่\n\nระบบจะไม่นับค่าแรงตามปฏิทินของวันนี้ และจะเก็บข้อมูลเช็กชื่อไว้ คุณเปลี่ยนกลับเป็นวันทำงานได้`)) void runCalendarAction('กำลังบันทึกวันหยุดร้าน', () => handleAddWorkday('HOLIDAY'));
         }}>{!isWorkday ? 'วันที่เลือกเป็นวันหยุดร้าน' : 'วันหยุดร้านเฉพาะกิจ'}</button>
         <LineSendButton scope="attendance" className={styles.noticeBtn} />
       </div>

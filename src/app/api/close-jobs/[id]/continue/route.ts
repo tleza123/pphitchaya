@@ -129,7 +129,7 @@ export async function POST(
         });
 
         if (calc.pending > 0) {
-          errors.push(`${emp.name}: ยังมีวันที่ค้างการเช็คชื่อ ${calc.pending} วัน`);
+          errors.push(`${emp.name}: ยังไม่ได้เช็กชื่อ ${calc.pending} วัน`);
         }
 
         const snapshot = buildEmployeeSnapshot(emp.name, emp.position, calc);

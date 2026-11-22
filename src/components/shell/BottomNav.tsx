@@ -25,7 +25,7 @@ export function BottomNav({ activeTab, onChangeTab, onPrepareTab }: BottomNavPro
         onFocus={() => onPrepareTab?.('attendance')}
       >
         <ClipboardCheck className={styles.navIcon} aria-hidden="true" />
-        <span>เช็คชื่อ</span>
+        <span>เช็กชื่อ</span>
       </button>
 
       <button

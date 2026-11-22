@@ -131,7 +131,7 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
 
       <div className={styles.panel}>
         <h3 className={reports.sectionTitle}>ประวัติใบงานรายวัน</h3>
-        <p className={styles.hint}>บันทึกใบงานแล้วนับเที่ยวทันที วันที่ถึงเป็นข้อมูลเพิ่มเติมเท่านั้น รายการที่ยังไม่ตั้งราคาจะยังไม่มียอดเงินรวม</p>
+        <p className={styles.hint}>ระบบนับเที่ยวเมื่อบันทึกใบงาน และรวมยอดเงินเฉพาะเที่ยวที่ตั้งราคาแล้ว</p>
         {report && history.length === 0 && <p className={styles.empty}>ไม่มีใบงานในเดือนที่เลือก</p>}
         {history.map(r => (
           <div className={styles.rec} key={`${r.recordId}-${r.dateKey}-${r.trips[0]?.tripId || "legacy"}`}>

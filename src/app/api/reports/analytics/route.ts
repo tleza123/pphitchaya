@@ -48,17 +48,17 @@ export async function GET(req: NextRequest) {
         const month = months[index];
         const state = monthSnaps[index].data();
         if (state?.state === 'CLOSED') {
-          if (!state.currentClosureId) throw new Error('ไม่พบ snapshot ของเดือนที่ปิดบัญชี');
+          if (!state.currentClosureId) throw new Error('ไม่พบข้อมูลที่บันทึกไว้ตอนปิดรอบเดือน');
           const closure = getClosuresCol(month, shopId).doc(state.currentClosureId);
           const [manifest, snapshots] = await Promise.all([closure.get(), closure.collection('employees').get()]);
           const employeeIds = manifest.data()?.employeeIds;
           if (!manifest.exists || !Array.isArray(employeeIds) || employeeIds.length !== snapshots.size || snapshots.docs.some(doc => !employeeIds.includes(doc.id))) {
-            throw new Error('ข้อมูล snapshot ของเดือนที่ปิดบัญชีไม่ครบถ้วน');
+            throw new Error('ข้อมูลที่บันทึกไว้ตอนปิดรอบเดือนไม่ครบ');
           }
           closedMonths.push(month);
           for (const doc of snapshots.docs) {
             const data = doc.data();
-            if (!Array.isArray(data.days) || !data.counts) throw new Error('ข้อมูล snapshot ไม่ครบถ้วน');
+            if (!Array.isArray(data.days) || !data.counts) throw new Error('ข้อมูลที่บันทึกไว้ไม่ครบ');
             results.push({ ...data, ...data.counts, employeeId: doc.id, month,
               grossSatang: data.grossSatang ?? data.baseSatang + data.extraSatang,
               deductionSatang: data.deductionSatang || 0, advanceSatang: data.advanceSatang || 0,

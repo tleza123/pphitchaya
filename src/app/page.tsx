@@ -29,7 +29,7 @@ export default function HomePage() {
         body: JSON.stringify({ destination, password })
       });
       const result = await response.json();
-      if (!response.ok || !result.ok) throw new Error(result.error?.message || 'ไม่สามารถเข้าสู่ระบบได้');
+      if (!response.ok || !result.ok) throw new Error(result.error?.message || 'เข้าสู่ระบบไม่สำเร็จ');
       setPassword(''); router.push(result.data.destination);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่');
@@ -39,14 +39,14 @@ export default function HomePage() {
 
   return <main className={styles.page}>
     <h1>เลือกระบบ</h1>
-    <p className={styles.hint}>เลือกระบบที่ต้องการใช้งาน แล้วกรอกรหัสเข้าใช้งาน</p>
-    <nav className={styles.systems} aria-label="เลือกระบบใช้งาน">
+    <p className={styles.hint}>เลือกระบบแล้วกรอกรหัสเข้าใช้งาน</p>
+    <nav className={styles.systems} aria-label="เลือกระบบ">
       {systems.map(({ path, label, Icon }) => <button key={path} type="button" disabled={busy} aria-pressed={destination === path} className={styles.system} onClick={() => { setDestination(path); setPassword(''); setError(''); }}>
         <Icon size={25} aria-hidden="true" /><span>{label}</span><LockKeyhole size={18} aria-hidden="true" />
       </button>)}
     </nav>
     {destination && <section className={styles.panel} aria-labelledby="entry-title">
-      <h2 id="entry-title">เข้า{systems.find(system => system.path === destination)?.label}</h2>
+      <h2 id="entry-title">{systems.find(system => system.path === destination)?.label}</h2>
       <form onSubmit={enter} aria-busy={busy}>
         <label htmlFor="entry-password">รหัสเข้าใช้งาน</label>
         <input ref={input} id="entry-password" type="password" inputMode="numeric" autoComplete="current-password" maxLength={128} required value={password} disabled={busy} onChange={event => setPassword(event.target.value)} aria-invalid={Boolean(error)} aria-describedby={error ? 'entry-error' : undefined} />

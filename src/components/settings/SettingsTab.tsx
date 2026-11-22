@@ -966,7 +966,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                       <div>
                         <strong>พนักงานคนนี้อยู่ในสถานะพักการทำงาน</strong>
                         <p style={{ margin: '0.2rem 0 0', fontSize: 'var(--team-secondary)', color: 'var(--team-text)' }}>
-                          ไม่ได้ลาออกถาวร ข้อมูลทั้งหมดยังคงอยู่ แต่จะไม่แสดงในรายการเช็คชื่อประจำวัน
+                          ระบบเก็บประวัติไว้และซ่อนชื่อจากรายการเช็กชื่อจนกว่าจะกลับมาทำงาน
                         </p>
                       </div>
                     </div>
@@ -1357,11 +1357,11 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
             <p style={{ color: 'var(--team-text)', margin: '0 0 1rem', fontSize: 'var(--team-copy)' }}>
               {suspendTargetState ? (
                 <>
-                  คุณต้องการพักการทำงานของ <strong>{selectedEmployee.nickname || selectedEmployee.name}</strong> หรือไม่?
+                  คุณต้องการพักการทำงานของ <strong>{selectedEmployee.nickname || selectedEmployee.name}</strong> หรือไม่
                 </>
               ) : (
                 <>
-                  คุณต้องการให้ <strong>{selectedEmployee.nickname || selectedEmployee.name}</strong> กลับมาทำงานต่อหรือไม่?
+                  คุณต้องการให้ <strong>{selectedEmployee.nickname || selectedEmployee.name}</strong> กลับมาทำงานต่อหรือไม่
                 </>
               )}
             </p>
@@ -1381,14 +1381,14 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
                   <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '0.15rem' }} aria-hidden="true" />
                   <span>
-                    <strong>ไม่ใช่การลาออกถาวร:</strong> ข้อมูลประวัติ ค่าแรง และเงินพิเศษทั้งหมดจะถูกคงไว้เหมือนเดิม แต่จะไม่แสดงชื่อในรายการเช็คชื่อประจำวัน และสามารถกดให้กลับมาทำงานต่อได้ตลอดเวลา
+                    ระบบเก็บประวัติ ค่าแรง และเงินพิเศษไว้ และซ่อนชื่อจากรายการเช็กชื่อจนกว่าจะกลับมาทำงาน
                   </span>
                 </div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
                   <CheckCircle2 size={18} style={{ flexShrink: 0, marginTop: '0.15rem' }} aria-hidden="true" />
                   <span>
-                    <strong>กลับมาทำงานต่อ:</strong> พนักงานจะกลับมาแสดงชื่อในรายการเช็คชื่อประจำวันอีกครั้ง
+                    ชื่อพนักงานจะแสดงในรายการเช็กชื่ออีกครั้ง
                   </span>
                 </div>
               )}

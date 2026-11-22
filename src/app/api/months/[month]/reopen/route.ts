@@ -29,7 +29,7 @@ export async function POST(
       return createErrorResponse('INVALID_INPUT', 'กรุณาระบุ requestId ให้ถูกต้อง', 422);
     }
     if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
-      return createErrorResponse('INVALID_INPUT', 'กรุณาระบุเหตุผลในการเปิดเดือนเพื่อแก้ไข', 422);
+      return createErrorResponse('INVALID_INPUT', 'กรุณาระบุเหตุผลที่เปิดรอบเดือนอีกครั้ง', 422);
     }
     if (typeof expectedRevision !== 'number') {
       return createErrorResponse('INVALID_INPUT', 'กรุณาระบุ expectedRevision', 422);

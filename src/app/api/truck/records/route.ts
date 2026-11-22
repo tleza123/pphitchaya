@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
     validateDate(dateKey);
     for (const trip of trips as any[]) {
       if (trip.destinationMode === '__OTHER__') {
-        if (typeof trip.destinationName !== 'string' || !trip.destinationName.trim() || trip.destinationName.trim().length > 200) return createErrorResponse('INVALID_LOCATION', 'กรุณาระบุชื่อสถานที่อื่น ๆ ไม่เกิน 200 ตัวอักษร', 422);
+        if (typeof trip.destinationName !== 'string' || !trip.destinationName.trim() || trip.destinationName.trim().length > 200) return createErrorResponse('INVALID_LOCATION', 'กรุณาระบุชื่อปลายทาง ไม่เกิน 200 ตัวอักษร', 422);
         try { validateSatang(trip.manualDriverPaySatang); } catch { return createErrorResponse('INVALID_MONEY', 'กรุณาระบุค่าเที่ยวคนขับสำหรับสถานที่อื่น ๆ ให้ถูกต้อง', 422); }
         trip.destinationId = null;
         trip.destinationName = trip.destinationName.trim();

@@ -102,7 +102,7 @@ export default function DetailedReports({ active, attendanceVersion, onBack }: {
     fetch(`/api/reports/analytics?${query}`, { headers: { Authorization: `Bearer ${idToken}` }, signal: controller.signal })
       .then(async response => { const json = await response.json(); if (!json.ok) throw new Error(json.error?.message || 'โหลดรายงานไม่สำเร็จ'); return json.data as AnalyticsReport; })
       .then(report => { if (!controller.signal.aborted) { setLoadedQuery(query); setData(report); } })
-      .catch(err => { if (!controller.signal.aborted) { setError(err.message || 'ไม่สามารถเชื่อมต่อระบบได้'); setData(null); } })
+      .catch(err => { if (!controller.signal.aborted) { setError(err.message || 'เชื่อมต่อระบบไม่ได้'); setData(null); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [active, attendanceVersion, query, idToken, refresh]);

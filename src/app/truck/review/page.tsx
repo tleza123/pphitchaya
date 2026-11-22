@@ -10,6 +10,11 @@ import styles from '@/components/settings/settings.module.css';
 
 type ReviewForm = Record<string, any>;
 const moneyText = (value: number | null | undefined) => value == null ? 'ยังไม่ระบุ' : `${satangToDecimalString(value)} บาท`;
+const tripStatusLabels: Record<string, string> = {
+  OPEN: 'ยังไม่ระบุวันที่ถึง',
+  COMPLETED: 'ถึงปลายทางแล้ว',
+  CANCELLED: 'ยกเลิก'
+};
 
 export default function ReviewTrips() {
   const [data, setData] = useState<any>(null);
@@ -60,7 +65,7 @@ export default function ReviewTrips() {
     try {
       const hasFees = hasLegacyTripFees(current);
       if (hasFees && !form.confirmLegacyPricing) throw new Error('กรุณายืนยันว่าได้ตรวจเงินเพิ่มเดิมแล้ว');
-      if (hasFees && current.billable !== false && (legacyFeeSnapshot(current).billingExtraSatang ?? 0) > 0 && !form.billing.trim()) throw new Error('กรุณาระบุราคาเหมาใหม่อย่างชัดเจน');
+      if (hasFees && current.billable !== false && (legacyFeeSnapshot(current).billingExtraSatang ?? 0) > 0 && !form.billing.trim()) throw new Error('กรุณาระบุราคาเหมาใหม่');
       const payload = {
         tripId: current.tripId,
         expectedRevision: current.revision || 0,
@@ -95,13 +100,19 @@ export default function ReviewTrips() {
 
   return (
     <main style={{ maxWidth: 900, margin: 'auto', padding: 24 }}>
-      <a href="/truck">กลับระบบรถ</a>
-      <h1>ตรวจข้อมูลเที่ยวที่ย้ายมาและราคาเดิม</h1>
-      <p>ตรวจยอดเดิมและยืนยันราคาเหมาต่อเที่ยวก่อนนำเที่ยวรุ่นเก่าเข้าสู่การวางบิลและค่าแรงรุ่นใหม่</p>
+      <a href="/truck">กลับหน้ารถบรรทุก</a>
+      <h1>ตรวจข้อมูลเที่ยวเดิม</h1>
+      <p>ตรวจยอดเดิมและยืนยันราคาเหมาก่อนวางบิลหรือสรุปค่าเที่ยว</p>
       {error && <p role="alert">{error}</p>}
       {!current ? trips.length === 0 ? <p>ไม่มีเที่ยวที่ต้องตรวจ</p> : trips.map(trip => (
         <article key={trip.tripId} style={{ padding: 12, borderBottom: '1px solid #ddd' }}>
-          <div>{trip.departureDate} · {trip.legacyDriverName || trip.driverNameSnapshot || 'ไม่ระบุคนขับ'} · {trip.originNameSnapshot || trip.fromLocation} → {trip.destinationNameSnapshot || trip.destinationName} · {trip.status}</div>
+          <p>
+            {trip.departureDate} · {trip.legacyDriverName || trip.driverNameSnapshot || 'ไม่ระบุคนขับ'}
+          </p>
+          <p>
+            {trip.originNameSnapshot || trip.fromLocation} → {trip.destinationNameSnapshot || trip.destinationName}
+            {' · '}{tripStatusLabels[trip.status] || 'ไม่ทราบสถานะ'}
+          </p>
           {hasLegacyTripFees(trip) && <p role="status">ต้องตรวจเงินเพิ่มเดิม: คนขับ {moneyText(legacyFeeSnapshot(trip).driverExtraSatang)} · ลูกค้า {moneyText(legacyFeeSnapshot(trip).billingExtraSatang)}</p>}
           <button type="button" onClick={() => open(trip)} disabled={!!trip.invoiceId}>ตรวจและยืนยันราคา</button>
         </article>
@@ -113,11 +124,11 @@ export default function ReviewTrips() {
               <section aria-label="สรุปเงินเดิม" style={{ border: '1px solid #b45309', padding: 12, marginBottom: 16 }}>
                 <h3>ยอดเดิมที่ต้องตรวจ</h3>
                 <p>ค่าขนส่งเดิม: {moneyText(current.billingSatang)}</p>
-                <p>ค่าบริการเพิ่มลูกค้าเดิม: {moneyText(legacyFeeSnapshot(current).billingExtraSatang)}</p>
+                <p>ค่าบริการเพิ่มเติมเดิมของลูกค้า: {moneyText(legacyFeeSnapshot(current).billingExtraSatang)}</p>
                 <p>เงินเพิ่มคนขับเดิม: {moneyText(legacyFeeSnapshot(current).driverExtraSatang)}</p>
-                <p>เงินเพิ่มคนขับจะถูกเก็บเป็นสิทธิ์เดิมแยกจากค่าเที่ยวรุ่นใหม่ ไม่ถูกลบหรือรวมเข้าค่าเที่ยว</p>
-                {(legacyFeeSnapshot(current).billingExtraSatang ?? 0) > 0 && <p>ราคาขนส่งเหมาต่อเที่ยวใหม่ต้องระบุเอง ระบบจะไม่รวมยอดเดิมให้อัตโนมัติ</p>}
-                <label><input type="checkbox" checked={form.confirmLegacyPricing} onChange={event => field('confirmLegacyPricing', event.target.checked)} /> ยืนยันว่าตรวจยอดเดิมและกำหนดราคาใหม่ตามที่แสดงแล้ว</label>
+                <p>ระบบเก็บเงินเพิ่มคนขับตามสิทธิ์เดิมแยกจากค่าเที่ยวใหม่</p>
+                {(legacyFeeSnapshot(current).billingExtraSatang ?? 0) > 0 && <p>กรอกราคาเหมาต่อเที่ยวใหม่ด้วยตนเอง</p>}
+                <label><input type="checkbox" checked={form.confirmLegacyPricing} onChange={event => field('confirmLegacyPricing', event.target.checked)} /> ตรวจยอดเดิมและกำหนดราคาใหม่แล้ว</label>
               </section>
             )}
             {[
@@ -137,11 +148,11 @@ export default function ReviewTrips() {
             <label style={{ display: 'block' }}>วันที่ออก<input className={styles.formInput} required type="date" value={form.departureDate} onChange={event => field('departureDate', event.target.value)} /></label>
             <label style={{ display: 'block' }}>วันที่ถึง<input className={styles.formInput} type="date" value={form.arrivalDate} onChange={event => field('arrivalDate', event.target.value)} /></label>
             <label style={{ display: 'block' }}>น้ำหนักบรรทุก (ตัน)<input className={styles.formInput} inputMode="decimal" value={form.weight} onChange={event => field('weight', event.target.value)} /></label>
-            <p>ค่าเที่ยวคนขับเดิมจาก snapshot: {moneyText(current.driverPaySatang)}</p>
+            <p>ค่าเที่ยวคนขับก่อนปรับราคา: {moneyText(current.driverPaySatang)}</p>
             <label><input type="checkbox" checked={form.billable} onChange={event => field('billable', event.target.checked)} /> เรียกเก็บลูกค้า</label>
             <label style={{ display: 'block' }}>ราคาขนส่งเหมาต่อเที่ยว (บาท)<input className={styles.formInput} inputMode="decimal" value={form.billing} onChange={event => field('billing', event.target.value)} placeholder="ยังไม่ระบุราคา" /></label>
-            <label style={{ display: 'block' }}>เหตุผลการตรวจและยืนยัน<input className={styles.formInput} required value={form.reason} onChange={event => field('reason', event.target.value)} /></label>
-            <button type="submit" disabled={busy}>{busy ? 'กำลังบันทึก...' : 'ยืนยันและบันทึกราคาเหมา'}</button>
+            <label style={{ display: 'block' }}>เหตุผลที่ยืนยันราคา<input className={styles.formInput} required value={form.reason} onChange={event => field('reason', event.target.value)} /></label>
+            <button type="submit" disabled={busy}>{busy ? 'กำลังบันทึก…' : 'ยืนยันและบันทึกราคาเหมา'}</button>
             <button type="button" disabled={busy} onClick={() => setCurrent(null)}>ยกเลิก</button>
           </fieldset>
         </form>

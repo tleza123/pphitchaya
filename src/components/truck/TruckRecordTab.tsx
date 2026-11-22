@@ -142,7 +142,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
         if (!t.destinationMode) throw new Error(`${label}: กรุณาเลือกปลายทาง`);
         const loc = t.destinationMode.startsWith('LOC_') ? boot.truckLocations?.find(d => d.locationId === t.destinationMode.slice(4)) : undefined;
         const other = t.destinationMode === '__OTHER__';
-        if (other && !t.customName.trim()) throw new Error(`${label}: กรุณาระบุชื่อสถานที่อื่น ๆ`);
+        if (other && !t.customName.trim()) throw new Error(`${label}: กรุณาระบุชื่อปลายทาง`);
         if (other && !t.manualPay.trim()) throw new Error(`${label}: กรุณาระบุค่าเที่ยวคนขับ`);
         const manualPay = other ? money(t.manualPay, label) : null;
         if (!loc && !other) throw new Error(`${label}: กรุณาเลือกปลายทางจากจุดที่ตั้งไว้`);
@@ -161,7 +161,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
       setRevision(rec.revision);
       setTrips(current => current.map((trip, i) => ({ ...trip, tripId: rec.trips?.[i]?.tripId || trip.tripId, paySatang: rec.trips?.[i]?.driverPaySatang ?? null, billing: rec.trips?.[i]?.billingSatang == null ? '' : satangToDecimalString(rec.trips[i].billingSatang) })));
       setPhotos(rec.photos || []);
-      setMsg({ err: false, text: 'บันทึกใบงานเรียบร้อยแล้ว' });
+      setMsg({ err: false, text: 'บันทึกใบงานแล้ว' });
       onSaved();
     } catch (e) {
       setMsg({ err: true, text: e instanceof Error && e.message === 'INVALID_WEIGHT' ? 'น้ำหนักต้องไม่ติดลบและมีทศนิยมไม่เกิน 3 ตำแหน่ง' : errMsg(e) });
@@ -171,7 +171,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
   };
 
   if (!boot.trucks.length) {
-    return <div className={styles.panel}><p className={styles.empty}>ยังไม่มีข้อมูลรถ กรุณาเพิ่มรถสิบล้อในแท็บตั้งค่าก่อน</p></div>;
+    return <div className={styles.panel}><p className={styles.empty}>เพิ่มรถสิบล้อในเมนูตั้งค่าก่อนบันทึกงาน</p></div>;
   }
 
   return (
@@ -199,7 +199,10 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
           </div>
         </div>
         {revision > 0 && <div className={styles.editing} role="status">ใบงานวันที่ {formatThaiDate(date)} · แก้ไขหรือเพิ่มเที่ยวแล้วกด “บันทึกการแก้ไขใบงาน”</div>}
-        {legacyFeeReviewRequired && <div className={styles.error} role="alert">ใบงานนี้ยังไม่ผ่านการตรวจราคาแบบใหม่ ต้องตรวจข้อมูลเดิมก่อนแก้ไขหรือออกเอกสาร <a href="/truck/review">ไปหน้าตรวจข้อมูลเก่า</a></div>}
+        {legacyFeeReviewRequired && <div className={styles.error} role="alert">
+          <p>ใบงานนี้ต้องยืนยันราคาก่อนแก้ไขหรือออกเอกสาร</p>
+          <a href="/truck/review">ตรวจราคาเดิม</a>
+        </div>}
       </div>
 
       <div className={styles.panel}>
@@ -223,17 +226,17 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
                 <label className={settings.formLabel} htmlFor={`tr-dest-${i}`}>ปลายทาง</label>
                 <select id={`tr-dest-${i}`} className={settings.formInput} value={t.destinationMode} onChange={e => pickDestination(i, e.target.value)}>
                   <option value="" disabled>เลือกปลายทาง</option>
-                  <option value="__OTHER__">อื่น ๆ / กรอกสถานที่เอง</option>
+                  <option value="__OTHER__">กรอกปลายทางเอง</option>
                   {boot.truckLocations?.filter(x=>x.status==='ACTIVE' && x.locationId!==t.originId).map(l=><option key={l.locationId} value={`LOC_${l.locationId}`}>{l.code}. {l.name}</option>)}
                 </select>
               </div>
             </div>
             <div className={styles.row2}>
               <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-departure-${i}`}>วันที่ออก</label><input id={`tr-departure-${i}`} type="date" className={settings.formInput} value={t.departureDate || date} onChange={e => patchTrip(i, { departureDate: e.target.value })} /></div>
-              <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-arrival-${i}`}>วันที่ถึง (ไม่บังคับ ไม่กระทบยอดสรุป)</label><input id={`tr-arrival-${i}`} type="date" className={settings.formInput} value={t.arrivalDate} onChange={e => patchTrip(i, { arrivalDate: e.target.value })} /></div>
+              <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-arrival-${i}`}>วันที่ถึง (ไม่บังคับ)</label><input id={`tr-arrival-${i}`} type="date" className={settings.formInput} value={t.arrivalDate} onChange={e => patchTrip(i, { arrivalDate: e.target.value })} /></div>
             </div>
             {t.destinationMode === '__OTHER__' && <div className={styles.row2}>
-              <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-custom-name-${i}`}>ชื่อสถานที่อื่น ๆ</label><input id={`tr-custom-name-${i}`} className={settings.formInput} maxLength={200} value={t.customName} onChange={e => patchTrip(i, { customName: e.target.value })} placeholder="ระบุชื่อสถานที่ส่งงาน" required /></div>
+              <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-custom-name-${i}`}>ชื่อปลายทาง</label><input id={`tr-custom-name-${i}`} className={settings.formInput} maxLength={200} value={t.customName} onChange={e => patchTrip(i, { customName: e.target.value })} placeholder="ระบุชื่อปลายทาง" required /></div>
               <div className={settings.formGroup}><label className={settings.formLabel} htmlFor={`tr-manual-pay-${i}`}>ค่าเที่ยวคนขับ (บาท)</label><input id={`tr-manual-pay-${i}`} className={settings.formInput} inputMode="decimal" value={t.manualPay} onChange={e => { let pay: number | null = null; try { if (e.target.value.trim()) pay = money(e.target.value, 'ค่าเที่ยวคนขับ'); } catch {} patchTrip(i, { manualPay: e.target.value, paySatang: pay }); }} placeholder="กรอกค่าเที่ยวสำหรับงานนี้" required /></div>
             </div>}
             <p className={styles.hint}>รอบค่าเที่ยว: {(t.departureDate || date).slice(0,7)} — ตามวันที่ออก</p>
@@ -275,7 +278,7 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
                 onChange={e => patchTrip(i, { billing: e.target.value })}
                 placeholder={t.billable ? 'ยังไม่ระบุราคา' : 'ไม่เรียกเก็บลูกค้า (รถเปล่า)'}
               />
-              <p>จำนวนเงินเที่ยวนี้: {t.billable ? (t.billing.trim() ? (() => { try { return `${formatMoney(money(t.billing, 'ราคา'))} บาท`; } catch { return 'จำนวนเงินไม่ถูกต้อง'; } })() : 'ยังไม่ระบุราคา') : 'ไม่เรียกเก็บลูกค้า'}</p>
+              <p>ค่าขนส่งเที่ยวนี้: {t.billable ? (t.billing.trim() ? (() => { try { return `${formatMoney(money(t.billing, 'ราคา'))} บาท`; } catch { return 'จำนวนเงินไม่ถูกต้อง'; } })() : 'ยังไม่ระบุราคา') : 'ไม่เรียกเก็บลูกค้า'}</p>
             </div>
             </>}
             {isShop && <p className={styles.hint}>ส่งเข้าร้านค้า</p>}
@@ -296,12 +299,12 @@ export function TruckRecordTab({ active, boot, editTarget, onSaved }: Props) {
         <div className={styles.totalBar}>
           <div className={styles.totalFigs}>
             <div className={styles.fig}><small>จำนวนเที่ยว</small><strong>{trips.length}</strong></div>
-            <div className={styles.fig}><small>ค่าเที่ยวคนขับ (บาท)</small><strong>{totalPay == null ? 'ยังไม่ครบราคา' : formatMoney(totalPay)}</strong></div>
+            <div className={styles.fig}><small>ค่าเที่ยวคนขับ (บาท)</small><strong>{totalPay == null ? 'ยังระบุราคาไม่ครบ' : formatMoney(totalPay)}</strong></div>
           </div>
         </div>
         <div className={styles.actions}>
           <button type="button" className={settings.primaryBtn} onClick={save} disabled={saving || loading || loadedSheet !== `${date}_${truckId}` || legacyFeeReviewRequired} aria-busy={saving}>
-            {saving ? 'กำลังบันทึก...' : revision > 0 ? 'บันทึกการแก้ไขใบงาน' : 'บันทึกใบงาน'}
+            {saving ? 'กำลังบันทึก…' : revision > 0 ? 'บันทึกการแก้ไขใบงาน' : 'บันทึกใบงาน'}
           </button>
           <LineSendButton scope="truck" className={settings.secondaryBtn} />
         </div>

@@ -52,7 +52,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
       return [line.departureDate || line.dateKey || '-', line.plateNumberSnapshot || '-', route, amount];
     });
     layout.table([{title:'วันที่',width:75},{title:'ทะเบียนรถ',width:80},{title:'ต้นทาง - ปลายทาง / รายละเอียด',width:270},{title:'ยอดเงิน (บาท)',width:90,align:'right'}], rows);
-    layout.paragraph(`ยอดรวม ${Number.isSafeInteger(invoice.totalSatang) ? formatMoney(invoice.totalSatang)+' บาท' : 'ตาม snapshot เดิม'}`, 18, true, 'right');
+    layout.paragraph(`ยอดรวม ${Number.isSafeInteger(invoice.totalSatang) ? formatMoney(invoice.totalSatang)+' บาท' : 'ตามยอดที่บันทึกไว้เดิม'}`, 18, true, 'right');
     if (invoice.note) layout.paragraph(`หมายเหตุ: ${invoice.note}`);
     layout.footers();
     doc.end(); const buffer=await done;

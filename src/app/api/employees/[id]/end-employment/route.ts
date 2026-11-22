@@ -56,7 +56,7 @@ export async function POST(
     if (conflictingDates.length > 0) {
       return createErrorResponse(
         'CONFLICT',
-        `พบข้อมูลเช็คชื่อหลังวันสิ้นสุดการทำงาน (${conflictingDates.join(', ')}) กรุณาตรวจสอบหรือล้างการเช็คชื่อก่อนสิ้นสุดงาน`,
+        `พบข้อมูลเช็กชื่อหลังวันสิ้นสุดการทำงาน (${conflictingDates.join(', ')}) กรุณาตรวจสอบหรือล้างการเช็กชื่อก่อนสิ้นสุดงาน`,
         409,
         { conflictingDates: conflictingDates.join(', ') }
       );

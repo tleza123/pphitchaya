@@ -178,10 +178,10 @@ export default function TruckPayrollPage() {
 
   return (
     <main className={docStyles.page} data-app-theme="truck">
-      <header className={docStyles.pageHeader}><Link className={docStyles.backLink} href="/truck/reports"><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารายงาน</Link><h1>รอบค่าเที่ยวคนขับ</h1><p className={docStyles.context}>สรุปจากเที่ยววิ่งตามวันที่ออกรถ เลือกช่วงวันที่และจัดการการจ่ายเงิน</p></header>
+      <header className={docStyles.pageHeader}><Link className={docStyles.backLink} href="/truck/reports"><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารายงาน</Link><h1>รอบค่าเที่ยวคนขับ</h1><p className={docStyles.context}>สรุปค่าเที่ยวตามวันที่ออกรถและบันทึกการจ่ายเงิน</p></header>
 
       {/* Month & Driver selectors */}
-      <section className={docStyles.block}><h2>ค้นหาและสรุปค่าแรง</h2><div className={docStyles.filterGrid}>
+      <section className={docStyles.block}><h2>ค้นหารอบค่าเที่ยว</h2><div className={docStyles.filterGrid}>
         <label>
           <span>จากวันที่</span><input type="date" value={start} max={end} onChange={e => setStart(e.target.value)} />
         </label>
@@ -192,7 +192,7 @@ export default function TruckPayrollPage() {
             value={selectedDriverId}
             onChange={e => setSelectedDriverId(e.target.value)}
           >
-            {drivers.length === 0 && <option value="">-- ไม่พบข้อมูลคนขับในรอบนี้ --</option>}
+            {drivers.length === 0 && <option value="">ไม่พบข้อมูลคนขับในรอบนี้</option>}
             {drivers.map((d: any) => (
               <option key={d.driverId} value={d.driverId}>
                 {d.driverName} (รวม {formatMoney(d.totalSatang)} บาท)
@@ -200,17 +200,17 @@ export default function TruckPayrollPage() {
             ))}
           </select>
         </label>
-        <button type="button" className={docStyles.primaryButton} disabled={loading || actionBusy} onClick={search}><Search size={18} aria-hidden="true" />ค้นหาและสรุปค่าแรง</button>
+        <button type="button" className={docStyles.primaryButton} disabled={loading || actionBusy} onClick={search}><Search size={18} aria-hidden="true" />ค้นหารอบค่าเที่ยว</button>
       </div>
 
-      <p className={styles.hint}>รอบที่แสดง: {month} · {showLegacyBase ? 'แสดงยอดเดิมตามรอบที่ปิดไว้' : 'รวมค่าเที่ยวตามวันที่ออกรถ ไม่ต้องยืนยันวันทำงาน และไม่เพิ่มค่าแรงรายวัน'}</p>
+      <p className={styles.hint}>รอบที่แสดง: {month} · {showLegacyBase ? 'แสดงยอดเดิมตามรอบที่ปิดไว้' : 'รวมเฉพาะค่าเที่ยวตามวันที่ออกรถ'}</p>
       {data?.periods?.length > 0 && <label>รอบที่บันทึกไว้<select disabled={actionBusy || loading} value={data.periodId || legacyMonth || ''} onChange={e => {
         const period = data.periods.find((p: any) => p.id === e.target.value);
         if (!period) return;
         setStart(period.start); setEnd(period.end); setRange({ start: period.start, end: period.end }); setLegacyMonth(/^20\d{2}-\d{2}$/.test(period.id) ? period.id : '');
       }}><option value="">เลือกรอบเดิม</option>{data.periods.map((p: any) => <option key={p.id} value={p.id}>{p.start} ถึง {p.end} · {p.state === 'CLOSED' ? 'ปิดแล้ว' : 'เปิดรอบ'}</option>)}</select></label>}
       </section>
-      {loading && <p role="status">กำลังค้นหาข้อมูลค่าแรง</p>}
+      {loading && <p role="status">กำลังค้นหารอบค่าเที่ยว</p>}
       {error && <p role="alert">{error}</p>}
 
       {data && (

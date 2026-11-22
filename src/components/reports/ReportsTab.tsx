@@ -126,7 +126,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       } catch {
         if (sequence === reportFetchSequence.current && !controller.signal.aborted) {
           setReportData(null);
-          setErrorMsg('ไม่สามารถเชื่อมต่อระบบได้');
+          setErrorMsg('เชื่อมต่อระบบไม่ได้');
         }
       } finally {
         if (sequence === reportFetchSequence.current) setLoading(false);
@@ -217,7 +217,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
         // Continue processing
         handleContinueClose(json.data.jobId);
       } else {
-        alert(json.error?.message || 'ไม่สามารถเริ่มปิดเดือนได้');
+        alert(json.error?.message || 'เริ่มปิดรอบเดือนไม่สำเร็จ');
         setCloseLoading(false);
       }
     } catch {
@@ -241,7 +241,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           handleContinueClose(jobId);
         } else if (json.data.status === 'COMPLETED') {
           setCloseLoading(false);
-          alert('ปิดเดือนสำเร็จเรียบร้อย');
+          alert('ปิดรอบเดือนแล้ว');
           setShowCloseModal(false);
           notifyDataChanged();
         } else if (json.data.status === 'FAILED') {
@@ -271,17 +271,17 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
         setCloseStatus(null);
         notifyDataChanged();
       } else {
-        alert(json.error?.message || 'ไม่สามารถยกเลิกงานปิดเดือนได้');
+        alert(json.error?.message || 'ยกเลิกการปิดรอบเดือนไม่สำเร็จ');
       }
     } catch {
-      alert('ไม่สามารถยกเลิกงานปิดเดือนได้');
+      alert('ยกเลิกการปิดรอบเดือนไม่สำเร็จ');
     }
   };
 
   // Reopen Month
   const handleReopen = async () => {
     if (!idToken || !reopenReason.trim()) {
-      alert('กรุณาระบุเหตุผลในการเปิดเดือนเพื่อแก้ไข');
+      alert('กรุณาระบุเหตุผลที่เปิดรอบเดือนอีกครั้ง');
       return;
     }
     const requestId = crypto.randomUUID();
@@ -305,7 +305,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
         setReopenReason('');
         notifyDataChanged();
       } else {
-        alert(json.error?.message || 'เปิดเดือนไม่สำเร็จ');
+        alert(json.error?.message || 'เปิดรอบเดือนอีกครั้งไม่สำเร็จ');
       }
     } catch {
       alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
@@ -516,10 +516,10 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
 
           <div className={styles.detailRightCol}>
             <section className={styles.sectionCard}>
-              <h3 className={styles.sectionTitle}>รายการเช็คชื่อรายวัน</h3>
+              <h3 className={styles.sectionTitle}>รายการเช็กชื่อรายวัน</h3>
               {detailData.days &&
                 detailData.days.map((d: any) => {
-                  let label = 'รอเช็ค';
+                  let label = 'รอเช็กชื่อ';
                   if (d.status === 'FULL') label = 'เต็มวัน';
                   if (d.status === 'HALF') label = 'ครึ่งวัน';
                   if (d.status === 'ABSENT') label = 'ไม่มา';
@@ -553,7 +553,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
         </div>
 
         <button type="button" className={styles.primaryBtn} style={{ width: '100%', marginTop: '1rem' }} disabled={exporting || detailLoading} onClick={() => exportSalary(selectedEmployeeId)}>
-          {exporting ? 'กำลังสร้าง PDF' : 'ส่งออกไฟล์เงินเดือน PDF'}
+          {exporting ? 'กำลังสร้าง PDF' : 'ดาวน์โหลดสรุปค่าจ้าง (PDF)'}
         </button>
         {exporting && <div className="refreshStatus" role="status">กำลังจัดทำใบเงินเดือน</div>}
         {exportError && <p role="alert">{exportError}</p>}
@@ -678,9 +678,9 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
 
           {reportData.pendingTotal > 0 && (
             <div className={styles.notice}>
-              <strong>ยังมีรายการค้างเช็คชื่อ {reportData.pendingTotal} รายการ</strong>
+              <strong>ยังมีรายการค้างเช็กชื่อ {reportData.pendingTotal} รายการ</strong>
               <p style={{ margin: '0.2rem 0 0' }}>
-                กรุณาตรวจสอบการเช็คชื่อให้ครบก่อนดำเนินการปิดรอบเดือน
+                เช็กชื่อให้ครบก่อนปิดรอบเดือน
               </p>
             </div>
           )}
@@ -690,9 +690,9 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
               className={styles.notice}
               style={{ backgroundColor: '#f0fdf4', borderColor: '#86efac', color: '#166534' }}
             >
-              <strong>เดือนนี้ปิดรอบบัญชีแล้ว</strong>
+              <strong>ปิดรอบเดือนแล้ว</strong>
               <p style={{ margin: '0.2rem 0 0' }}>
-                ข้อมูลถูกบันทึกเป็น Snapshot ถาวร ป้องกันการแก้ไขย้อนหลัง
+                ระบบเก็บข้อมูล ณ วันปิดรอบไว้เป็นประวัติ
               </p>
             </div>
           )}
@@ -736,7 +736,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                 </div>
 
                 {emp.pending > 0 && (
-                  <div className={styles.pendingNotice}>ยังไม่เช็ค {emp.pending} วัน</div>
+                  <div className={styles.pendingNotice}>ยังไม่ได้เช็กชื่อ {emp.pending} วัน</div>
                 )}
                 {emp.error && <div className={styles.pendingNotice}>{emp.error}</div>}
               </button>
@@ -754,7 +754,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                   handleStartClose();
                 }}
               >
-                ตรวจและปิดเดือน
+                ตรวจและปิดรอบเดือน
               </button>
             ) : (
               <button
@@ -763,7 +763,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                 onClick={() => setShowReopenModal(true)}
                 disabled={loading}
               >
-                เปิดเดือนเพื่อแก้ไข
+                เปิดรอบเดือนอีกครั้ง
               </button>
             )}
 
@@ -799,7 +799,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
             ) : closeStatus?.errors && closeStatus.errors.length > 0 ? (
               <div>
                 <div className={styles.notice} style={{ backgroundColor: 'var(--team-absent-bg)', borderColor: '#fca5a5', color: 'var(--team-absent)' }}>
-                  <strong>ไม่สามารถปิดเดือนได้เนื่องจากพบข้อผิดพลาด:</strong>
+                  <strong>ปิดรอบเดือนไม่สำเร็จ</strong>
                   <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.2rem' }}>
                     {closeStatus.errors.map((err: string, i: number) => (
                       <li key={i}>{err}</li>
@@ -828,26 +828,26 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       {showReopenModal && (
         <div className={styles.modalOverlay}>
           <div className={styles.modalCard} data-app-dialog role="dialog" aria-modal="true" aria-label="รายการรายงาน" tabIndex={-1}>
-            <h3 className={styles.modalTitle}>ยืนยันการเปิดเดือนเพื่อแก้ไข</h3>
+            <h3 className={styles.modalTitle}>เปิดรอบเดือนอีกครั้ง</h3>
             <p style={{ color: 'var(--team-muted)', fontSize: 'var(--team-secondary)' }}>
-              การเปิดเดือนที่ปิดแล้วจะอนุญาตให้แก้ไขการเช็คชื่อหรือเงินพิเศษได้ชั่วคราว
-              โดยข้อมูลเดิมจะถูกเก็บประวัติไว้ใน Audit Log
+              เมื่อเปิดรอบเดือนอีกครั้ง จะแก้ไขการเช็กชื่อและเงินพิเศษได้ชั่วคราว
+              ระบบเก็บประวัติการแก้ไขไว้
             </p>
 
             <label className={styles.monthLabel} style={{ marginTop: '1rem' }}>
-              เหตุผลในการเปิดเดือน
+              เหตุผลที่เปิดรอบเดือนอีกครั้ง
               <textarea
                 className={styles.monthSelect}
                 style={{ minHeight: '5rem', resize: 'vertical' }}
                 value={reopenReason}
                 onChange={e => setReopenReason(e.target.value)}
-                placeholder="ระบุเหตุผล เช่น แก้ไขการเช็คชื่อพนักงานผิด..."
+                placeholder="เช่น แก้ไขข้อมูลการเช็กชื่อ"
               />
             </label>
 
             <div className={styles.modalActions}>
               <button type="button" className={styles.primaryBtn} disabled={Boolean(reportPending)} onClick={() => runReportAction('กำลังเปิดเดือนเพื่อแก้ไข', handleReopen)}>
-                {reportPending ? <span className="busyInline">กำลังเปิดเดือน</span> : 'ยืนยันเปิดเดือน'}
+                {reportPending ? <span className="busyInline">กำลังเปิดรอบเดือน</span> : 'ยืนยันเปิดรอบเดือน'}
               </button>
               <button
                 type="button"

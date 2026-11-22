@@ -189,7 +189,7 @@ test('buildAttendanceDailyFlex generates compliant LINE Flex Bubble card', () =>
 
   const flex = buildAttendanceDailyFlex(sampleData);
   assert.equal(flex.type, 'flex');
-  assert.match(flex.altText, /สรุปการเช็คชื่อพนักงานประจำวัน/);
+  assert.match(flex.altText, /สรุปการเช็กชื่อพนักงานประจำวัน/);
   assert.match(flex.altText, /2026-09-14|14/);
 
   const bubble = flex.contents;

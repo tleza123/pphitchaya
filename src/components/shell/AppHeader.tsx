@@ -42,7 +42,7 @@ export function AppHeader({
               onFocus={() => onPrepareTab?.('attendance')}
             >
               <ClipboardCheck className={styles.desktopNavIcon} aria-hidden="true" />
-              <span>เช็คชื่อ</span>
+              <span>เช็กชื่อ</span>
             </button>
             <button
               type="button"

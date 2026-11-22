@@ -57,7 +57,7 @@ export function LineSettings() {
 
   const test = () => run(async () => {
     await sendJson('/api/line/notify', 'POST', { scope: 'both', isTest: true });
-    return 'ส่งข้อความทดสอบเข้า LINE แล้ว';
+    return 'ส่งข้อความทดสอบทาง LINE แล้ว';
   });
 
   return (
@@ -68,7 +68,7 @@ export function LineSettings() {
       </button>
       {open && (
         <div className={styles.sectionBody}>
-          {!profile ? <p role="status">{status?.text || 'กำลังโหลด...'}</p> : (
+          {!profile ? <p role="status">{status?.text || 'กำลังโหลด…'}</p> : (
             <>
               <div className={styles.formGroup}>
                 <label className={styles.formLabel} htmlFor="line-token">Channel Access Token</label>
@@ -76,11 +76,11 @@ export function LineSettings() {
                   placeholder={profile.channelAccessTokenMasked || 'วางโทเคนจาก LINE Developers'} onChange={e => setToken(e.target.value)} />
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.formLabel} htmlFor="line-default">User ID / Group ID ปลายทาง (ใช้ร่วมกัน)</label>
+                <label className={styles.formLabel} htmlFor="line-default">User ID หรือ Group ID (ปลายทางร่วม)</label>
                 <input id="line-default" className={styles.formInput} value={profile.defaultTargetId} onChange={e => set('defaultTargetId', e.target.value)} />
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.formLabel} htmlFor="line-att">ปลายทางเฉพาะเช็คชื่อ (ไม่บังคับ)</label>
+                <label className={styles.formLabel} htmlFor="line-att">ปลายทางระบบเช็กชื่อ (ไม่บังคับ)</label>
                 <input id="line-att" className={styles.formInput} value={profile.attendanceTargetId} onChange={e => set('attendanceTargetId', e.target.value)} />
               </div>
               <div className={styles.formGroup}>
@@ -96,7 +96,7 @@ export function LineSettings() {
               </div>
               <div style={{ display: 'grid', gap: '.6rem' }}>
                 <button type="button" className={styles.primaryBtn} onClick={save} disabled={busy} aria-busy={busy}>บันทึกการตั้งค่า LINE</button>
-                <button type="button" className={styles.secondaryBtn} onClick={test} disabled={busy}>ทดสอบส่งข้อความ</button>
+                <button type="button" className={styles.secondaryBtn} onClick={test} disabled={busy}>ส่งข้อความทดสอบ</button>
               </div>
               <div role="status" style={{ minHeight: '1.6rem', marginTop: '.5rem', color: status?.err ? 'var(--team-absent)' : 'var(--team-full)', fontSize: 'var(--team-secondary)' }}>
                 {status?.text}
