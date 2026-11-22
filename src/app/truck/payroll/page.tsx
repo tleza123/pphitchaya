@@ -3,6 +3,7 @@
 import { tripLocationNames } from '@/lib/truck/location-names';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import reports from '@/components/reports/reports.module.css';
 import { MutationIntent } from '@/lib/client/mutation-intent';
 import { download, errMsg, getJson, sendJson } from '@/components/truck/api';
 import { formatMoney } from '@/lib/payroll/money';
@@ -178,7 +179,13 @@ export default function TruckPayrollPage() {
 
   return (
     <main className={docStyles.page} data-app-theme="truck">
-      <header className={docStyles.pageHeader}><Link className={docStyles.backLink} href="/truck/reports"><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารายงาน</Link><h1>รอบค่าเที่ยวคนขับ</h1><p className={docStyles.context}>สรุปค่าเที่ยวตามวันที่ออกรถและบันทึกการจ่ายเงิน</p></header>
+      <header className={docStyles.pageHeader}>
+        <Link className={docStyles.backLink} href="/truck/reports"><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารายงาน</Link>
+        <div>
+          <h1>รอบค่าเที่ยวคนขับ</h1>
+          <p className={docStyles.context}>สรุปค่าเที่ยวตามวันที่ออกรถและบันทึกการจ่ายเงิน</p>
+        </div>
+      </header>
 
       {/* Month & Driver selectors */}
       <section className={docStyles.block}><h2>ค้นหารอบค่าเที่ยว</h2><div className={docStyles.filterGrid}>
@@ -187,7 +194,7 @@ export default function TruckPayrollPage() {
         </label>
         <label>ถึงวันที่<input type="date" value={end} min={start} onChange={e => setEnd(e.target.value)} /></label>
         <label>
-          <span style={{ fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>เลือกคนขับ</span>
+          <span>เลือกคนขับ</span>
           <select
             value={selectedDriverId}
             onChange={e => setSelectedDriverId(e.target.value)}
@@ -203,15 +210,15 @@ export default function TruckPayrollPage() {
         <button type="button" className={docStyles.primaryButton} disabled={loading || actionBusy} onClick={search}><Search size={18} aria-hidden="true" />ค้นหารอบค่าเที่ยว</button>
       </div>
 
-      <p className={styles.hint}>รอบที่แสดง: {month} · {showLegacyBase ? 'แสดงยอดเดิมตามรอบที่ปิดไว้' : 'รวมเฉพาะค่าเที่ยวตามวันที่ออกรถ'}</p>
-      {data?.periods?.length > 0 && <label>รอบที่บันทึกไว้<select disabled={actionBusy || loading} value={data.periodId || legacyMonth || ''} onChange={e => {
+      <p className={docStyles.context}>รอบที่แสดง {month} · {showLegacyBase ? 'แสดงยอดเดิมตามรอบที่ปิดไว้' : 'รวมเฉพาะค่าเที่ยวตามวันที่ออกรถ'}</p>
+      {data?.periods?.length > 0 && <label className={docStyles.savedPeriod}>รอบที่บันทึกไว้<select disabled={actionBusy || loading} value={data.periodId || legacyMonth || ''} onChange={e => {
         const period = data.periods.find((p: any) => p.id === e.target.value);
         if (!period) return;
         setStart(period.start); setEnd(period.end); setRange({ start: period.start, end: period.end }); setLegacyMonth(/^20\d{2}-\d{2}$/.test(period.id) ? period.id : '');
       }}><option value="">เลือกรอบเดิม</option>{data.periods.map((p: any) => <option key={p.id} value={p.id}>{p.start} ถึง {p.end} · {p.state === 'CLOSED' ? 'ปิดแล้ว' : 'เปิดรอบ'}</option>)}</select></label>}
       </section>
-      {loading && <p role="status">กำลังค้นหารอบค่าเที่ยว</p>}
-      {error && <p role="alert">{error}</p>}
+      {loading && <div className="refreshStatus" role="status">กำลังค้นหารอบค่าเที่ยว</div>}
+      {error && <p className={docStyles.message} role="alert">{error}</p>}
 
       {data && (
         <>
@@ -226,7 +233,12 @@ export default function TruckPayrollPage() {
 
           {/* Driver specific details: Block 1, 2, 3 */}
           {selectedDriver ? (
-            <div style={{ display: 'grid', gap: '1.25rem' }}>
+            <div className={docStyles.driverReport}>
+              <section className={`${reports.summaryCard} ${docStyles.driverTotal}`} aria-label="ยอดรวมสุทธิ">
+                <p className={reports.summaryLabel}>ยอดรวมสุทธิ · {selectedDriver.driverName}</p>
+                <p className={reports.summaryMoney}>{formatMoney(selectedDriver.totalSatang || 0)} บาท</p>
+                <p className={reports.summarySub}>{selectedDriver.trips?.length || 0} เที่ยว · ออกรถ {departureDates.length} วัน</p>
+              </section>
               {/* Retain the historical base wage only when viewing an already-closed old snapshot. */}
               {showLegacyBase && <section className={docStyles.block}>
                 <h3>
@@ -310,7 +322,7 @@ export default function TruckPayrollPage() {
               {/* ยอดรวมสุทธิ */}
               <section className={docStyles.block}>
                 <h3>
-                  ยอดรวมสุทธิและสถานะการจ่าย
+                  รายละเอียดค่าเที่ยวและสถานะการจ่าย
                 </h3>
                 <div className={docStyles.summary}>
                   {showLegacyBase && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -328,10 +340,6 @@ export default function TruckPayrollPage() {
                       <span>{formatMoney(selectedDriver.extraSatang)} บาท</span>
                     </div>
                   )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px solid var(--team-primary)', paddingTop: '0.6rem', fontSize: '1.2rem', fontWeight: 700 }}>
-                    <span style={{ color: 'var(--team-primary-dark)' }}>ยอดรวมสุทธิ:</span>
-                    <span style={{ color: 'var(--team-primary-dark)' }}>{formatMoney(selectedDriver.totalSatang || 0)} บาท</span>
-                  </div>
 
                   <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.8rem', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--team-border)', paddingTop: '0.75rem' }}>
                     <div>
@@ -347,28 +355,25 @@ export default function TruckPayrollPage() {
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center' }}>
-                      {data.state === 'CLOSED' && (
+                    {data.state === 'CLOSED' && (
+                      <div className={docStyles.paymentActions}>
+                        {payment?.status === 'PAID' ? (
+                          <button type="button" className={docStyles.dangerButton} disabled={actionBusy} onClick={() => openVoidPaymentModal(selectedDriver)}>
+                            ยกเลิกบันทึกจ่าย
+                          </button>
+                        ) : (
+                          <button type="button" className={docStyles.primaryButton} disabled={actionBusy} onClick={() => openPayModal(selectedDriver)}>
+                            บันทึกจ่าย
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => void download(`/api/truck/payroll/pdf?${query}&driverId=${encodeURIComponent(selectedDriver.driverId)}`, `payroll-${month}-${selectedDriver.driverName}.pdf`).catch(e => setError(errMsg(e)))}
                         >
                           <FileDown size={18} aria-hidden="true" />ดาวน์โหลด PDF
                         </button>
-                      )}
-
-                      {data.state === 'CLOSED' && payment?.status === 'PAID' && (
-                        <button type="button" className={docStyles.dangerButton} disabled={actionBusy} onClick={() => openVoidPaymentModal(selectedDriver)}>
-                          ยกเลิกบันทึกจ่าย
-                        </button>
-                      )}
-
-                      {data.state === 'CLOSED' && payment?.status !== 'PAID' && (
-                        <button type="button" className={docStyles.primaryButton} disabled={actionBusy} onClick={() => openPayModal(selectedDriver)}>
-                          บันทึกจ่าย
-                        </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </section>
@@ -403,7 +408,7 @@ export default function TruckPayrollPage() {
 
       {/* Pay Modal */}
       {payDriverTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', zIndex: 120 }}>
+        <div className={reports.modalOverlay}>
           <form
             onSubmit={submitPay}
             data-app-dialog
@@ -411,7 +416,7 @@ export default function TruckPayrollPage() {
             aria-modal="true"
             aria-labelledby="pay-driver-title"
             tabIndex={-1}
-            style={{ width: 'min(30rem, 100%)', background: '#fff', borderRadius: 'var(--team-radius-card, 12px)', border: '1px solid var(--team-border)', padding: '1.25rem', maxHeight: '90vh', overflowY: 'auto' }}
+            className={`${reports.modalCard} ${docStyles.dialog}`}
           >
             <h3 id="pay-driver-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-primary-dark)' }}>บันทึกจ่ายค่าแรง</h3>
             <p style={{ margin: '0 0 0.4rem', color: 'var(--team-text)' }}>
@@ -456,7 +461,7 @@ export default function TruckPayrollPage() {
 
       {/* Void Pay Modal */}
       {voidDriverTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', zIndex: 120 }}>
+        <div className={reports.modalOverlay}>
           <form
             onSubmit={submitVoidPayment}
             data-app-dialog
@@ -464,7 +469,7 @@ export default function TruckPayrollPage() {
             aria-modal="true"
             aria-labelledby="void-driver-title"
             tabIndex={-1}
-            style={{ width: 'min(30rem, 100%)', background: '#fff', borderRadius: 'var(--team-radius-card, 12px)', border: '1px solid var(--team-border)', padding: '1.25rem', maxHeight: '90vh', overflowY: 'auto' }}
+            className={`${reports.modalCard} ${docStyles.dialog}`}
           >
             <h3 id="void-driver-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-absent, #dc2626)' }}>ยกเลิกบันทึกจ่ายค่าแรง</h3>
             <p style={{ margin: '0 0 0.4rem', color: 'var(--team-text)' }}>
@@ -498,7 +503,7 @@ export default function TruckPayrollPage() {
 
       {/* Reopen Modal */}
       {reopenModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', zIndex: 120 }}>
+        <div className={reports.modalOverlay}>
           <form
             onSubmit={submitReopen}
             data-app-dialog
@@ -506,7 +511,7 @@ export default function TruckPayrollPage() {
             aria-modal="true"
             aria-labelledby="reopen-modal-title"
             tabIndex={-1}
-            style={{ width: 'min(30rem, 100%)', background: '#fff', borderRadius: 'var(--team-radius-card, 12px)', border: '1px solid var(--team-border)', padding: '1.25rem', maxHeight: '90vh', overflowY: 'auto' }}
+            className={`${reports.modalCard} ${docStyles.dialog}`}
           >
             <h3 id="reopen-modal-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-primary-dark)' }}>เปิดรอบแก้ไขค่าแรง</h3>
             <p style={{ margin: '0 0 1rem', color: 'var(--team-text)' }}>

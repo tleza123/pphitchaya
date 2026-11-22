@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { FileDown, FileSpreadsheet, ChartNoAxesCombined, Pencil, Trash2 } from 'lucide-react';
+import { FileDown, FileSpreadsheet, ChartNoAxesCombined, ChevronDown, Pencil, Trash2 } from 'lucide-react';
 import settings from '@/components/settings/settings.module.css';
 import reports from '@/components/reports/reports.module.css';
 import { LineSendButton } from '@/components/shared/LineSendButton';
@@ -27,6 +27,7 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
   const [truckId, setTruckId] = useState('');
   const [report, setReport] = useState<TruckMonthlyReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [viewPhoto, setViewPhoto] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<TruckDailyRecordDoc | null>(null);
@@ -48,8 +49,9 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
 
   const exportFile = (format: 'pdf' | 'csv') => {
     const q = `month=${month}&format=${format}${truckId ? `&truckId=${encodeURIComponent(truckId)}` : ''}`;
+    setExportError(null);
     setBusy(true);
-    download(`/api/truck/reports/export?${q}`, `truck-${month}.${format}`).catch(e => setError(errMsg(e))).finally(() => setBusy(false));
+    download(`/api/truck/reports/export?${q}`, `truck-${month}.${format}`).catch(e => setExportError(errMsg(e))).finally(() => setBusy(false));
   };
 
   const confirmDelete = async () => {
@@ -72,42 +74,35 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
   const history = report ? [...(report.savedRecords || []), ...report.records.filter(record => !savedIds.has(record.recordId))] : [];
   return (
     <div className={styles.stack} aria-busy={loading}>
-      <h2 className={reports.title}>รายงานงานรถสิบล้อ</h2>
-      <div className={styles.panel}>
+      <h2 className={`${reports.title} ${styles.reportTitle}`}>รายงานรถสิบล้อ</h2>
+      <div className={`${reports.monthControlsBar} ${styles.reportFilters}`}>
         <div className={styles.row2}>
-          <div className={settings.formGroup}>
-            <label className={settings.formLabel} htmlFor="trr-month">เดือน</label>
-            <input id="trr-month" type="month" className={settings.formInput} value={month} onChange={e => e.target.value && setMonth(e.target.value)} />
+          <div>
+            <label className={reports.monthLabel} htmlFor="trr-month">เลือกเดือน</label>
+            <input id="trr-month" type="month" className={reports.monthSelect} value={month} onChange={e => e.target.value && setMonth(e.target.value)} />
           </div>
-          <div className={settings.formGroup}>
-            <label className={settings.formLabel} htmlFor="trr-truck">รถสิบล้อ</label>
-            <select id="trr-truck" className={settings.formInput} value={truckId} onChange={e => setTruckId(e.target.value)}>
+          <div>
+            <label className={reports.monthLabel} htmlFor="trr-truck">รถสิบล้อ</label>
+            <select id="trr-truck" className={reports.monthSelect} value={truckId} onChange={e => setTruckId(e.target.value)}>
               <option value="">ทุกคัน</option>
               {boot.trucks.map(t => <option key={t.truckId} value={t.truckId}>{t.plateNumber}</option>)}
             </select>
           </div>
         </div>
-        <div className={styles.toolbar}>
-          <button type="button" className={settings.secondaryBtn} disabled={busy} onClick={() => exportFile('pdf')}><FileDown size={18} aria-hidden="true" style={{ marginRight: '.4rem', verticalAlign: '-3px' }} />ดาวน์โหลด PDF</button>
-          <button type="button" className={settings.secondaryBtn} disabled={busy} onClick={() => exportFile('csv')}><FileSpreadsheet size={18} aria-hidden="true" style={{ marginRight: '.4rem', verticalAlign: '-3px' }} />ส่งออก Excel (CSV)</button>
-          <button type="button" className={settings.secondaryBtn} onClick={onOpenDetailed}><ChartNoAxesCombined size={18} aria-hidden="true" style={{ marginRight: '.4rem', verticalAlign: '-3px' }} />รายละเอียดและกราฟ</button>
-          <LineSendButton scope="truck" className={settings.secondaryBtn} />
-        </div>
       </div>
 
-      {error && <div className={styles.error} role="alert">{error}</div>}
+      {error && <div className={reports.notice} role="alert">{error}</div>}
+      {loading && <div className="refreshStatus" role="status">กำลังโหลดรายงาน</div>}
 
-      {totals && (
-        <div className={styles.panel}>
-          <p className={styles.hint} style={{ marginTop: 0 }}>{formatThaiMonth(month)} · ยอดสรุปจากเที่ยวที่บันทึกแล้ว ตามเดือนวันที่ออก ไม่ต้องระบุวันที่ถึง</p>
-          <div className={styles.figures}>
-            <div className={styles.fig}><small>เที่ยววิ่งรวม</small><strong>{totals.totalTrips}</strong></div>
-            <div className={styles.fig}><small>ค่าเที่ยวคนขับ (บาท)</small><strong>{formatMoney(totals.totalDriverPaySatang)}</strong></div>
-          </div>
+      {report && totals && (
+        <div className={`${reports.summaryCard} ${styles.reportSummary}`}>
+          <p className={reports.summaryLabel}>ค่าเที่ยวคนขับรวม</p>
+          <p className={reports.summaryMoney}>{formatMoney(totals.totalDriverPaySatang)} บาท</p>
+          <p className={reports.summarySub}>{formatThaiMonth(report.monthKey)} · {totals.totalTrips} เที่ยว · สรุปตามวันที่ออกรถ</p>
         </div>
       )}
 
-      {Boolean(report?.unpricedTripCount) && <p className={styles.hint}>ยังไม่ตั้งค่าเที่ยวคนขับ {report?.unpricedTripCount} เที่ยว · นับจำนวนเที่ยวแล้ว แต่ยังไม่รวมเงินของเที่ยวเหล่านี้</p>}
+      {Boolean(report?.unpricedTripCount) && <p className={reports.notice}>ยังไม่กำหนดค่าเที่ยวคนขับ {report?.unpricedTripCount} เที่ยว ยอดรวมจึงรวมเฉพาะเที่ยวที่มีราคา</p>}
 
       {report && report.perTruck.length > 0 && (
         <div className={styles.panel}>
@@ -129,38 +124,51 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
         </div>
       )}
 
-      <div className={styles.panel}>
+      <section className={`${styles.panel} ${styles.historyPanel}`} aria-label="ประวัติใบงานรายวัน">
         <h3 className={reports.sectionTitle}>ประวัติใบงานรายวัน</h3>
-        <p className={styles.hint}>ระบบนับเที่ยวเมื่อบันทึกใบงาน และรวมยอดเงินเฉพาะเที่ยวที่ตั้งราคาแล้ว</p>
-        {report && history.length === 0 && <p className={styles.empty}>ไม่มีใบงานในเดือนที่เลือก</p>}
+        {report && history.length === 0 && <p className={styles.historyEmpty}>ไม่มีใบงานในเดือนที่เลือก</p>}
         {history.map(r => (
-          <div className={styles.rec} key={`${r.recordId}-${r.dateKey}-${r.trips[0]?.tripId || "legacy"}`}>
-            <div className={styles.recHead}>
-              <span>{formatThaiDate(r.dateKey)} - {r.plateNumberSnapshot}</span>
-              <span className={styles.itemActions}>
-                <button type="button" className={styles.iconBtn} onClick={() => onEdit(r.sourceDateKey || r.dateKey, r.truckId)} aria-label={`แก้ไขใบงาน ${r.dateKey} ${r.plateNumberSnapshot}`}><Pencil size={18} aria-hidden="true" /> แก้ไข</button>
-                <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => setToDelete(r)} aria-label={`ลบใบงาน ${r.dateKey} ${r.plateNumberSnapshot}`}><Trash2 size={18} aria-hidden="true" /></button>
+          <details className={styles.rec} key={`${r.recordId}-${r.dateKey}-${r.trips[0]?.tripId || "legacy"}`}>
+            <summary className={styles.recHead}>
+              <span>
+                <strong>{formatThaiDate(r.dateKey)} · {r.plateNumberSnapshot}</strong>
+                <span className={styles.recMeta}>{r.trips.length} เที่ยว · {formatMoney(r.totalDriverPaySatang)} บาท</span>
               </span>
+              <ChevronDown size={18} aria-hidden="true" />
+            </summary>
+            <div className={styles.recBody}>
+              {r.trips.map(t => (
+                <div className={styles.recTrip} key={t.tripIndex}>
+                  <span>{t.tripIndex}. {t.fromLocation || 'ไม่ระบุต้นทาง'} - {t.destinationName}{t.note ? ` (${t.note})` : ''} · {t.status === 'CANCELLED' ? 'ยกเลิก' : 'บันทึกแล้ว'}</span>
+                  <span className={styles.pay}>{t.driverPaySatang == null ? 'ยังไม่ได้ตั้งราคา' : formatMoney(getTripDriverChargeSatang(t))}</span>
+                </div>
+              ))}
+              <p className={styles.recMeta}>บันทึกแล้ว{r.revision ? ` (รุ่นที่ ${r.revision})` : ''}</p>
+              {r.photos.length > 0 && (
+                <div className={styles.thumbs}>
+                  {r.photos.map(p => (
+                    <div className={styles.thumb} key={p.photoId}>
+                      <button type="button" onClick={() => setViewPhoto(p.photoId)} aria-label="ดูรูปหลักฐานขนาดใหญ่"><img src={`/api/truck/photos/${p.photoId}`} alt="รูปหลักฐาน" loading="lazy" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className={styles.itemActions}>
+                <button type="button" className={styles.iconBtn} onClick={() => onEdit(r.sourceDateKey || r.dateKey, r.truckId)} aria-label={`แก้ไขใบงาน ${r.dateKey} ${r.plateNumberSnapshot}`}><Pencil size={18} aria-hidden="true" />แก้ไข</button>
+                <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => setToDelete(r)} aria-label={`ลบใบงาน ${r.dateKey} ${r.plateNumberSnapshot}`}><Trash2 size={18} aria-hidden="true" />ลบ</button>
+              </div>
             </div>
-            {r.trips.map(t => (
-              <div className={styles.recTrip} key={t.tripIndex}>
-                <span>{t.tripIndex}. {t.fromLocation || 'ไม่ระบุต้นทาง'} - {t.destinationName}{t.note ? ` (${t.note})` : ''} · {t.status === 'CANCELLED' ? 'ยกเลิก' : 'บันทึกแล้ว'}</span>
-                <span className={styles.pay}>{t.driverPaySatang == null ? 'ยังไม่ได้ตั้งราคา' : formatMoney(getTripDriverChargeSatang(t))}</span>
-              </div>
-            ))}
-            <div className={styles.recMeta}>ค่าเที่ยวตามใบงาน {formatMoney(r.totalDriverPaySatang)} บาท · บันทึกแล้ว{r.revision ? ` (รุ่นที่ ${r.revision})` : ''}</div>
-            {r.photos.length > 0 && (
-              <div className={styles.thumbs}>
-                {r.photos.map(p => (
-                  <div className={styles.thumb} key={p.photoId}>
-                    <button type="button" onClick={() => setViewPhoto(p.photoId)} aria-label="ดูรูปหลักฐานขนาดใหญ่"><img src={`/api/truck/photos/${p.photoId}`} alt="รูปหลักฐาน" loading="lazy" /></button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          </details>
         ))}
-      </div>
+      </section>
+
+      <section className={styles.reportActions} aria-label="ดูรายละเอียดและส่งออกรายงาน">
+        <button type="button" className={`${reports.primaryBtn} ${styles.reportDetailsButton}`} onClick={onOpenDetailed}><ChartNoAxesCombined size={18} aria-hidden="true" />ดูรายงานละเอียดและกราฟ</button>
+        <button type="button" className={reports.secondaryBtn} disabled={busy || loading} onClick={() => exportFile('pdf')}><FileDown size={18} aria-hidden="true" />ดาวน์โหลด PDF</button>
+        <button type="button" className={reports.secondaryBtn} disabled={busy || loading} onClick={() => exportFile('csv')}><FileSpreadsheet size={18} aria-hidden="true" />ส่งออก Excel (CSV)</button>
+        <LineSendButton scope="truck" className={reports.secondaryBtn} />
+        {exportError && <p className={styles.exportError} role="alert">{exportError}</p>}
+      </section>
 
       {toDelete && (
         <div className={reports.modalOverlay}>

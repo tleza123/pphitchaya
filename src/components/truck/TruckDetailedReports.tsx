@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import settings from '@/components/settings/settings.module.css';
 import reports from '@/components/reports/reports.module.css';
 import { formatMoney } from '@/lib/payroll/money';
@@ -7,6 +8,7 @@ import { TruckAnalyticsBucket, TruckAnalyticsResult, TruckReportPeriod } from '@
 import { errMsg, getJson } from './api';
 import type { TruckBoot } from './TruckShell';
 import styles from './truck.module.css';
+import documentStyles from './truck-documents.module.css';
 
 type Metric = 'tripCount' | 'driverPaySatang';
 const METRICS: { key: Metric; label: string }[] = [
@@ -74,8 +76,10 @@ export function TruckDetailedReports({ active, boot, onBack }: { active: boolean
 
   return (
     <div className={styles.stack}>
-      <button type="button" className={reports.backBtn} onClick={onBack}>กลับไปหน้ารายงาน</button>
-      <h2 className={reports.title}>รายงานละเอียดและกราฟ</h2>
+      <header className={documentStyles.pageHeader}>
+        <button type="button" className={documentStyles.backLink} onClick={onBack}><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารายงาน</button>
+        <h2 className={`${reports.title} ${styles.reportTitle}`}>รายงานละเอียดและกราฟ</h2>
+      </header>
       <div className={styles.panel}>
         <div className={styles.segmented} role="group" aria-label="ช่วงเวลา">
           {PERIODS.map(p => (

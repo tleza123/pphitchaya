@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import reports from '@/components/reports/reports.module.css';
 import settings from '@/components/settings/settings.module.css';
 import styles from '@/components/truck/truck.module.css';
 import docStyles from '@/components/truck/truck-documents.module.css';
@@ -306,8 +308,13 @@ export default function TruckBillingPage() {
 
   return (
     <main className={docStyles.page} data-app-theme="truck">
-      <header className={docStyles.pageHeader}><a className={docStyles.backLink} href="/truck"><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารถบรรทุก</a><h1>วางบิลและรับเงิน</h1><p className={docStyles.context}>ออกใบวางบิลตามช่วงวันที่และติดตามยอดรับชำระ</p></header>
-      <p className={styles.hint}>ช่วงที่แสดง: {month} · นับตามวันที่ออกรถ รวมวันแรกและวันสุดท้าย</p>
+      <header className={docStyles.pageHeader}>
+        <Link className={docStyles.backLink} href="/truck/reports"><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารายงาน</Link>
+        <div>
+          <h1>วางบิลและรับเงิน</h1>
+          <p className={docStyles.context}>ออกใบวางบิลตามช่วงวันที่และติดตามยอดรับชำระ</p>
+        </div>
+      </header>
 
       <section className={docStyles.block}><h2>ค้นหาเที่ยววิ่ง</h2><div className={docStyles.filterGrid}>
         <div>
@@ -331,12 +338,13 @@ export default function TruckBillingPage() {
         <button type="button" className={docStyles.primaryButton} disabled={loading} onClick={search}><Search size={18} aria-hidden="true" />ค้นหาเที่ยววิ่ง</button>
       </div>
 
+        <p className={docStyles.context}>ช่วงที่แสดง {month} · นับตามวันที่ออกรถ รวมวันแรกและวันสุดท้าย</p>
       </section>
-      {loading && <p role="status">กำลังค้นหาเที่ยววิ่ง</p>}
-      {error && <p role="alert" style={{ color: 'var(--team-absent)' }}>{error}</p>}
+      {loading && <div className="refreshStatus" role="status">กำลังค้นหาเที่ยววิ่ง</div>}
+      {error && <p className={docStyles.message} role="alert">{error}</p>}
 
       {legacyPricingReview.length > 0 && (
-        <section className={docStyles.block} role="status">
+        <section className={`${docStyles.block} ${docStyles.closeBlock}`}>
           <h2>เที่ยวที่ต้องตรวจราคาเดิม</h2>
           <p>ตรวจยอดเดิมและยืนยันราคาเหมาก่อนวางบิล</p>
           {legacyPricingReview.map(trip => (
@@ -384,7 +392,7 @@ export default function TruckBillingPage() {
           <p className={styles.empty}>ไม่มีเที่ยวพร้อมวางบิล</p>
         )}
 
-        <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+        <div className={docStyles.buttonRow}>
           <button
             type="button"
             className={docStyles.primaryButton}
@@ -399,44 +407,44 @@ export default function TruckBillingPage() {
       <section className={docStyles.block}>
         <h2>ใบวางบิลและประวัติการรับชำระ</h2>
         <div className={docStyles.invoiceList}>
-        {invoices.map(invoice => (
-          <article key={invoice.invoiceId} className={docStyles.invoice}>
-            <div className={docStyles.invoiceTitle}><strong>{invoice.documentNo}</strong><span>{invoice.customerName} · {invoice.status === 'VOID' ? 'ยกเลิกแล้ว' : invoice.balanceSatang === 0 ? 'รับชำระครบแล้ว' : 'รอรับชำระ'}</span></div>
-            <div className={docStyles.metrics}>
-              <div><span>ยอดวางบิล</span><strong>{formatMoney(invoice.totalSatang)} บาท</strong></div>
-              <div><span>รับเงินแล้ว</span><strong>{formatMoney(invoice.paidSatang || 0)} บาท</strong></div>
-              <div><span>ยอดคงเหลือ</span><strong>{formatMoney(invoice.balanceSatang)} บาท</strong></div>
-            </div>
-            <div className={docStyles.buttonRow}>
-              <button type="button" onClick={() => void download(`/api/truck/billing/${invoice.invoiceId}/pdf`, `${invoice.documentNo}.pdf`).catch(e => setError(errMsg(e)))}><FileDown size={18} aria-hidden="true" />ดาวน์โหลด PDF</button>
-              {invoice.status === 'OPEN' && invoice.paidSatang === 0 && (
-                <button type="button" className={docStyles.dangerButton} onClick={() => openVoidInvoiceModal(invoice)}>ยกเลิกใบวางบิล</button>
-              )}{' '}
-              {invoice.status === 'OPEN' && invoice.balanceSatang > 0 && (
-                <button type="button" className={docStyles.primaryButton} onClick={() => openReceiveModal(invoice)}><Wallet size={18} aria-hidden="true" />บันทึกรับเงิน</button>
-              )}
-            </div>
-            {invoice.payments?.map((payment: any) => (
-              <div key={payment.paymentId} className={docStyles.paymentRow}>
-                <span>{payment.paidDate} · {formatMoney(payment.amountSatang)} บาท {payment.channel ? `(${payment.channel})` : ''}</span>
-                {payment.status === 'VOID' ? (
-                  <span>ยกเลิกแล้ว: {payment.voidReason}</span>
-                ) : (
-                  <button type="button" className={docStyles.dangerButton} onClick={() => openVoidPaymentModal(invoice, payment)}>
-                    ยกเลิกรายการรับเงิน
-                  </button>
+          {invoices.map(invoice => (
+            <article key={invoice.invoiceId} className={docStyles.invoice}>
+              <div className={docStyles.invoiceTitle}><strong>{invoice.documentNo}</strong><span>{invoice.customerName} · {invoice.status === 'VOID' ? 'ยกเลิกแล้ว' : invoice.balanceSatang === 0 ? 'รับชำระครบแล้ว' : 'รอรับชำระ'}</span></div>
+              <div className={docStyles.metrics}>
+                <div><span>ยอดวางบิล</span><strong>{formatMoney(invoice.totalSatang)} บาท</strong></div>
+                <div><span>รับเงินแล้ว</span><strong>{formatMoney(invoice.paidSatang || 0)} บาท</strong></div>
+                <div className={docStyles.balance}><span>ยอดคงเหลือ</span><strong>{formatMoney(invoice.balanceSatang)} บาท</strong></div>
+              </div>
+              {invoice.payments?.map((payment: any) => (
+                <div key={payment.paymentId} className={docStyles.paymentRow}>
+                  <span>{payment.paidDate} · {formatMoney(payment.amountSatang)} บาท {payment.channel ? `(${payment.channel})` : ''}</span>
+                  {payment.status === 'VOID' ? (
+                    <span>ยกเลิกแล้ว: {payment.voidReason}</span>
+                  ) : (
+                    <button type="button" className={docStyles.dangerButton} onClick={() => openVoidPaymentModal(invoice, payment)}>
+                      ยกเลิกรายการรับเงิน
+                    </button>
+                  )}
+                </div>
+              ))}
+              <div className={docStyles.buttonRow}>
+                {invoice.status === 'OPEN' && invoice.balanceSatang > 0 && (
+                  <button type="button" className={docStyles.primaryButton} onClick={() => openReceiveModal(invoice)}><Wallet size={18} aria-hidden="true" />บันทึกรับเงิน</button>
+                )}
+                <button type="button" onClick={() => void download(`/api/truck/billing/${invoice.invoiceId}/pdf`, `${invoice.documentNo}.pdf`).catch(e => setError(errMsg(e)))}><FileDown size={18} aria-hidden="true" />ดาวน์โหลด PDF</button>
+                {invoice.status === 'OPEN' && invoice.paidSatang === 0 && (
+                  <button type="button" className={docStyles.dangerButton} onClick={() => openVoidInvoiceModal(invoice)}>ยกเลิกใบวางบิล</button>
                 )}
               </div>
-            ))}
-          </article>
-        ))}
+            </article>
+          ))}
         </div>
         {invoices.length === 0 && <p className={styles.empty}>ไม่มีใบวางบิลในช่วงที่เลือก</p>}
       </section>
 
       {/* Invoice Modal */}
       {invoiceModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', zIndex: 120 }}>
+        <div className={reports.modalOverlay}>
           <form
             onSubmit={submitInvoice}
             data-app-dialog
@@ -444,7 +452,7 @@ export default function TruckBillingPage() {
             aria-modal="true"
             aria-labelledby="invoice-modal-title"
             tabIndex={-1}
-            style={{ width: 'min(32rem, 100%)', background: '#fff', borderRadius: 'var(--team-radius-card, 12px)', border: '1px solid var(--team-border)', padding: '1.25rem', maxHeight: '90vh', overflowY: 'auto' }}
+            className={`${reports.modalCard} ${docStyles.dialog}`}
           >
             <h3 id="invoice-modal-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-primary-dark)' }}>ออกใบวางบิล</h3>
             <p style={{ margin: '0 0 0.5rem', color: 'var(--team-text)' }}>
@@ -503,7 +511,7 @@ export default function TruckBillingPage() {
 
       {/* Receive Payment Modal */}
       {payInvoice && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', zIndex: 120 }}>
+        <div className={reports.modalOverlay}>
           <form
             onSubmit={submitPayment}
             data-app-dialog
@@ -511,7 +519,7 @@ export default function TruckBillingPage() {
             aria-modal="true"
             aria-labelledby="pay-modal-title"
             tabIndex={-1}
-            style={{ width: 'min(32rem, 100%)', background: '#fff', borderRadius: 'var(--team-radius-card, 12px)', border: '1px solid var(--team-border)', padding: '1.25rem', maxHeight: '90vh', overflowY: 'auto' }}
+            className={`${reports.modalCard} ${docStyles.dialog}`}
           >
             <h3 id="pay-modal-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-primary-dark)' }}>บันทึกรับเงิน: {payInvoice.documentNo}</h3>
             <p style={{ margin: '0 0 0.4rem', color: 'var(--team-text)' }}>
@@ -588,7 +596,7 @@ export default function TruckBillingPage() {
 
       {/* Void Invoice Modal */}
       {voidInvoiceTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', zIndex: 120 }}>
+        <div className={reports.modalOverlay}>
           <form
             onSubmit={submitVoidInvoice}
             data-app-dialog
@@ -596,7 +604,7 @@ export default function TruckBillingPage() {
             aria-modal="true"
             aria-labelledby="void-invoice-title"
             tabIndex={-1}
-            style={{ width: 'min(30rem, 100%)', background: '#fff', borderRadius: 'var(--team-radius-card, 12px)', border: '1px solid var(--team-border)', padding: '1.25rem', maxHeight: '90vh', overflowY: 'auto' }}
+            className={`${reports.modalCard} ${docStyles.dialog}`}
           >
             <h3 id="void-invoice-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-absent, #dc2626)' }}>ยกเลิกใบวางบิล</h3>
             <p style={{ margin: '0 0 0.4rem', color: 'var(--team-text)' }}>
@@ -630,7 +638,7 @@ export default function TruckBillingPage() {
 
       {/* Void Payment Modal */}
       {voidPaymentTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', zIndex: 120 }}>
+        <div className={reports.modalOverlay}>
           <form
             onSubmit={submitVoidPayment}
             data-app-dialog
@@ -638,7 +646,7 @@ export default function TruckBillingPage() {
             aria-modal="true"
             aria-labelledby="void-payment-title"
             tabIndex={-1}
-            style={{ width: 'min(30rem, 100%)', background: '#fff', borderRadius: 'var(--team-radius-card, 12px)', border: '1px solid var(--team-border)', padding: '1.25rem', maxHeight: '90vh', overflowY: 'auto' }}
+            className={`${reports.modalCard} ${docStyles.dialog}`}
           >
             <h3 id="void-payment-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-absent, #dc2626)' }}>ยกเลิกรายการรับเงิน</h3>
             <p style={{ margin: '0 0 0.4rem', color: 'var(--team-text)' }}>
