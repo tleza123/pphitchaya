@@ -742,8 +742,12 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
               </button>
             ))}
           </div>
+        </>
+      )}
 
-          <div className={styles.actionRow}>
+      <div className={styles.summaryActions}>
+        {reportData && (
+          <div className={styles.monthAction}>
             {!reportData.isClosed ? (
               <button
                 type="button"
@@ -766,21 +770,23 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                 เปิดรอบเดือนอีกครั้ง
               </button>
             )}
-
           </div>
-        </>
-      )}
+        )}
 
-      {/* Close Month Modal */}
-      <button type="button" className={styles.primaryBtn} style={{ width: '100%', marginTop: '1rem' }} onClick={onOpenDetailedReports}>
-        ดูรายงานละเอียดและกราฟ
-      </button>
-      <button type="button" className={styles.secondaryBtn} style={{ width: '100%', marginTop: '1rem' }} disabled={exporting || loading || !reportData?.employees?.length} onClick={() => exportSalary()}>
-        {exporting ? 'กำลังสร้างไฟล์ทุกคน' : 'ส่งออกไฟล์ทุกคน'}
-      </button>
-      {exporting && <div className="refreshStatus" role="status">กำลังจัดทำ PDF แยกรายบุคคล</div>}
-      {exportError && <p role="alert">{exportError}</p>}
-      <div style={{ marginTop: '1rem' }}><LineSendButton scope="attendance" className={styles.secondaryBtn} /></div>
+        <button type="button" className={`${styles.primaryBtn} ${styles.fullWidthAction}`} onClick={onOpenDetailedReports}>
+          ดูรายงานละเอียดและกราฟ
+        </button>
+        <div className={styles.fullWidthAction}>
+          <button type="button" className={styles.secondaryBtn} disabled={exporting || loading || !reportData?.employees?.length} onClick={() => exportSalary()}>
+            {exporting ? 'กำลังสร้างไฟล์ทุกคน' : 'ส่งออกไฟล์ทุกคน'}
+          </button>
+          {exporting && <div className="refreshStatus" role="status">กำลังจัดทำ PDF แยกรายบุคคล</div>}
+          {exportError && <p role="alert">{exportError}</p>}
+        </div>
+        <div className={styles.lineAction}>
+          <LineSendButton scope="attendance" className={styles.secondaryBtn} />
+        </div>
+      </div>
 
       {showCloseModal && (
         <div className={styles.modalOverlay}>

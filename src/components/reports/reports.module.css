@@ -177,17 +177,45 @@
   margin-top: 0.2rem;
 }
 
-.actionRow {
+.summaryActions {
   display: grid;
-  gap: 0.8rem;
-  margin: 1.5rem 0 2rem;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.monthAction {
+  margin: 0.5rem 0 2rem;
+}
+
+.summaryActions .primaryBtn,
+.summaryActions .secondaryBtn {
+  width: 100%;
+  min-width: 0;
 }
 
 @media (min-width: 768px) {
-  .actionRow {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1rem;
+  .summaryActions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 1.2rem;
+    align-items: start;
+    reading-flow: grid-rows;
+  }
+
+  .summaryActions:has(.monthAction) {
+    margin-top: 1.5rem;
+  }
+
+  .lineAction {
+    grid-area: 1 / 1;
+  }
+
+  .monthAction {
+    grid-area: 1 / 2;
+    margin: 0;
+  }
+
+  .fullWidthAction {
+    grid-column: 1 / -1;
   }
 }
 
