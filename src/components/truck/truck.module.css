@@ -44,7 +44,8 @@
 }
 
 .row2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; }
-@media (max-width: 539px) { .row2 { grid-template-columns: minmax(0, 1fr); } }
+.row2 > * { min-width: 0; }
+@media (max-width: 639px) { .row2 { grid-template-columns: minmax(0, 1fr); } }
 
 .dateRow { display: flex; gap: 0.6rem; align-items: stretch; }
 .dateRow > input { flex: 1; min-width: 0; }

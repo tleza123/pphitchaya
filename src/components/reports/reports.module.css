@@ -13,10 +13,15 @@
   padding: 1rem;
   margin-bottom: 1.15rem;
   box-shadow: var(--team-shadow-card);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .monthSelectGroup {
   margin: 0;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .monthLabel {
@@ -28,7 +33,10 @@
 }
 
 .monthSelect {
+  display: block;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: var(--team-btn-height);
   padding: 0.6rem 0.8rem;
   border: 1.5px solid var(--team-input-border);
@@ -47,7 +55,8 @@
   }
 
   .monthSelectGroup {
-    min-width: 18rem;
+    width: auto;
+    min-width: min(100%, 18rem);
   }
 }
 
