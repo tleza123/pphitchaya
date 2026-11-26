@@ -11,15 +11,12 @@ import { DEFAULT_SHOP_NAME, displayShopName } from '@/lib/shop-name';
 import { hasNavigationDetail } from '@/lib/client/navigation';
 import { DATA_CHANGED_EVENT } from '@/lib/client/data-events';
 
+import { TabLoading } from '@/components/shared/TabLoading';
+
 const loadAttendance = () => import('@/components/attendance/AttendanceTab').then(module => module.AttendanceTab);
 const loadReports = () => import('@/components/reports/ReportsTab').then(module => module.ReportsTab);
 const loadSettings = () => import('@/components/settings/SettingsTab');
 const DetailedReports = React.memo(dynamic(() => import('@/components/reports/DetailedReports'), { loading: TabLoading }));
-function TabLoading() {
-  return <div aria-busy="true" aria-label="กำลังโหลดข้อมูล" className="tabLoading">
-    {[0, 1, 2].map(index => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}
-  </div>;
-}
 const AttendanceTab = React.memo(dynamic(loadAttendance, { loading: TabLoading }));
 const ReportsTab = React.memo(dynamic(loadReports, { loading: TabLoading }));
 const SettingsTab = React.memo(dynamic(loadSettings, { loading: TabLoading }));

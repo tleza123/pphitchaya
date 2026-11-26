@@ -2,11 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import reports from '@/components/reports/reports.module.css';
-import settings from '@/components/settings/settings.module.css';
 import styles from '@/components/truck/truck.module.css';
 import docStyles from '@/components/truck/truck-documents.module.css';
-import { ArrowLeft, Search, FileDown, Wallet } from 'lucide-react';
+import { ArrowLeft, Search, FileDown, Wallet, ReceiptText } from 'lucide-react';
 import { formatMoney, moneySatang } from '@/lib/payroll/money';
 import { getJson, sendJson, errMsg, download } from '@/components/truck/api';
 import { MutationIntent } from '@/lib/client/mutation-intent';
@@ -32,7 +30,6 @@ export default function TruckBillingPage() {
   const [error, setError] = useState('');
   const intent = useRef(new MutationIntent());
 
-  // Modal states
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [invoiceIssueDate, setInvoiceIssueDate] = useState('');
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
@@ -70,13 +67,11 @@ export default function TruckBillingPage() {
         setSettingsCustomers(data.truckCustomers.map((c: any) => ({ customerId: c.customerId, name: c.name })));
       }
     } catch {
-      // Ignore settings error, customer list falls back to trips
+      // Customer list falls back to trips.
     }
   };
 
-  useEffect(() => {
-    void loadSettings();
-  }, []);
+  useEffect(() => { void loadSettings(); }, []);
 
   const load = async () => {
     if (activeQuery.current !== query) return;
@@ -88,26 +83,25 @@ export default function TruckBillingPage() {
     } catch (e) { if (current === sequence.current) setError(errMsg(e)); }
     finally { if (current === sequence.current) setLoading(false); }
   };
-  useEffect(() => { void load(); return () => { ++sequence.current; }; }, [query]);
-  const search = () => { if (!start || !end || start > end) { setError('กรุณาเลือกช่วงวันที่ให้ถูกต้อง'); return; } if (range.start === start && range.end === end) { void load(); return; } setRange({ start, end }); };
+  useEffect(() => { void load(); return () => { ++sequence.current; }; }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Derived customer list from unbilled trips and settings
+  const search = () => {
+    if (!start || !end || start > end) { setError('เลือกช่วงวันที่ให้ถูกต้อง'); return; }
+    if (range.start === start && range.end === end) { void load(); return; }
+    setRange({ start, end });
+  };
+
   const customers = useMemo(() => {
     const map = new Map<string, string>();
     for (const t of trips) {
-      if (t.customerId) {
-        map.set(t.customerId, t.customerName || t.customerId);
-      }
+      if (t.customerId) map.set(t.customerId, t.customerName || t.customerId);
     }
     for (const c of settingsCustomers) {
-      if (!map.has(c.customerId)) {
-        map.set(c.customerId, c.name);
-      }
+      if (!map.has(c.customerId)) map.set(c.customerId, c.name);
     }
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [trips, settingsCustomers]);
 
-  // Auto-select first customer if none selected or selected is invalid
   useEffect(() => {
     if (customers.length > 0) {
       if (!selectedCustomerId || !customers.some(c => c.id === selectedCustomerId)) {
@@ -145,7 +139,6 @@ export default function TruckBillingPage() {
     }
   };
 
-  // Open Invoice Modal
   const openInvoiceModal = () => {
     const today = getBangkokToday();
     setInvoiceIssueDate(today);
@@ -157,19 +150,10 @@ export default function TruckBillingPage() {
 
   const submitInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!invoiceIssueDate || !invoiceDueDate) {
-      setInvoiceError('กรุณากรอกวันที่ออกใบวางบิลและวันครบกำหนด');
-      return;
-    }
-    if (invoiceDueDate < invoiceIssueDate) {
-      setInvoiceError('วันครบกำหนดต้องไม่น้อยกว่าวันที่ออกใบวางบิล');
-      return;
-    }
+    if (!invoiceIssueDate || !invoiceDueDate) { setInvoiceError('กรอกวันที่ออกใบวางบิลและวันครบกำหนด'); return; }
+    if (invoiceDueDate < invoiceIssueDate) { setInvoiceError('วันครบกำหนดต้องไม่น้อยกว่าวันที่ออกใบวางบิล'); return; }
     const selectedTripIds = selectedTrips.map(t => t.tripId);
-    if (selectedTripIds.length === 0) {
-      setInvoiceError('กรุณาเลือกเที่ยววิ่งอย่างน้อย 1 เที่ยว');
-      return;
-    }
+    if (selectedTripIds.length === 0) { setInvoiceError('เลือกเที่ยววิ่งอย่างน้อย 1 เที่ยว'); return; }
     try {
       const payload = {
         action: 'INVOICE',
@@ -177,7 +161,7 @@ export default function TruckBillingPage() {
         tripIds: selectedTripIds,
         issueDate: invoiceIssueDate,
         dueDate: invoiceDueDate,
-        note: invoiceNote.trim() || undefined,
+        note: invoiceNote.trim() || undefined
       };
       await sendJson('/api/truck/billing', 'POST', payload, intent.current.requestId(payload));
       intent.current.complete();
@@ -189,7 +173,6 @@ export default function TruckBillingPage() {
     }
   };
 
-  // Open Receive Payment Modal
   const openReceiveModal = (invoice: any) => {
     setPayInvoice(invoice);
     setPayAmount((invoice.balanceSatang / 100).toFixed(2));
@@ -204,25 +187,12 @@ export default function TruckBillingPage() {
     e.preventDefault();
     if (!payInvoice) return;
     const amountTrimmed = payAmount.trim();
-    if (!amountTrimmed || Number(amountTrimmed) <= 0) {
-      setPayError('กรุณาระบุจำนวนเงินที่ถูกต้อง');
-      return;
-    }
+    if (!amountTrimmed || Number(amountTrimmed) <= 0) { setPayError('ระบุจำนวนเงินให้ถูกต้อง'); return; }
     let satang: number;
-    try {
-      satang = moneySatang(amountTrimmed);
-    } catch {
-      setPayError('รูปแบบจำนวนเงินไม่ถูกต้อง');
-      return;
-    }
-    if (satang > payInvoice.balanceSatang) {
-      setPayError(`ยอดรับชำระต้องไม่เกินยอดค้าง (${formatMoney(payInvoice.balanceSatang)} บาท)`);
-      return;
-    }
-    if (!payDate) {
-      setPayError('กรุณาระบุวันที่รับเงิน');
-      return;
-    }
+    try { satang = moneySatang(amountTrimmed); }
+    catch { setPayError('กรอกจำนวนเงินเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง'); return; }
+    if (satang > payInvoice.balanceSatang) { setPayError(`ยอดรับชำระต้องไม่เกินยอดค้าง (${formatMoney(payInvoice.balanceSatang)} บาท)`); return; }
+    if (!payDate) { setPayError('เลือกวันที่รับเงิน'); return; }
     try {
       const payload = {
         action: 'PAYMENT',
@@ -232,7 +202,7 @@ export default function TruckBillingPage() {
         paidDate: payDate,
         channel: payChannel.trim() || undefined,
         reference: payReference.trim() || undefined,
-        note: payNote.trim() || undefined,
+        note: payNote.trim() || undefined
       };
       await sendJson('/api/truck/billing', 'POST', payload, intent.current.requestId(payload));
       intent.current.complete();
@@ -243,7 +213,6 @@ export default function TruckBillingPage() {
     }
   };
 
-  // Open Void Payment Modal
   const openVoidPaymentModal = (invoice: any, payment: any) => {
     setVoidPaymentTarget({ invoice, payment });
     setVoidPaymentReason('');
@@ -253,17 +222,14 @@ export default function TruckBillingPage() {
   const submitVoidPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!voidPaymentTarget) return;
-    if (!voidPaymentReason.trim()) {
-      setVoidPaymentError('กรุณาระบุเหตุผลในการยกเลิก');
-      return;
-    }
+    if (!voidPaymentReason.trim()) { setVoidPaymentError('ระบุเหตุผลที่ยกเลิก'); return; }
     try {
       const payload = {
         action: 'VOID_PAYMENT',
         invoiceId: voidPaymentTarget.invoice.invoiceId,
         paymentId: voidPaymentTarget.payment.paymentId,
         expectedRevision: voidPaymentTarget.invoice.revision,
-        reason: voidPaymentReason.trim(),
+        reason: voidPaymentReason.trim()
       };
       await sendJson('/api/truck/billing', 'POST', payload, intent.current.requestId(payload));
       intent.current.complete();
@@ -274,7 +240,6 @@ export default function TruckBillingPage() {
     }
   };
 
-  // Open Void Invoice Modal
   const openVoidInvoiceModal = (invoice: any) => {
     setVoidInvoiceTarget(invoice);
     setVoidInvoiceReason('');
@@ -284,16 +249,13 @@ export default function TruckBillingPage() {
   const submitVoidInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!voidInvoiceTarget) return;
-    if (!voidInvoiceReason.trim()) {
-      setVoidInvoiceError('กรุณาระบุเหตุผลในการยกเลิก');
-      return;
-    }
+    if (!voidInvoiceReason.trim()) { setVoidInvoiceError('ระบุเหตุผลที่ยกเลิก'); return; }
     try {
       const payload = {
         action: 'VOID_INVOICE',
         invoiceId: voidInvoiceTarget.invoiceId,
         expectedRevision: voidInvoiceTarget.revision,
-        reason: voidInvoiceReason.trim(),
+        reason: voidInvoiceReason.trim()
       };
       await sendJson('/api/truck/billing', 'POST', payload, intent.current.requestId(payload));
       intent.current.complete();
@@ -309,64 +271,74 @@ export default function TruckBillingPage() {
   return (
     <main className={docStyles.page} data-app-theme="truck">
       <header className={docStyles.pageHeader}>
-        <Link className={docStyles.backLink} href="/truck/reports"><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารายงาน</Link>
+        <Link className="btn btn-secondary btn-sm" style={{ width: 'fit-content' }} href="/truck/reports">
+          <ArrowLeft size={18} aria-hidden="true" />
+          <span>กลับหน้ารายงาน</span>
+        </Link>
         <div>
           <h1>วางบิลและรับเงิน</h1>
           <p className={docStyles.context}>ออกใบวางบิลตามช่วงวันที่และติดตามยอดรับชำระ</p>
         </div>
       </header>
 
-      <section className={docStyles.block}><h2>ค้นหาเที่ยววิ่ง</h2><div className={docStyles.filterGrid}>
-        <div>
-          <label>จากวันที่<input type="date" className={settings.formInput} value={start} max={end} onChange={e => setStart(e.target.value)} /></label>
+      <section className={docStyles.block}>
+        <h2>ค้นหาเที่ยววิ่ง</h2>
+        <div className={docStyles.filterGrid}>
+          <label>
+            <span>จากวันที่</span>
+            <input type="date" value={start} max={end} onChange={e => setStart(e.target.value)} />
+          </label>
+          <label>
+            <span>ถึงวันที่</span>
+            <input type="date" value={end} min={start} onChange={e => setEnd(e.target.value)} />
+          </label>
+          <label htmlFor="billing-customer">
+            <span>ลูกค้า</span>
+            <select
+              id="billing-customer"
+              value={selectedCustomerId}
+              onChange={event => { setSelectedCustomerId(event.target.value); setSelected([]); }}
+            >
+              {customers.length === 0 && <option value="">ไม่มีลูกค้าที่มีเที่ยววิ่ง</option>}
+              {customers.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="btn btn-primary" disabled={loading} onClick={search}>
+            <Search size={19} aria-hidden="true" />
+            <span>ค้นหาเที่ยววิ่ง</span>
+          </button>
         </div>
-        <div><label>ถึงวันที่<input type="date" className={settings.formInput} value={end} min={start} onChange={e => setEnd(e.target.value)} /></label></div>
-        <div>
-          <label htmlFor="billing-customer">ลูกค้า</label>
-          <select
-            id="billing-customer"
-            className={settings.formInput}
-            value={selectedCustomerId}
-            onChange={event => { setSelectedCustomerId(event.target.value); setSelected([]); }}
-          >
-            {customers.length === 0 && <option value="">ไม่พบลูกค้าที่มีเที่ยววิ่ง</option>}
-            {customers.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </div>
-        <button type="button" className={docStyles.primaryButton} disabled={loading} onClick={search}><Search size={18} aria-hidden="true" />ค้นหาเที่ยววิ่ง</button>
-      </div>
 
-        <p className={docStyles.context}>ช่วงที่แสดง {month} · นับตามวันที่ออกรถ รวมวันแรกและวันสุดท้าย</p>
+        <p className={docStyles.context}>ช่วงที่แสดง {month} · นับตามวันที่ออกรถ</p>
       </section>
+
       {loading && <div className="refreshStatus" role="status">กำลังค้นหาเที่ยววิ่ง</div>}
-      {error && <p className={docStyles.message} role="alert">{error}</p>}
+      {error && <p className="app-notice app-notice-danger" role="alert">{error}</p>}
 
       {legacyPricingReview.length > 0 && (
         <section className={`${docStyles.block} ${docStyles.closeBlock}`}>
           <h2>เที่ยวที่ต้องตรวจราคาเดิม</h2>
-          <p>ตรวจยอดเดิมและยืนยันราคาเหมาก่อนวางบิล</p>
+          <p style={{ margin: '0 0 0.65rem' }}>ตรวจยอดเดิมและยืนยันราคาเหมาก่อนวางบิล</p>
           {legacyPricingReview.map(trip => (
-            <p key={trip.tripId}>{trip.departureDate} · {trip.plateNumberSnapshot} · {trip.fromLocation} → {trip.destinationName} · {trip.customerName}</p>
+            <p key={trip.tripId} style={{ margin: '0.25rem 0' }}>{trip.departureDate} · {trip.plateNumberSnapshot} · {trip.fromLocation} → {trip.destinationName} · {trip.customerName}</p>
           ))}
-          <a href="/truck/review">ตรวจราคาเดิม</a>
+          <div className={docStyles.buttonRow}>
+            <a className="btn btn-warning btn-sm" href="/truck/review">ไปตรวจราคาเดิม</a>
+          </div>
         </section>
       )}
 
       <section className={docStyles.block}>
         <h2>เที่ยวที่ยังไม่วางบิล</h2>
         {selectedCustomerId && displayedTrips.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <button
-              type="button"
-              className={settings.secondaryBtn}
-              onClick={toggleSelectAll}
-            >
-              {allSelected ? 'ยกเลิกการเลือกทั้งหมด' : 'เลือกทั้งหมด'}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', marginBottom: '0.85rem' }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={toggleSelectAll}>
+              {allSelected ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมด'}
             </button>
-            <span style={{ fontSize: '0.9rem', color: 'var(--team-muted)' }}>
-              เลือกลูกค้า: <strong>{selectedCustomerName}</strong> (เลือกแล้ว {selectedTrips.length} / {displayedTrips.length} เที่ยว)
+            <span style={{ fontSize: 'var(--team-secondary)', color: 'var(--team-muted)' }}>
+              ลูกค้า <strong>{selectedCustomerName}</strong> · เลือกแล้ว {selectedTrips.length} / {displayedTrips.length} เที่ยว
             </span>
           </div>
         )}
@@ -377,8 +349,12 @@ export default function TruckBillingPage() {
               type="checkbox"
               checked={selected.includes(trip.tripId)}
               onChange={event => setSelected(value => event.target.checked ? [...value, trip.tripId] : value.filter(id => id !== trip.tripId))}
-            />{' '}
-            <span className={docStyles.tripInfo}><strong>{trip.fromLocation} → {trip.destinationName}</strong><span>{trip.departureDate || trip.accountingDate} · {trip.plateNumberSnapshot} · {trip.customerName}</span><strong>{formatMoney(getTripCustomerChargeSatang(trip) ?? 0)} บาท</strong></span>
+            />
+            <span className={docStyles.tripInfo}>
+              <strong>{trip.fromLocation} → {trip.destinationName}</strong>
+              <span>{trip.departureDate || trip.accountingDate} · {trip.plateNumberSnapshot} · {trip.customerName}</span>
+              <strong>{formatMoney(getTripCustomerChargeSatang(trip) ?? 0)} บาท</strong>
+            </span>
           </label>
         ))}
 
@@ -393,23 +369,22 @@ export default function TruckBillingPage() {
         )}
 
         <div className={docStyles.buttonRow}>
-          <button
-            type="button"
-            className={docStyles.primaryButton}
-            disabled={!selectedTrips.length}
-            onClick={openInvoiceModal}
-          >
-            ออกใบวางบิล {selectedTrips.length > 0 ? `(${selectedTrips.length} เที่ยว · ${formatMoney(selectedTotalSatang)} บาท)` : ''}
+          <button type="button" className="btn btn-primary" disabled={!selectedTrips.length} onClick={openInvoiceModal}>
+            <ReceiptText size={20} aria-hidden="true" />
+            <span>ออกใบวางบิล {selectedTrips.length > 0 ? `(${selectedTrips.length} เที่ยว · ${formatMoney(selectedTotalSatang)} บาท)` : ''}</span>
           </button>
         </div>
       </section>
 
       <section className={docStyles.block}>
-        <h2>ใบวางบิลและประวัติการรับชำระ</h2>
+        <h2>ใบวางบิลและประวัติรับชำระ</h2>
         <div className={docStyles.invoiceList}>
           {invoices.map(invoice => (
             <article key={invoice.invoiceId} className={docStyles.invoice}>
-              <div className={docStyles.invoiceTitle}><strong>{invoice.documentNo}</strong><span>{invoice.customerName} · {invoice.status === 'VOID' ? 'ยกเลิกแล้ว' : invoice.balanceSatang === 0 ? 'รับชำระครบแล้ว' : 'รอรับชำระ'}</span></div>
+              <div className={docStyles.invoiceTitle}>
+                <strong>{invoice.documentNo}</strong>
+                <span>{invoice.customerName} · {invoice.status === 'VOID' ? 'ยกเลิกแล้ว' : invoice.balanceSatang === 0 ? 'รับชำระครบแล้ว' : 'รอรับชำระ'}</span>
+              </div>
               <div className={docStyles.metrics}>
                 <div><span>ยอดวางบิล</span><strong>{formatMoney(invoice.totalSatang)} บาท</strong></div>
                 <div><span>รับเงินแล้ว</span><strong>{formatMoney(invoice.paidSatang || 0)} บาท</strong></div>
@@ -417,23 +392,35 @@ export default function TruckBillingPage() {
               </div>
               {invoice.payments?.map((payment: any) => (
                 <div key={payment.paymentId} className={docStyles.paymentRow}>
-                  <span>{payment.paidDate} · {formatMoney(payment.amountSatang)} บาท {payment.channel ? `(${payment.channel})` : ''}</span>
+                  <span>{payment.paidDate} · <strong>{formatMoney(payment.amountSatang)} บาท</strong> {payment.channel ? `(${payment.channel})` : ''}</span>
                   {payment.status === 'VOID' ? (
-                    <span>ยกเลิกแล้ว: {payment.voidReason}</span>
+                    <span style={{ color: 'var(--team-absent)' }}>ยกเลิกแล้ว: {payment.voidReason}</span>
                   ) : (
-                    <button type="button" className={docStyles.dangerButton} onClick={() => openVoidPaymentModal(invoice, payment)}>
-                      ยกเลิกรายการรับเงิน
+                    <button type="button" className="btn btn-danger btn-sm" onClick={() => openVoidPaymentModal(invoice, payment)}>
+                      ยกเลิกรับเงิน
                     </button>
                   )}
                 </div>
               ))}
               <div className={docStyles.buttonRow}>
                 {invoice.status === 'OPEN' && invoice.balanceSatang > 0 && (
-                  <button type="button" className={docStyles.primaryButton} onClick={() => openReceiveModal(invoice)}><Wallet size={18} aria-hidden="true" />บันทึกรับเงิน</button>
+                  <button type="button" className="btn btn-primary" onClick={() => openReceiveModal(invoice)}>
+                    <Wallet size={19} aria-hidden="true" />
+                    <span>บันทึกรับเงิน</span>
+                  </button>
                 )}
-                <button type="button" onClick={() => void download(`/api/truck/billing/${invoice.invoiceId}/pdf`, `${invoice.documentNo}.pdf`).catch(e => setError(errMsg(e)))}><FileDown size={18} aria-hidden="true" />ดาวน์โหลด PDF</button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => void download(`/api/truck/billing/${invoice.invoiceId}/pdf`, `${invoice.documentNo}.pdf`).catch(e => setError(errMsg(e)))}
+                >
+                  <FileDown size={19} aria-hidden="true" />
+                  <span>ดาวน์โหลด PDF</span>
+                </button>
                 {invoice.status === 'OPEN' && invoice.paidSatang === 0 && (
-                  <button type="button" className={docStyles.dangerButton} onClick={() => openVoidInvoiceModal(invoice)}>ยกเลิกใบวางบิล</button>
+                  <button type="button" className="btn btn-danger" onClick={() => openVoidInvoiceModal(invoice)}>
+                    ยกเลิกใบวางบิล
+                  </button>
                 )}
               </div>
             </article>
@@ -442,237 +429,137 @@ export default function TruckBillingPage() {
         {invoices.length === 0 && <p className={styles.empty}>ไม่มีใบวางบิลในช่วงที่เลือก</p>}
       </section>
 
-      {/* Invoice Modal */}
       {invoiceModalOpen && (
-        <div className={reports.modalOverlay}>
-          <form
-            onSubmit={submitInvoice}
-            data-app-dialog
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="invoice-modal-title"
-            tabIndex={-1}
-            className={`${reports.modalCard} ${docStyles.dialog}`}
-          >
-            <h3 id="invoice-modal-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-primary-dark)' }}>ออกใบวางบิล</h3>
-            <p style={{ margin: '0 0 0.5rem', color: 'var(--team-text)' }}>
-              ลูกค้า: <strong>{selectedCustomerName}</strong>
-            </p>
-            <p style={{ margin: '0 0 1rem', color: 'var(--team-text)' }}>
-              จำนวนเที่ยว: <strong>{selectedTrips.length} เที่ยว</strong> · ยอดรวม: <strong>{formatMoney(selectedTotalSatang)} บาท</strong>
+        <div className="app-modal-overlay">
+          <form onSubmit={submitInvoice} data-app-dialog role="dialog" aria-modal="true" aria-labelledby="invoice-modal-title" tabIndex={-1} className="app-modal-card">
+            <h3 id="invoice-modal-title" className="app-modal-title">ออกใบวางบิล</h3>
+            <p style={{ margin: '0 0 0.3rem' }}>ลูกค้า: <strong>{selectedCustomerName}</strong></p>
+            <p className="app-modal-desc">
+              {selectedTrips.length} เที่ยว · ยอดรวม <strong>{formatMoney(selectedTotalSatang)} บาท</strong>
             </p>
 
-            <div style={{ display: 'grid', gap: '0.8rem', marginBottom: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.2rem', fontWeight: 600 }}>วันที่ออกใบวางบิล *</label>
+            <div className={docStyles.modalFields}>
+              <label>
+                <span>วันที่ออกใบวางบิล *</span>
                 <input
                   type="date"
                   required
-                  className={settings.formInput}
                   value={invoiceIssueDate}
                   onChange={e => {
                     setInvoiceIssueDate(e.target.value);
                     if (!invoiceDueDate || invoiceDueDate < e.target.value) setInvoiceDueDate(e.target.value);
                   }}
                 />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.2rem', fontWeight: 600 }}>วันครบกำหนดชำระ *</label>
-                <input
-                  type="date"
-                  required
-                  min={invoiceIssueDate}
-                  className={settings.formInput}
-                  value={invoiceDueDate}
-                  onChange={e => setInvoiceDueDate(e.target.value)}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.2rem', fontWeight: 600 }}>หมายเหตุ (ถ้ามี)</label>
-                <textarea
-                  className={settings.formInput}
-                  rows={2}
-                  value={invoiceNote}
-                  placeholder="เช่น กำหนดชำระทุกวันศุกร์"
-                  onChange={e => setInvoiceNote(e.target.value)}
-                />
-              </div>
+              </label>
+              <label>
+                <span>วันครบกำหนดชำระ *</span>
+                <input type="date" required min={invoiceIssueDate} value={invoiceDueDate} onChange={e => setInvoiceDueDate(e.target.value)} />
+              </label>
+              <label>
+                <span>หมายเหตุ (ถ้ามี)</span>
+                <textarea rows={2} value={invoiceNote} placeholder="เช่น กำหนดชำระทุกวันศุกร์" onChange={e => setInvoiceNote(e.target.value)} />
+              </label>
             </div>
 
-            {invoiceError && <p role="alert" style={{ color: 'var(--team-absent)', marginBottom: '0.8rem' }}>{invoiceError}</p>}
+            {invoiceError && <p className="app-notice app-notice-danger" role="alert">{invoiceError}</p>}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
-              <button type="button" className={settings.secondaryBtn} onClick={() => setInvoiceModalOpen(false)}>ยกเลิก</button>
-              <button type="submit" className={docStyles.primaryButton}>ยืนยันออกใบวางบิล</button>
+            <div className="app-modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setInvoiceModalOpen(false)}>ยกเลิก</button>
+              <button type="submit" className="btn btn-primary">ยืนยันออกใบวางบิล</button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Receive Payment Modal */}
       {payInvoice && (
-        <div className={reports.modalOverlay}>
-          <form
-            onSubmit={submitPayment}
-            data-app-dialog
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="pay-modal-title"
-            tabIndex={-1}
-            className={`${reports.modalCard} ${docStyles.dialog}`}
-          >
-            <h3 id="pay-modal-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-primary-dark)' }}>บันทึกรับเงิน: {payInvoice.documentNo}</h3>
-            <p style={{ margin: '0 0 0.4rem', color: 'var(--team-text)' }}>
-              ลูกค้า: <strong>{payInvoice.customerName}</strong>
-            </p>
-            <p style={{ margin: '0 0 1rem', color: 'var(--team-muted)', fontSize: '0.9rem' }}>
-              ยอดเต็ม {formatMoney(payInvoice.totalSatang)} · รับแล้ว {formatMoney(payInvoice.paidSatang || 0)} · <strong>ยอดค้าง {formatMoney(payInvoice.balanceSatang)} บาท</strong>
+        <div className="app-modal-overlay">
+          <form onSubmit={submitPayment} data-app-dialog role="dialog" aria-modal="true" aria-labelledby="pay-modal-title" tabIndex={-1} className="app-modal-card">
+            <h3 id="pay-modal-title" className="app-modal-title">บันทึกรับเงิน: {payInvoice.documentNo}</h3>
+            <p style={{ margin: '0 0 0.3rem' }}>ลูกค้า: <strong>{payInvoice.customerName}</strong></p>
+            <p className="app-modal-desc">
+              ยอดเต็ม {formatMoney(payInvoice.totalSatang)} · รับแล้ว {formatMoney(payInvoice.paidSatang || 0)} · คงเหลือ <strong>{formatMoney(payInvoice.balanceSatang)} บาท</strong>
             </p>
 
-            <div style={{ display: 'grid', gap: '0.8rem', marginBottom: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.2rem', fontWeight: 600 }}>ยอดรับชำระ (บาท) *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  required
-                  className={settings.formInput}
-                  value={payAmount}
-                  onChange={e => setPayAmount(e.target.value)}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.2rem', fontWeight: 600 }}>วันที่รับเงิน *</label>
-                <input
-                  type="date"
-                  required
-                  className={settings.formInput}
-                  value={payDate}
-                  onChange={e => setPayDate(e.target.value)}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.2rem', fontWeight: 600 }}>ช่องทางรับเงิน</label>
-                <input
-                  type="text"
-                  placeholder="เช่น โอนเงิน เงินสด หรือเช็ค"
-                  className={settings.formInput}
-                  value={payChannel}
-                  onChange={e => setPayChannel(e.target.value)}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.2rem', fontWeight: 600 }}>เลขอ้างอิง (ถ้ามี)</label>
-                <input
-                  type="text"
-                  placeholder="เลขที่สลิปหรือเลขที่เช็ค"
-                  className={settings.formInput}
-                  value={payReference}
-                  onChange={e => setPayReference(e.target.value)}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.2rem', fontWeight: 600 }}>หมายเหตุ (ถ้ามี)</label>
-                <input
-                  type="text"
-                  placeholder="หมายเหตุเพิ่มเติม"
-                  className={settings.formInput}
-                  value={payNote}
-                  onChange={e => setPayNote(e.target.value)}
-                />
-              </div>
+            <div className={docStyles.modalFields}>
+              <label>
+                <span>ยอดรับชำระ (บาท) *</span>
+                <input type="number" step="0.01" min="0.01" required value={payAmount} onChange={e => setPayAmount(e.target.value)} />
+              </label>
+              <label>
+                <span>วันที่รับเงิน *</span>
+                <input type="date" required value={payDate} onChange={e => setPayDate(e.target.value)} />
+              </label>
+              <label>
+                <span>ช่องทางรับเงิน</span>
+                <input type="text" placeholder="เช่น โอนเงิน เงินสด หรือเช็ค" value={payChannel} onChange={e => setPayChannel(e.target.value)} />
+              </label>
+              <label>
+                <span>เลขอ้างอิง (ถ้ามี)</span>
+                <input type="text" placeholder="เลขสลิปหรือเลขเช็ค" value={payReference} onChange={e => setPayReference(e.target.value)} />
+              </label>
+              <label>
+                <span>หมายเหตุ (ถ้ามี)</span>
+                <input type="text" placeholder="หมายเหตุเพิ่มเติม" value={payNote} onChange={e => setPayNote(e.target.value)} />
+              </label>
             </div>
 
-            {payError && <p role="alert" style={{ color: 'var(--team-absent)', marginBottom: '0.8rem' }}>{payError}</p>}
+            {payError && <p className="app-notice app-notice-danger" role="alert">{payError}</p>}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
-              <button type="button" className={settings.secondaryBtn} onClick={() => setPayInvoice(null)}>ยกเลิก</button>
-              <button type="submit" className={docStyles.primaryButton}>ยืนยันรับชำระ</button>
+            <div className="app-modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setPayInvoice(null)}>ยกเลิก</button>
+              <button type="submit" className="btn btn-primary">ยืนยันรับชำระ</button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Void Invoice Modal */}
       {voidInvoiceTarget && (
-        <div className={reports.modalOverlay}>
-          <form
-            onSubmit={submitVoidInvoice}
-            data-app-dialog
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="void-invoice-title"
-            tabIndex={-1}
-            className={`${reports.modalCard} ${docStyles.dialog}`}
-          >
-            <h3 id="void-invoice-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-absent, #dc2626)' }}>ยกเลิกใบวางบิล</h3>
-            <p style={{ margin: '0 0 0.4rem', color: 'var(--team-text)' }}>
-              เลขที่เอกสาร: <strong>{voidInvoiceTarget.documentNo}</strong> ({voidInvoiceTarget.customerName})
-            </p>
-            <p style={{ margin: '0 0 0.8rem', color: 'var(--team-muted)', fontSize: '0.9rem' }}>
-              ยอดรวม {formatMoney(voidInvoiceTarget.totalSatang)} บาท · เที่ยววิ่งจะกลับไปอยู่ในรายการที่ยังไม่วางบิล
+        <div className="app-modal-overlay">
+          <form onSubmit={submitVoidInvoice} data-app-dialog role="dialog" aria-modal="true" aria-labelledby="void-invoice-title" tabIndex={-1} className="app-modal-card">
+            <h3 id="void-invoice-title" className="app-modal-title app-modal-title-danger">ยกเลิกใบวางบิล</h3>
+            <p style={{ margin: '0 0 0.3rem' }}>เลขที่เอกสาร: <strong>{voidInvoiceTarget.documentNo}</strong> ({voidInvoiceTarget.customerName})</p>
+            <p className="app-modal-desc">
+              ยอดรวม {formatMoney(voidInvoiceTarget.totalSatang)} บาท · เที่ยววิ่งจะกลับไปเป็นรายการที่ยังไม่วางบิล
             </p>
 
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.2rem', fontWeight: 600 }}>เหตุผลในการยกเลิก *</label>
-              <textarea
-                required
-                rows={3}
-                className={settings.formInput}
-                placeholder="เช่น ระบุลูกค้าผิดหรือเปลี่ยนรายการเที่ยว"
-                value={voidInvoiceReason}
-                onChange={e => setVoidInvoiceReason(e.target.value)}
-              />
+            <div className={docStyles.modalFields}>
+              <label>
+                <span>เหตุผลที่ยกเลิก *</span>
+                <textarea required rows={3} placeholder="เช่น เลือกลูกค้าผิดหรือเปลี่ยนรายการเที่ยว" value={voidInvoiceReason} onChange={e => setVoidInvoiceReason(e.target.value)} />
+              </label>
             </div>
 
-            {voidInvoiceError && <p role="alert" style={{ color: 'var(--team-absent)', marginBottom: '0.8rem' }}>{voidInvoiceError}</p>}
+            {voidInvoiceError && <p className="app-notice app-notice-danger" role="alert">{voidInvoiceError}</p>}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
-              <button type="button" className={settings.secondaryBtn} onClick={() => setVoidInvoiceTarget(null)}>ยกเลิก</button>
-              <button type="submit" className={docStyles.dangerButton}>ยืนยันยกเลิกใบวางบิล</button>
+            <div className="app-modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setVoidInvoiceTarget(null)}>ยกเลิก</button>
+              <button type="submit" className="btn btn-danger-solid">ยืนยันยกเลิกใบวางบิล</button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Void Payment Modal */}
       {voidPaymentTarget && (
-        <div className={reports.modalOverlay}>
-          <form
-            onSubmit={submitVoidPayment}
-            data-app-dialog
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="void-payment-title"
-            tabIndex={-1}
-            className={`${reports.modalCard} ${docStyles.dialog}`}
-          >
-            <h3 id="void-payment-title" style={{ margin: '0 0 0.8rem', color: 'var(--team-absent, #dc2626)' }}>ยกเลิกรายการรับเงิน</h3>
-            <p style={{ margin: '0 0 0.4rem', color: 'var(--team-text)' }}>
-              ใบวางบิล: <strong>{voidPaymentTarget.invoice.documentNo}</strong> ({voidPaymentTarget.invoice.customerName})
-            </p>
-            <p style={{ margin: '0 0 0.8rem', color: 'var(--team-muted)', fontSize: '0.9rem' }}>
-              วันที่รับเงิน: {voidPaymentTarget.payment.paidDate} · ยอด: <strong>{formatMoney(voidPaymentTarget.payment.amountSatang)} บาท</strong>
+        <div className="app-modal-overlay">
+          <form onSubmit={submitVoidPayment} data-app-dialog role="dialog" aria-modal="true" aria-labelledby="void-payment-title" tabIndex={-1} className="app-modal-card">
+            <h3 id="void-payment-title" className="app-modal-title app-modal-title-danger">ยกเลิกรายการรับเงิน</h3>
+            <p style={{ margin: '0 0 0.3rem' }}>ใบวางบิล: <strong>{voidPaymentTarget.invoice.documentNo}</strong> ({voidPaymentTarget.invoice.customerName})</p>
+            <p className="app-modal-desc">
+              วันที่รับเงิน {voidPaymentTarget.payment.paidDate} · ยอด <strong>{formatMoney(voidPaymentTarget.payment.amountSatang)} บาท</strong>
             </p>
 
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.2rem', fontWeight: 600 }}>เหตุผลในการยกเลิกรายการรับเงิน *</label>
-              <textarea
-                required
-                rows={3}
-                className={settings.formInput}
-                placeholder="เช่น บันทึกยอดผิดหรือใช้สลิปซ้ำ"
-                value={voidPaymentReason}
-                onChange={e => setVoidPaymentReason(e.target.value)}
-              />
+            <div className={docStyles.modalFields}>
+              <label>
+                <span>เหตุผลที่ยกเลิก *</span>
+                <textarea required rows={3} placeholder="เช่น บันทึกยอดผิดหรือใช้สลิปซ้ำ" value={voidPaymentReason} onChange={e => setVoidPaymentReason(e.target.value)} />
+              </label>
             </div>
 
-            {voidPaymentError && <p role="alert" style={{ color: 'var(--team-absent)', marginBottom: '0.8rem' }}>{voidPaymentError}</p>}
+            {voidPaymentError && <p className="app-notice app-notice-danger" role="alert">{voidPaymentError}</p>}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
-              <button type="button" className={settings.secondaryBtn} onClick={() => setVoidPaymentTarget(null)}>ยกเลิก</button>
-              <button type="submit" className={docStyles.dangerButton}>ยืนยันยกเลิกรายการ</button>
+            <div className="app-modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setVoidPaymentTarget(null)}>ยกเลิก</button>
+              <button type="submit" className="btn btn-danger-solid">ยืนยันยกเลิกรับเงิน</button>
             </div>
           </form>
         </div>

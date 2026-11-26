@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Printer } from 'lucide-react';
 import settings from '@/components/settings/settings.module.css';
 import reports from '@/components/reports/reports.module.css';
 import { formatMoney } from '@/lib/payroll/money';
@@ -15,32 +15,35 @@ const METRICS: { key: Metric; label: string }[] = [
   { key: 'tripCount', label: 'เที่ยววิ่ง' },
   { key: 'driverPaySatang', label: 'ค่าเที่ยว' }
 ];
-const PERIODS: { key: TruckReportPeriod; label: string }[] = [{ key: 'day', label: 'รายวัน' }, { key: 'month', label: 'รายเดือน' }, { key: 'year', label: 'รายปี' }];
+const PERIODS: { key: TruckReportPeriod; label: string }[] = [
+  { key: 'day', label: 'รายวัน' },
+  { key: 'month', label: 'รายเดือน' },
+  { key: 'year', label: 'รายปี' }
+];
 const fmt = (m: Metric, v: number) => (m === 'tripCount' ? String(v) : formatMoney(v));
 
-// Plain SVG bars: no chart dependency, same approach as the attendance detailed report.
 function Chart({ rows, metric }: { rows: TruckAnalyticsBucket[]; metric: Metric }) {
   const max = Math.max(1, ...rows.map(r => r[metric]));
-  const step = 38;
-  const width = Math.max(480, rows.length * step + 80);
-  const top = 20, base = 205;
+  const step = 42;
+  const width = Math.max(480, rows.length * step + 88);
+  const top = 24, base = 205;
   return (
     <div className={styles.chartScroll}>
-      <svg width={width} height={245} viewBox={`0 0 ${width} 245`} role="img" aria-label="กราฟเปรียบเทียบ">
+      <svg width={width} height={248} viewBox={`0 0 ${width} 248`} role="img" aria-label="กราฟเปรียบเทียบ">
         {[0, 0.5, 1].map(f => (
           <g key={f}>
-            <line x1={70} x2={width - 10} y1={base - f * (base - top)} y2={base - f * (base - top)} stroke="var(--team-border-strong)" strokeDasharray="3 4" />
-            <text x={64} y={base - f * (base - top) + 4} textAnchor="end" fontSize="11" fill="var(--team-muted)">{fmt(metric, Math.round(max * f))}</text>
+            <line x1={74} x2={width - 12} y1={base - f * (base - top)} y2={base - f * (base - top)} stroke="#cbd5e1" strokeDasharray="3 4" />
+            <text x={66} y={base - f * (base - top) + 4} textAnchor="end" fontSize="13" fill="#475569">{fmt(metric, Math.round(max * f))}</text>
           </g>
         ))}
         {rows.map((r, i) => {
           const h = (r[metric] / max) * (base - top);
           return (
             <g key={r.key}>
-              <rect x={70 + i * step + step * 0.12} y={base - h} width={step * 0.7} height={h} rx={3} fill="var(--team-primary)">
+              <rect x={78 + i * step + step * 0.12} y={base - h} width={step * 0.72} height={h} rx={4} fill="var(--team-primary)">
                 <title>{`${r.key}: ${fmt(metric, r[metric])}`}</title>
               </rect>
-              <text x={70 + i * step + step * 0.47} y={225} textAnchor="middle" fontSize="11" fill="var(--team-muted)">{period2label(r.key)}</text>
+              <text x={78 + i * step + step * 0.48} y={230} textAnchor="middle" fontSize="13" fill="#475569">{period2label(r.key)}</text>
             </g>
           );
         })}
@@ -69,7 +72,6 @@ export function TruckDetailedReports({ active, boot, onBack }: { active: boolean
     return () => { stale = true; };
   }, [active, period, month, year]);
 
-  // Truck filter is applied client-side from the single payload, so switching trucks never refetches.
   const sel = truckId ? data?.trucks.find(t => t.truckId === truckId) : null;
   const rows = (sel ? sel.buckets : data?.buckets) || [];
   const totals = sel ? sel.totals : data?.totals;
@@ -77,16 +79,29 @@ export function TruckDetailedReports({ active, boot, onBack }: { active: boolean
   return (
     <div className={styles.stack}>
       <header className={documentStyles.pageHeader}>
-        <button type="button" className={documentStyles.backLink} onClick={onBack}><ArrowLeft size={18} aria-hidden="true" />กลับหน้ารายงาน</button>
+        <button type="button" className="btn btn-secondary btn-sm" style={{ width: 'fit-content' }} onClick={onBack}>
+          <ArrowLeft size={18} aria-hidden="true" />
+          <span>กลับหน้ารายงาน</span>
+        </button>
         <h2 className={`${reports.title} ${styles.reportTitle}`}>รายงานละเอียดและกราฟ</h2>
       </header>
+
       <div className={styles.panel}>
         <div className={styles.segmented} role="group" aria-label="ช่วงเวลา">
           {PERIODS.map(p => (
-            <button key={p.key} type="button" aria-pressed={period === p.key} className={`${styles.seg} ${period === p.key ? styles.segActive : ''}`} onClick={() => setPeriod(p.key)}>{p.label}</button>
+            <button
+              key={p.key}
+              type="button"
+              aria-pressed={period === p.key}
+              className={`btn btn-sm ${period === p.key ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setPeriod(p.key)}
+            >
+              {p.label}
+            </button>
           ))}
         </div>
-        <div className={styles.row2} style={{ marginTop: '.8rem' }}>
+
+        <div className={styles.row2} style={{ marginTop: '0.9rem' }}>
           <div className={settings.formGroup}>
             {period === 'day' ? (
               <>
@@ -95,7 +110,7 @@ export function TruckDetailedReports({ active, boot, onBack }: { active: boolean
               </>
             ) : (
               <>
-                <label className={settings.formLabel} htmlFor="trd-year">{period === 'month' ? 'ปี' : 'ปีสุดท้าย (ย้อนหลัง 3 ปี)'}</label>
+                <label className={settings.formLabel} htmlFor="trd-year">{period === 'month' ? 'ปี (ค.ศ.)' : 'ปีสุดท้าย (ย้อนหลัง 3 ปี)'}</label>
                 <input id="trd-year" inputMode="numeric" maxLength={4} className={settings.formInput} value={year} onChange={e => setYear(e.target.value.replace(/\D/g, ''))} />
               </>
             )}
@@ -108,33 +123,46 @@ export function TruckDetailedReports({ active, boot, onBack }: { active: boolean
             </select>
           </div>
         </div>
+
         <div className={styles.segmented} role="group" aria-label="ตัวชี้วัด">
           {METRICS.map(m => (
-            <button key={m.key} type="button" aria-pressed={metric === m.key} className={`${styles.seg} ${metric === m.key ? styles.segActive : ''}`} onClick={() => setMetric(m.key)}>{m.label}</button>
+            <button
+              key={m.key}
+              type="button"
+              aria-pressed={metric === m.key}
+              className={`btn btn-sm ${metric === m.key ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setMetric(m.key)}
+            >
+              {m.label}
+            </button>
           ))}
         </div>
       </div>
-      {error && <div className={styles.error} role="alert">{error}</div>}
+
+      {error && <div className="app-notice app-notice-danger" role="alert">{error}</div>}
+
       {totals && (
         <div className={styles.panel}>
           <div className={styles.figures}>
-            <div className={styles.fig}><small>เที่ยววิ่ง</small><strong>{totals.tripCount}</strong></div>
-            <div className={styles.fig}><small>ค่าเที่ยว (บาท)</small><strong>{formatMoney(totals.driverPaySatang)}</strong></div>
+            <div className={styles.fig}><small>เที่ยววิ่ง</small><strong>{totals.tripCount} เที่ยว</strong></div>
+            <div className={styles.fig}><small>ค่าเที่ยวคนขับรวม</small><strong>{formatMoney(totals.driverPaySatang)} บาท</strong></div>
           </div>
         </div>
       )}
+
       <div className={styles.panel}>
         {rows.length === 0 ? <p className={styles.empty}>ไม่มีข้อมูลในช่วงที่เลือก</p> : (
           <>
             <Chart rows={rows} metric={metric} />
-            <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="ตารางข้อมูล">
+            <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="ตารางข้อมูล" style={{ marginTop: '0.85rem' }}>
               <table className={styles.table}>
-                <thead><tr><th>ช่วง</th><th className={styles.num}>เที่ยว</th><th className={styles.num}>ค่าเที่ยว</th></tr></thead>
+                <thead><tr><th>ช่วง</th><th className={styles.num}>เที่ยว</th><th className={styles.num}>ค่าเที่ยว (บาท)</th></tr></thead>
                 <tbody>
                   {rows.map(r => (
                     <tr key={r.key}>
-                      <td>{r.key}</td><td className={styles.num}>{r.tripCount}</td>
-                      <td className={styles.num}>{formatMoney(r.driverPaySatang)}</td>
+                      <td>{r.key}</td>
+                      <td className={styles.num}>{r.tripCount}</td>
+                      <td className={styles.num}><strong>{formatMoney(r.driverPaySatang)}</strong></td>
                     </tr>
                   ))}
                 </tbody>
@@ -142,7 +170,10 @@ export function TruckDetailedReports({ active, boot, onBack }: { active: boolean
             </div>
           </>
         )}
-        <button type="button" className={settings.secondaryBtn} style={{ marginTop: '1rem' }} onClick={() => window.print()}>พิมพ์รายงาน</button>
+        <button type="button" className="btn btn-secondary btn-block" style={{ marginTop: '1rem' }} onClick={() => window.print()}>
+          <Printer size={19} aria-hidden="true" />
+          <span>พิมพ์รายงาน</span>
+        </button>
       </div>
     </div>
   );

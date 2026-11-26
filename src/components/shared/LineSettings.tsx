@@ -63,8 +63,8 @@ export function LineSettings() {
   return (
     <div className={styles.collapsibleSection}>
       <button type="button" aria-expanded={open} className={styles.sectionHeader} onClick={() => setOpen(!open)}>
-        <span>การแจ้งเตือน LINE รายวัน</span>
-        {open ? <ChevronUp size={20} aria-hidden="true" /> : <ChevronDown size={20} aria-hidden="true" />}
+        <span>แจ้งเตือน LINE รายวัน</span>
+        {open ? <ChevronUp size={22} aria-hidden="true" /> : <ChevronDown size={22} aria-hidden="true" />}
       </button>
       {open && (
         <div className={styles.sectionBody}>
@@ -76,31 +76,33 @@ export function LineSettings() {
                   placeholder={profile.channelAccessTokenMasked || 'วางโทเคนจาก LINE Developers'} onChange={e => setToken(e.target.value)} />
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.formLabel} htmlFor="line-default">User ID หรือ Group ID (ปลายทางร่วม)</label>
+                <label className={styles.formLabel} htmlFor="line-default">User ID หรือ Group ID (ปลายทางหลัก)</label>
                 <input id="line-default" className={styles.formInput} value={profile.defaultTargetId} onChange={e => set('defaultTargetId', e.target.value)} />
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.formLabel} htmlFor="line-att">ปลายทางระบบเช็กชื่อ (ไม่บังคับ)</label>
+                <label className={styles.formLabel} htmlFor="line-att">ปลายทางเช็กชื่อ (ไม่บังคับ)</label>
                 <input id="line-att" className={styles.formInput} value={profile.attendanceTargetId} onChange={e => set('attendanceTargetId', e.target.value)} />
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.formLabel} htmlFor="line-truck">ปลายทางเฉพาะรถสิบล้อ (ไม่บังคับ)</label>
+                <label className={styles.formLabel} htmlFor="line-truck">ปลายทางรถสิบล้อ (ไม่บังคับ)</label>
                 <input id="line-truck" className={styles.formInput} value={profile.truckTargetId} onChange={e => set('truckTargetId', e.target.value)} />
               </div>
               <div className={styles.formGroup}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '.6rem', minHeight: '2.75rem' }}>
-                  <input type="checkbox" style={{ width: '1.4rem', height: '1.4rem' }} checked={profile.dailySummaryEnabled}
+                <label className={styles.checkRow}>
+                  <input type="checkbox" checked={profile.dailySummaryEnabled}
                     onChange={e => set('dailySummaryEnabled', e.target.checked)} />
-                  ส่งสรุปอัตโนมัติทุกวัน 19:00 น.
+                  <span>ส่งสรุปอัตโนมัติทุกวัน 19:00 น.</span>
                 </label>
               </div>
-              <div style={{ display: 'grid', gap: '.6rem' }}>
-                <button type="button" className={styles.primaryBtn} onClick={save} disabled={busy} aria-busy={busy}>บันทึกการตั้งค่า LINE</button>
-                <button type="button" className={styles.secondaryBtn} onClick={test} disabled={busy}>ส่งข้อความทดสอบ</button>
+              <div className={styles.actionRow}>
+                <button type="button" className="btn btn-primary btn-block" onClick={save} disabled={busy} aria-busy={busy}>บันทึกการตั้งค่า LINE</button>
+                <button type="button" className="btn btn-secondary btn-block" onClick={test} disabled={busy}>ส่งข้อความทดสอบ</button>
               </div>
-              <div role="status" style={{ minHeight: '1.6rem', marginTop: '.5rem', color: status?.err ? 'var(--team-absent)' : 'var(--team-full)', fontSize: 'var(--team-secondary)' }}>
-                {status?.text}
-              </div>
+              {status?.text && (
+                <div role="status" className={status.err ? 'app-notice app-notice-danger' : 'app-notice app-notice-success'} style={{ marginTop: '0.75rem' }}>
+                  {status.text}
+                </div>
+              )}
             </>
           )}
         </div>

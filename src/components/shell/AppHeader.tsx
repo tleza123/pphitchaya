@@ -1,8 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ClipboardCheck, ChartNoAxesCombined, Settings as SettingsIcon } from 'lucide-react';
-import { TabType } from './BottomNav';
+import { ATTENDANCE_NAV, TabType } from './BottomNav';
 import styles from './shell.module.css';
 import { DEFAULT_SHOP_NAME, displayShopName } from '@/lib/shop-name';
 
@@ -32,40 +31,22 @@ export function AppHeader({
         </div>
 
         {onChangeTab && (
-          <nav className={styles.desktopNav} aria-label="เมนูหลักสำหรับคอมพิวเตอร์">
-            <button
-              type="button"
-              className={`${styles.desktopNavBtn} ${activeTab === 'attendance' ? styles.desktopNavBtnActive : ''}`}
-              onClick={() => onChangeTab('attendance')}
-              onPointerEnter={() => onPrepareTab?.('attendance')}
-              onPointerDown={() => onPrepareTab?.('attendance')}
-              onFocus={() => onPrepareTab?.('attendance')}
-            >
-              <ClipboardCheck className={styles.desktopNavIcon} aria-hidden="true" />
-              <span>เช็กชื่อ</span>
-            </button>
-            <button
-              type="button"
-              className={`${styles.desktopNavBtn} ${activeTab === 'reports' ? styles.desktopNavBtnActive : ''}`}
-              onClick={() => onChangeTab('reports')}
-              onPointerEnter={() => onPrepareTab?.('reports')}
-              onPointerDown={() => onPrepareTab?.('reports')}
-              onFocus={() => onPrepareTab?.('reports')}
-            >
-              <ChartNoAxesCombined className={styles.desktopNavIcon} aria-hidden="true" />
-              <span>รายงาน</span>
-            </button>
-            <button
-              type="button"
-              className={`${styles.desktopNavBtn} ${activeTab === 'settings' ? styles.desktopNavBtnActive : ''}`}
-              onClick={() => onChangeTab('settings')}
-              onPointerEnter={() => onPrepareTab?.('settings')}
-              onPointerDown={() => onPrepareTab?.('settings')}
-              onFocus={() => onPrepareTab?.('settings')}
-            >
-              <SettingsIcon className={styles.desktopNavIcon} aria-hidden="true" />
-              <span>ตั้งค่า</span>
-            </button>
+          <nav className={styles.desktopNav} aria-label="เมนูหลัก">
+            {ATTENDANCE_NAV.map(({ tab, label, Icon }) => (
+              <button
+                key={tab}
+                type="button"
+                aria-current={activeTab === tab ? 'page' : undefined}
+                className={`${styles.desktopNavBtn} ${activeTab === tab ? styles.desktopNavBtnActive : ''}`}
+                onClick={() => onChangeTab(tab)}
+                onPointerEnter={() => onPrepareTab?.(tab)}
+                onPointerDown={() => onPrepareTab?.(tab)}
+                onFocus={() => onPrepareTab?.(tab)}
+              >
+                <Icon className={styles.desktopNavIcon} aria-hidden="true" />
+                <span>{label}</span>
+              </button>
+            ))}
           </nav>
         )}
       </div>

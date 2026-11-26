@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { FileDown, FileSpreadsheet, ChartNoAxesCombined, ChevronDown, Pencil, Trash2 } from 'lucide-react';
-import settings from '@/components/settings/settings.module.css';
 import reports from '@/components/reports/reports.module.css';
 import { LineSendButton } from '@/components/shared/LineSendButton';
 import { useModalInteraction } from '@/components/shared/useModalInteraction';
@@ -72,6 +71,7 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
   const totals = report?.totals;
   const savedIds = new Set(report?.savedRecords?.map(record => record.recordId) || []);
   const history = report ? [...(report.savedRecords || []), ...report.records.filter(record => !savedIds.has(record.recordId))] : [];
+
   return (
     <div className={styles.stack} aria-busy={loading}>
       <h2 className={`${reports.title} ${styles.reportTitle}`}>รายงานรถสิบล้อ</h2>
@@ -91,31 +91,34 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
         </div>
       </div>
 
-      {error && <div className={reports.notice} role="alert">{error}</div>}
+      {error && <div className="app-notice app-notice-danger" role="alert">{error}</div>}
       {loading && <div className="refreshStatus" role="status">กำลังโหลดรายงาน</div>}
 
       {report && totals && (
         <div className={`${reports.summaryCard} ${styles.reportSummary}`}>
           <p className={reports.summaryLabel}>ค่าเที่ยวคนขับรวม</p>
           <p className={reports.summaryMoney}>{formatMoney(totals.totalDriverPaySatang)} บาท</p>
-          <p className={reports.summarySub}>{formatThaiMonth(report.monthKey)} · {totals.totalTrips} เที่ยว · สรุปตามวันที่ออกรถ</p>
+          <p className={reports.summarySub}>{formatThaiMonth(report.monthKey)} · {totals.totalTrips} เที่ยว · นับตามวันที่ออกรถ</p>
         </div>
       )}
 
-      {Boolean(report?.unpricedTripCount) && <p className={reports.notice}>ยังไม่กำหนดค่าเที่ยวคนขับ {report?.unpricedTripCount} เที่ยว ยอดรวมจึงรวมเฉพาะเที่ยวที่มีราคา</p>}
+      {Boolean(report?.unpricedTripCount) && (
+        <p className="app-notice">ยังไม่ได้ตั้งค่าเที่ยวคนขับ {report?.unpricedTripCount} เที่ยว ยอดรวมแสดงเฉพาะเที่ยวที่มีราคา</p>
+      )}
 
       {report && report.perTruck.length > 0 && (
         <div className={styles.panel}>
           <h3 className={reports.sectionTitle}>สรุปแยกตามรถ</h3>
           <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="สรุปแยกตามรถ">
             <table className={styles.table}>
-              <thead><tr><th>ทะเบียน</th><th>คนขับ</th><th className={styles.num}>เที่ยว</th><th className={styles.num}>ค่าเที่ยว</th></tr></thead>
+              <thead><tr><th>ทะเบียน</th><th>คนขับ</th><th className={styles.num}>เที่ยว</th><th className={styles.num}>ค่าเที่ยว (บาท)</th></tr></thead>
               <tbody>
                 {report.perTruck.map(r => (
                   <tr key={r.truckId}>
-                    <td>{r.plateNumber}</td><td>{r.driverName || '-'}</td>
+                    <td><strong>{r.plateNumber}</strong></td>
+                    <td>{r.driverName || '-'}</td>
                     <td className={styles.num}>{r.tripCount}</td>
-                    <td className={styles.num}>{formatMoney(r.totalDriverPaySatang)}</td>
+                    <td className={styles.num}><strong>{formatMoney(r.totalDriverPaySatang)}</strong></td>
                   </tr>
                 ))}
               </tbody>
@@ -128,22 +131,22 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
         <h3 className={reports.sectionTitle}>ประวัติใบงานรายวัน</h3>
         {report && history.length === 0 && <p className={styles.historyEmpty}>ไม่มีใบงานในเดือนที่เลือก</p>}
         {history.map(r => (
-          <details className={styles.rec} key={`${r.recordId}-${r.dateKey}-${r.trips[0]?.tripId || "legacy"}`}>
+          <details className={styles.rec} key={`${r.recordId}-${r.dateKey}-${r.trips[0]?.tripId || 'legacy'}`}>
             <summary className={styles.recHead}>
               <span>
                 <strong>{formatThaiDate(r.dateKey)} · {r.plateNumberSnapshot}</strong>
                 <span className={styles.recMeta}>{r.trips.length} เที่ยว · {formatMoney(r.totalDriverPaySatang)} บาท</span>
               </span>
-              <ChevronDown size={18} aria-hidden="true" />
+              <ChevronDown size={20} aria-hidden="true" />
             </summary>
             <div className={styles.recBody}>
               {r.trips.map(t => (
                 <div className={styles.recTrip} key={t.tripIndex}>
                   <span>{t.tripIndex}. {t.fromLocation || 'ไม่ระบุต้นทาง'} - {t.destinationName}{t.note ? ` (${t.note})` : ''} · {t.status === 'CANCELLED' ? 'ยกเลิก' : 'บันทึกแล้ว'}</span>
-                  <span className={styles.pay}>{t.driverPaySatang == null ? 'ยังไม่ได้ตั้งราคา' : formatMoney(getTripDriverChargeSatang(t))}</span>
+                  <span className={styles.pay}>{t.driverPaySatang == null ? 'ยังไม่ได้ตั้งราคา' : `${formatMoney(getTripDriverChargeSatang(t))} บาท`}</span>
                 </div>
               ))}
-              <p className={styles.recMeta}>บันทึกแล้ว{r.revision ? ` (รุ่นที่ ${r.revision})` : ''}</p>
+              <p className={styles.recMeta}>บันทึกแล้ว{r.revision ? ` (ครั้งที่ ${r.revision})` : ''}</p>
               {r.photos.length > 0 && (
                 <div className={styles.thumbs}>
                   {r.photos.map(p => (
@@ -154,8 +157,14 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
                 </div>
               )}
               <div className={styles.itemActions}>
-                <button type="button" className={styles.iconBtn} onClick={() => onEdit(r.sourceDateKey || r.dateKey, r.truckId)} aria-label={`แก้ไขใบงาน ${r.dateKey} ${r.plateNumberSnapshot}`}><Pencil size={18} aria-hidden="true" />แก้ไข</button>
-                <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => setToDelete(r)} aria-label={`ลบใบงาน ${r.dateKey} ${r.plateNumberSnapshot}`}><Trash2 size={18} aria-hidden="true" />ลบ</button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => onEdit(r.sourceDateKey || r.dateKey, r.truckId)} aria-label={`แก้ไขใบงาน ${r.dateKey} ${r.plateNumberSnapshot}`}>
+                  <Pencil size={18} aria-hidden="true" />
+                  <span>แก้ไข</span>
+                </button>
+                <button type="button" className="btn btn-danger btn-sm" onClick={() => setToDelete(r)} aria-label={`ลบใบงาน ${r.dateKey} ${r.plateNumberSnapshot}`}>
+                  <Trash2 size={18} aria-hidden="true" />
+                  <span>ลบ</span>
+                </button>
               </div>
             </div>
           </details>
@@ -163,21 +172,36 @@ export function TruckReportsTab({ active, boot, version, onEdit, onOpenDetailed 
       </section>
 
       <section className={styles.reportActions} aria-label="ดูรายละเอียดและส่งออกรายงาน">
-        <button type="button" className={`${reports.primaryBtn} ${styles.reportDetailsButton}`} onClick={onOpenDetailed}><ChartNoAxesCombined size={18} aria-hidden="true" />ดูรายงานละเอียดและกราฟ</button>
-        <button type="button" className={reports.secondaryBtn} disabled={busy || loading} onClick={() => exportFile('pdf')}><FileDown size={18} aria-hidden="true" />ดาวน์โหลด PDF</button>
-        <button type="button" className={reports.secondaryBtn} disabled={busy || loading} onClick={() => exportFile('csv')}><FileSpreadsheet size={18} aria-hidden="true" />ส่งออก Excel (CSV)</button>
-        <LineSendButton scope="truck" className={reports.secondaryBtn} />
-        {exportError && <p className={styles.exportError} role="alert">{exportError}</p>}
+        <button type="button" className={`btn btn-primary btn-block ${styles.reportDetailsButton}`} onClick={onOpenDetailed}>
+          <ChartNoAxesCombined size={20} aria-hidden="true" />
+          <span>ดูรายงานละเอียดและกราฟ</span>
+        </button>
+        <button type="button" className="btn btn-secondary btn-block" disabled={busy || loading} onClick={() => exportFile('pdf')}>
+          <FileDown size={20} aria-hidden="true" />
+          <span>ดาวน์โหลด PDF</span>
+        </button>
+        <button type="button" className="btn btn-secondary btn-block" disabled={busy || loading} onClick={() => exportFile('csv')}>
+          <FileSpreadsheet size={20} aria-hidden="true" />
+          <span>ส่งออก Excel (CSV)</span>
+        </button>
+        <div className={styles.reportDetailsButton}>
+          <LineSendButton scope="truck" />
+        </div>
+        {exportError && <p className={`app-notice app-notice-danger ${styles.exportError}`} role="alert">{exportError}</p>}
       </section>
 
       {toDelete && (
-        <div className={reports.modalOverlay}>
-          <div className={reports.modalCard} data-app-dialog role="dialog" aria-modal="true" aria-labelledby="trr-del" tabIndex={-1}>
-            <h3 id="trr-del" className={reports.sectionTitle}>ลบใบงาน</h3>
-            <p>ลบใบงานวันที่ {formatThaiDate(toDelete.dateKey)} ของ {toDelete.plateNumberSnapshot} ใช่หรือไม่ การลบไม่สามารถย้อนกลับได้</p>
-            <div style={{ display: 'grid', gap: '.6rem' }}>
-              <button type="button" className={settings.primaryBtn} onClick={confirmDelete} disabled={busy} aria-busy={busy}>ยืนยันการลบ</button>
-              <button type="button" className={settings.secondaryBtn} onClick={() => setToDelete(null)} disabled={busy}>ยกเลิก</button>
+        <div className="app-modal-overlay">
+          <div className="app-modal-card" data-app-dialog role="dialog" aria-modal="true" aria-labelledby="trr-del" tabIndex={-1}>
+            <h3 id="trr-del" className="app-modal-title app-modal-title-danger">ลบใบงาน</h3>
+            <p className="app-modal-desc">
+              ลบใบงานวันที่ {formatThaiDate(toDelete.dateKey)} ของรถ {toDelete.plateNumberSnapshot} หรือไม่ เมื่อลบแล้วกู้คืนไม่ได้
+            </p>
+            <div className="app-modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setToDelete(null)} disabled={busy}>ยกเลิก</button>
+              <button type="button" className="btn btn-danger-solid" onClick={confirmDelete} disabled={busy} aria-busy={busy}>
+                {busy ? <span className="busyInline">กำลังลบ</span> : 'ยืนยันลบใบงาน'}
+              </button>
             </div>
           </div>
         </div>

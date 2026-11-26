@@ -3,7 +3,8 @@ import { usePendingAction } from '@/components/shared/usePendingAction';
 import { optionalMoney } from '@/lib/client/form-money';
 import { DATA_CHANGED_EVENT } from '@/lib/client/data-events';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { CalendarOff, CalendarPlus } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { formatThaiDate } from '@/lib/payroll/dates';
 import { LineSendButton } from '@/components/shared/LineSendButton';
@@ -109,7 +110,7 @@ export function AttendanceTab({
       } catch {
         if (sequence === fetchSequence.current && !controller.signal.aborted) {
           setItems([]);
-          setErrorMsg('เชื่อมต่อระบบไม่ได้ กรุณาลองใหม่');
+          setErrorMsg('เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง');
         }
       } finally {
         if (sequence === fetchSequence.current) setLoading(false);
@@ -138,7 +139,6 @@ export function AttendanceTab({
     if (!idToken || isClosed || loading || loadedDate.current !== selectedDate || pendingWrites.current.has(employeeId)) return;
     const saveDate = selectedDate;
     pendingWrites.current.add(employeeId);
-    // Discard any read started before this write; never let it overwrite the saved revision.
     ++fetchSequence.current;
     setPendingMap(prev => ({ ...prev, [employeeId]: true }));
     setItems(prev => prev.map(item => item.employee.employeeId === employeeId
@@ -149,10 +149,6 @@ export function AttendanceTab({
         } }
       : item));
     const requestId = crypto.randomUUID();
-
-    // A status change must not save unfinished money fields. Omitted fields preserve stored amounts.
-    const advanceToSend = customAdvanceSatang;
-    const deductionToSend = customDeductionSatang;
 
     try {
       const res = await fetch('/api/attendance', {
@@ -165,8 +161,8 @@ export function AttendanceTab({
           dateKey: selectedDate,
           employeeId,
           status,
-          advanceSatang: advanceToSend,
-          deductionSatang: deductionToSend,
+          advanceSatang: customAdvanceSatang,
+          deductionSatang: customDeductionSatang,
           expectedRevision,
           requestId
         })
@@ -197,15 +193,15 @@ export function AttendanceTab({
               : item
           )
         );
-        if (advanceToSend !== undefined && json.data.advanceSatang) {
+        if (customAdvanceSatang !== undefined && json.data.advanceSatang) {
           setAdvanceInputs(prev => ({ ...prev, [employeeId]: (json.data.advanceSatang / 100).toFixed(2) }));
-        } else if (advanceToSend === 0) {
+        } else if (customAdvanceSatang === 0) {
           setAdvanceInputs(prev => ({ ...prev, [employeeId]: '' }));
         }
 
-        if (deductionToSend !== undefined && json.data.deductionSatang) {
+        if (customDeductionSatang !== undefined && json.data.deductionSatang) {
           setDeductionInputs(prev => ({ ...prev, [employeeId]: (json.data.deductionSatang / 100).toFixed(2) }));
-        } else if (deductionToSend === 0) {
+        } else if (customDeductionSatang === 0) {
           setDeductionInputs(prev => ({ ...prev, [employeeId]: '' }));
         }
       } else {
@@ -213,7 +209,7 @@ export function AttendanceTab({
         fetchDayData(currentDate.current);
       }
     } catch {
-      alert('ส่งข้อมูลไม่สำเร็จ กรุณาลองใหม่');
+      alert('ส่งข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง');
       fetchDayData(currentDate.current);
     } finally {
       pendingWrites.current.delete(employeeId);
@@ -232,7 +228,7 @@ export function AttendanceTab({
     expectedRevision: number
   ) => {
     try { handleMark(employeeId, currentStatus, expectedRevision, optionalMoney(advanceInputs[employeeId] || ''), undefined); }
-    catch { alert('กรุณากรอกเงินเบิกให้ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง'); }
+    catch { alert('กรอกเงินเบิกเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง'); }
   };
 
   const handleSaveDeduction = (
@@ -241,7 +237,7 @@ export function AttendanceTab({
     expectedRevision: number
   ) => {
     try { handleMark(employeeId, currentStatus, expectedRevision, undefined, optionalMoney(deductionInputs[employeeId] || '')); }
-    catch { alert('กรุณากรอกเงินหักให้ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง'); }
+    catch { alert('กรอกเงินหักเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง'); }
   };
 
   const handleAddWorkday = async (kind: 'WORKDAY' | 'HOLIDAY' = 'WORKDAY') => {
@@ -267,29 +263,39 @@ export function AttendanceTab({
         onAttendanceChanged();
         fetchDayData(currentDate.current);
       } else {
-        alert(json.error?.message || 'ไม่สามารถเพิ่มวันทำงานได้');
+        alert(json.error?.message || 'บันทึกวันทำงานไม่สำเร็จ');
       }
     } catch {
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+      alert('เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง');
     }
   };
 
-  const filteredItems = items
-    .filter(item => {
+  const { fullCount, halfCount, absentCount } = useMemo(() => {
+    let full = 0, half = 0, absent = 0;
+    for (const item of items) {
+      if (item.attendance.status === 'FULL') full++;
+      else if (item.attendance.status === 'HALF') half++;
+      else if (item.attendance.status === 'ABSENT') absent++;
+    }
+    return { fullCount: full, halfCount: half, absentCount: absent };
+  }, [items]);
+
+  const filteredItems = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return items.filter(item => {
       if (filterExceptions && !['HALF', 'ABSENT'].includes(item.attendance.status)) return false;
-      if (searchQuery.trim().length > 0) {
-        const query = searchQuery.trim().toLowerCase();
-        const matchName = item.employee.name.toLowerCase().includes(query);
-        const matchNick = item.employee.nickname?.toLowerCase().includes(query);
-        const matchPos = item.employee.position.toLowerCase().includes(query);
-        return matchName || matchNick || matchPos;
+      if (query) {
+        return (
+          item.employee.name.toLowerCase().includes(query) ||
+          Boolean(item.employee.nickname?.toLowerCase().includes(query)) ||
+          item.employee.position.toLowerCase().includes(query)
+        );
       }
       return true;
     });
+  }, [items, filterExceptions, searchQuery]);
 
-  const fullCount = items.filter(item => item.attendance.status === 'FULL').length;
-  const halfCount = items.filter(item => item.attendance.status === 'HALF').length;
-  const absentCount = items.filter(item => item.attendance.status === 'ABSENT').length;
+  const hasAnyPending = Object.values(pendingMap).some(Boolean);
 
   return (
     <div>
@@ -317,7 +323,7 @@ export function AttendanceTab({
               {selectedDate !== serverToday && (
                 <button
                   type="button"
-                  className={styles.todayBtn}
+                  className="btn btn-secondary"
                   onClick={() => setSelectedDate(serverToday)}
                 >
                   วันนี้
@@ -333,7 +339,8 @@ export function AttendanceTab({
             </p>
             <button
               type="button"
-              className={`${styles.filterBtn} ${filterExceptions ? styles.filterBtnActive : ''}`}
+              className={`btn btn-sm ${filterExceptions ? 'btn-primary' : 'btn-secondary'}`}
+              aria-pressed={filterExceptions}
               onClick={() => setFilterExceptions(!filterExceptions)}
             >
               {filterExceptions ? 'ดูทั้งหมด' : 'ดูครึ่งวันและไม่มา'}
@@ -352,15 +359,22 @@ export function AttendanceTab({
         )}
       </div>
 
-      {errorMsg && <div className={styles.notice}>{errorMsg}</div>}
+      {errorMsg && <div className="app-notice app-notice-danger" role="alert" style={{ marginBottom: '1rem' }}>{errorMsg}</div>}
 
       {!isWorkday && (
         <div className={styles.notice}>
           <strong>วันหยุดตามตาราง</strong>
-          <span>หากพนักงานมาทำงาน ให้เพิ่มวันทำงานก่อนเช็กชื่อ</span>
+          <p>หากเปิดร้านวันนี้ ให้เพิ่มวันทำงานก่อนเช็กชื่อ</p>
           {!isClosed && (
-            <button type="button" className={styles.noticeBtn} disabled={loading || Boolean(calendarPending)} onClick={() => runCalendarAction('กำลังเพิ่มวันทำงาน', () => handleAddWorkday())} aria-busy={Boolean(calendarPending)}>
-              บันทึกวันทำงานเพิ่ม
+            <button
+              type="button"
+              className="btn btn-primary btn-block"
+              disabled={loading || Boolean(calendarPending)}
+              onClick={() => runCalendarAction('กำลังเพิ่มวันทำงาน', () => handleAddWorkday())}
+              aria-busy={Boolean(calendarPending)}
+            >
+              <CalendarPlus size={20} aria-hidden="true" />
+              <span>บันทึกวันทำงานเพิ่ม</span>
             </button>
           )}
         </div>
@@ -376,231 +390,229 @@ export function AttendanceTab({
       ) : errorMsg && items.length === 0 ? null : items.length === 0 ? (
         <div className={styles.notice}>
           <strong>ยังไม่มีรายชื่อพนักงาน</strong>
-          <p>เพิ่มพนักงานในเมนูตั้งค่าเพื่อเริ่มใช้งาน</p>
-          <button type="button" className={styles.noticeBtn} onClick={onNavigateToSettings}>
-            เพิ่มพนักงาน
+          <p>เพิ่มพนักงานในเมนูตั้งค่าเพื่อเริ่มเช็กชื่อ</p>
+          <button type="button" className="btn btn-primary btn-block" onClick={onNavigateToSettings}>
+            ไปหน้าตั้งค่าเพิ่มพนักงาน
           </button>
         </div>
       ) : filteredItems.length === 0 ? (
-        <p style={{ textAlign: 'center', color: 'var(--team-muted)', margin: '2rem 0' }}>
-          {filterExceptions ? 'ไม่มีรายการครึ่งวันหรือไม่มา' : 'ไม่พบรายชื่อที่ตรงกับการค้นหา'}
+        <p className={styles.emptyText}>
+          {filterExceptions ? 'ไม่มีรายการครึ่งวันหรือไม่มา' : 'ไม่พบรายชื่อที่ค้นหา'}
         </p>
       ) : (
         <div className={styles.cardGrid}>
           {filteredItems.map(item => {
-          const emp = item.employee;
-          const att = item.attendance;
-          const isPending = Boolean(pendingMap[emp.employeeId]);
-          const isClearing = clearingId === emp.employeeId;
+            const emp = item.employee;
+            const att = item.attendance;
+            const isPending = Boolean(pendingMap[emp.employeeId]);
+            const isClearing = clearingId === emp.employeeId;
+            const disabled = loading || isPending || isClosed || !isWorkday;
 
-          let statusLabel = 'วันหยุด';
-          if (att.status === 'FULL') statusLabel = 'เต็มวัน';
-          if (att.status === 'HALF') statusLabel = 'ครึ่งวัน';
-          if (att.status === 'ABSENT') statusLabel = 'ไม่มา';
+            let statusLabel = 'วันหยุด';
+            if (att.status === 'FULL') statusLabel = 'เต็มวัน';
+            if (att.status === 'HALF') statusLabel = 'ครึ่งวัน';
+            if (att.status === 'ABSENT') statusLabel = 'ไม่มา';
 
-          return (
-            <article key={emp.employeeId} className={styles.personCard} aria-busy={isPending}>
-              <div className="saveStatusSlot" role="status">{isPending && <span className="busyInline">กำลังบันทึก</span>}</div>
-              <div className={styles.personHead}>
-                <div className={styles.avatar}>
-                  {emp.photo ? (
-                    <img
-                      loading="lazy"
-                      decoding="async"
-                      src={`/api/employees/${emp.employeeId}/photo?v=${emp.photo.version}`}
-                      alt={`รูป ${emp.nickname || emp.name}`}
-                    />
-                  ) : (
-                    (emp.nickname || emp.name).slice(0, 1)
-                  )}
-                </div>
-                <div className={styles.personInfo}>
-                  <h3 className={styles.personName}>
-                    {emp.nickname ? emp.nickname : emp.name}
-                  </h3>
-                  <p className={styles.personPosition}>
-                    {emp.position}
-                    {emp.name && emp.nickname && emp.name !== emp.nickname && ` · ${emp.name}`}
-                  </p>
-                </div>
-              </div>
-
-              <div
-                className={styles.statusGrid}
-                role="group"
-                aria-label={`เช็กชื่อ ${emp.nickname || emp.name}`}
-              >
-                <button
-                  type="button"
-                  className={`${styles.statusBtn} ${
-                    att.status === 'FULL' ? styles.statusBtnFullSelected : ''
-                  }`}
-                  aria-pressed={att.status === 'FULL'}
-                  disabled={loading || isPending || isClosed || !isWorkday}
-                  onClick={() => handleMark(emp.employeeId, 'FULL', att.revision)}
-                >
-                  เต็มวัน
-                </button>
-
-                <button
-                  type="button"
-                  className={`${styles.statusBtn} ${
-                    att.status === 'HALF' ? styles.statusBtnHalfSelected : ''
-                  }`}
-                  aria-pressed={att.status === 'HALF'}
-                  disabled={loading || isPending || isClosed || !isWorkday}
-                  onClick={() => handleMark(emp.employeeId, 'HALF', att.revision)}
-                >
-                  ครึ่งวัน
-                </button>
-
-                <button
-                  type="button"
-                  className={`${styles.statusBtn} ${
-                    att.status === 'ABSENT' ? styles.statusBtnAbsentSelected : ''
-                  }`}
-                  aria-pressed={att.status === 'ABSENT'}
-                  disabled={loading || isPending || isClosed || !isWorkday}
-                  onClick={() => handleMark(emp.employeeId, 'ABSENT', att.revision)}
-                >
-                  ไม่มา
-                </button>
-              </div>
-
-              {/* Advance Salary Input directly following attendance status */}
-              <div className={styles.advanceSection}>
-                <label className={styles.advanceLabel} htmlFor={`advance-${emp.employeeId}`}>
-                  เบิกเงินล่วงหน้า บาท
-                </label>
-                <div className={styles.advanceRow}>
-                  <input
-                    id={`advance-${emp.employeeId}`}
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    min="0"
-                    className={styles.advanceInput}
-                    placeholder="ระบุจำนวนเงิน เช่น 200"
-                    value={advanceInputs[emp.employeeId] ?? (att.advanceSatang ? (att.advanceSatang / 100).toFixed(2) : '')}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setAdvanceInputs(prev => ({ ...prev, [emp.employeeId]: val }));
-                    }}
-                    disabled={loading || isPending || isClosed || !isWorkday}
-                  />
-                  <button
-                    type="button"
-                    className={styles.advanceSaveBtn}
-                    disabled={loading || isPending || isClosed || !isWorkday}
-                    onClick={() => handleSaveAdvance(emp.employeeId, att.status, att.revision)}
-                  >
-                    บันทึกเบิก
-                  </button>
-                </div>
-                {att.advanceSatang > 0 && (
-                  <div className={styles.advanceBadge}>
-                    บันทึกเบิกแล้ว {(att.advanceSatang / 100).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
+            return (
+              <article key={emp.employeeId} className={styles.personCard} aria-busy={isPending}>
+                <div>
+                  <div className="saveStatusSlot" role="status">{isPending && <span className="busyInline">กำลังบันทึก</span>}</div>
+                  <div className={styles.personHead}>
+                    <div className={styles.avatar}>
+                      {emp.photo ? (
+                        <img
+                          loading="lazy"
+                          decoding="async"
+                          src={`/api/employees/${emp.employeeId}/photo?v=${emp.photo.version}`}
+                          alt={`รูป ${emp.nickname || emp.name}`}
+                        />
+                      ) : (
+                        (emp.nickname || emp.name).slice(0, 1)
+                      )}
+                    </div>
+                    <div className={styles.personInfo}>
+                      <h3 className={styles.personName}>{emp.nickname || emp.name}</h3>
+                      <p className={styles.personPosition}>
+                        {emp.position}
+                        {emp.name && emp.nickname && emp.name !== emp.nickname && ` · ${emp.name}`}
+                      </p>
+                    </div>
                   </div>
-                )}
-              </div>
 
-              {/* Deduction Input directly following advance */}
-              <div className={styles.deductionSection}>
-                <label className={styles.deductionLabel} htmlFor={`deduction-${emp.employeeId}`}>
-                  หักเงิน บาท
-                </label>
-                <div className={styles.advanceRow}>
-                  <input
-                    id={`deduction-${emp.employeeId}`}
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    min="0"
-                    className={styles.advanceInput}
-                    placeholder="ระบุจำนวนเงิน เช่น 100"
-                    value={deductionInputs[emp.employeeId] ?? (att.deductionSatang ? (att.deductionSatang / 100).toFixed(2) : '')}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setDeductionInputs(prev => ({ ...prev, [emp.employeeId]: val }));
-                    }}
-                    disabled={loading || isPending || isClosed || !isWorkday}
-                  />
-                  <button
-                    type="button"
-                    className={styles.deductionSaveBtn}
-                    disabled={loading || isPending || isClosed || !isWorkday}
-                    onClick={() => handleSaveDeduction(emp.employeeId, att.status, att.revision)}
+                  <div
+                    className={styles.statusGrid}
+                    role="group"
+                    aria-label={`เช็กชื่อ ${emp.nickname || emp.name}`}
                   >
-                    บันทึกหัก
-                  </button>
-                </div>
-                {att.deductionSatang > 0 && (
-                  <div className={styles.deductionBadge}>
-                    หักเงินแล้ว {(att.deductionSatang / 100).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
+                    <button
+                      type="button"
+                      className={`${styles.statusBtn} ${att.status === 'FULL' ? styles.statusBtnFullSelected : ''}`}
+                      aria-pressed={att.status === 'FULL'}
+                      disabled={disabled}
+                      onClick={() => handleMark(emp.employeeId, 'FULL', att.revision)}
+                    >
+                      เต็มวัน
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`${styles.statusBtn} ${att.status === 'HALF' ? styles.statusBtnHalfSelected : ''}`}
+                      aria-pressed={att.status === 'HALF'}
+                      disabled={disabled}
+                      onClick={() => handleMark(emp.employeeId, 'HALF', att.revision)}
+                    >
+                      ครึ่งวัน
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`${styles.statusBtn} ${att.status === 'ABSENT' ? styles.statusBtnAbsentSelected : ''}`}
+                      aria-pressed={att.status === 'ABSENT'}
+                      disabled={disabled}
+                      onClick={() => handleMark(emp.employeeId, 'ABSENT', att.revision)}
+                    >
+                      ไม่มา
+                    </button>
                   </div>
-                )}
-              </div>
 
-              <div className={styles.cardFooter}>
-                <span className={styles.statusText}>
-                  {isPending
-                    ? 'กำลังบันทึก…'
-                    : att.automatic
-                    ? 'เต็มวัน · ค่าเริ่มต้น'
-                    : att.status !== 'UNMARKED'
-                    ? `${statusLabel} · บันทึกแล้ว`
-                    : att.advanceSatang > 0 && att.deductionSatang > 0
-                    ? 'บันทึกเบิกและหักเงินแล้ว'
-                    : att.advanceSatang > 0
-                    ? 'บันทึกเบิกเงินแล้ว'
-                    : att.deductionSatang > 0
-                    ? 'บันทึกหักเงินแล้ว'
-                    : 'วันหยุด'}
-                </span>
-
-                {(!att.automatic && (att.status !== 'UNMARKED' || att.advanceSatang > 0 || att.deductionSatang > 0)) && !isClosed && (
-                  <div>
-                    {isClearing ? (
-                      <div className={styles.confirmBox}>
-                        <span>ยืนยันล้างสถานะและยอดเงิน</span>
-                        <button
-                          type="button"
-                          className={styles.textBtn}
-                          disabled={isPending}
-                          onClick={() => handleMark(emp.employeeId, 'UNMARKED', att.revision, 0, 0)}
-                        >
-                          ยืนยัน
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.textBtn}
-                          onClick={() => setClearingId(null)}
-                        >
-                          ยกเลิก
-                        </button>
-                      </div>
-                    ) : (
+                  <div className={styles.moneySection}>
+                    <label className={styles.advanceLabel} htmlFor={`advance-${emp.employeeId}`}>
+                      เบิกเงินล่วงหน้า (บาท)
+                    </label>
+                    <div className={styles.moneyRow}>
+                      <input
+                        id={`advance-${emp.employeeId}`}
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min="0"
+                        className={styles.moneyInput}
+                        placeholder="เช่น 200"
+                        value={advanceInputs[emp.employeeId] ?? (att.advanceSatang ? (att.advanceSatang / 100).toFixed(2) : '')}
+                        onChange={e => setAdvanceInputs(prev => ({ ...prev, [emp.employeeId]: e.target.value }))}
+                        disabled={disabled}
+                      />
                       <button
                         type="button"
-                        className={styles.textBtn}
-                        onClick={() => setClearingId(emp.employeeId)}
+                        className="btn btn-primary btn-sm"
+                        disabled={disabled}
+                        onClick={() => handleSaveAdvance(emp.employeeId, att.status, att.revision)}
                       >
-                        ล้างรายการ
+                        บันทึกเบิก
                       </button>
+                    </div>
+                    {att.advanceSatang > 0 && (
+                      <div className={styles.moneyBadge}>
+                        เบิกแล้ว {(att.advanceSatang / 100).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            </article>
-          );
-        })}
+
+                  <div className={styles.moneySection}>
+                    <label className={styles.deductionLabel} htmlFor={`deduction-${emp.employeeId}`}>
+                      หักเงิน (บาท)
+                    </label>
+                    <div className={styles.moneyRow}>
+                      <input
+                        id={`deduction-${emp.employeeId}`}
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min="0"
+                        className={styles.moneyInput}
+                        placeholder="เช่น 100"
+                        value={deductionInputs[emp.employeeId] ?? (att.deductionSatang ? (att.deductionSatang / 100).toFixed(2) : '')}
+                        onChange={e => setDeductionInputs(prev => ({ ...prev, [emp.employeeId]: e.target.value }))}
+                        disabled={disabled}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-danger-solid btn-sm"
+                        disabled={disabled}
+                        onClick={() => handleSaveDeduction(emp.employeeId, att.status, att.revision)}
+                      >
+                        บันทึกหัก
+                      </button>
+                    </div>
+                    {att.deductionSatang > 0 && (
+                      <div className={styles.moneyBadge}>
+                        หักแล้ว {(att.deductionSatang / 100).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className={styles.cardFooter}>
+                  <span className={styles.statusText}>
+                    {isPending
+                      ? 'กำลังบันทึก…'
+                      : att.automatic
+                      ? 'เต็มวัน · ค่าเริ่มต้น'
+                      : att.status !== 'UNMARKED'
+                      ? `${statusLabel} · บันทึกแล้ว`
+                      : att.advanceSatang > 0 && att.deductionSatang > 0
+                      ? 'บันทึกเบิกและหักแล้ว'
+                      : att.advanceSatang > 0
+                      ? 'บันทึกเบิกแล้ว'
+                      : att.deductionSatang > 0
+                      ? 'บันทึกหักแล้ว'
+                      : 'วันหยุด'}
+                  </span>
+
+                  {(!att.automatic && (att.status !== 'UNMARKED' || att.advanceSatang > 0 || att.deductionSatang > 0)) && !isClosed && (
+                    <div>
+                      {isClearing ? (
+                        <div className={styles.confirmBox}>
+                          <span>ล้างรายการ?</span>
+                          <button
+                            type="button"
+                            className="btn btn-danger-solid btn-sm"
+                            disabled={isPending}
+                            onClick={() => handleMark(emp.employeeId, 'UNMARKED', att.revision, 0, 0)}
+                          >
+                            ยืนยัน
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => setClearingId(null)}
+                          >
+                            ยกเลิก
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-sm"
+                          onClick={() => setClearingId(emp.employeeId)}
+                        >
+                          ล้างรายการ
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
-      <div style={{ marginTop: '1.5rem', display: 'grid', gap: '.75rem' }}>
-        <button type="button" className={styles.noticeBtn} disabled={loading || isClosed || !isWorkday || Boolean(calendarPending) || Object.values(pendingMap).some(Boolean)} onClick={() => {
-          if (window.confirm(`กำหนดวันที่ ${formatThaiDate(selectedDate)} เป็นวันหยุดร้านหรือไม่\n\nระบบจะไม่นับค่าแรงตามปฏิทินของวันนี้ และจะเก็บข้อมูลเช็กชื่อไว้ คุณเปลี่ยนกลับเป็นวันทำงานได้`)) void runCalendarAction('กำลังบันทึกวันหยุดร้าน', () => handleAddWorkday('HOLIDAY'));
-        }}>{!isWorkday ? 'วันที่เลือกเป็นวันหยุดร้าน' : 'วันหยุดร้านเฉพาะกิจ'}</button>
-        <LineSendButton scope="attendance" className={styles.noticeBtn} />
+
+      <div className={styles.bottomActions}>
+        <button
+          type="button"
+          className="btn btn-warning btn-block"
+          disabled={loading || isClosed || !isWorkday || Boolean(calendarPending) || hasAnyPending}
+          onClick={() => {
+            if (window.confirm(`กำหนดวันที่ ${formatThaiDate(selectedDate)} เป็นวันหยุดร้านหรือไม่\n\nวันนี้จะไม่นับค่าแรงตามตาราง แต่ข้อมูลเช็กชื่อยังอยู่ และเปลี่ยนกลับเป็นวันทำงานได้`)) {
+              void runCalendarAction('กำลังบันทึกวันหยุดร้าน', () => handleAddWorkday('HOLIDAY'));
+            }
+          }}
+        >
+          <CalendarOff size={20} aria-hidden="true" />
+          <span>{!isWorkday ? 'วันนี้เป็นวันหยุดร้านแล้ว' : 'วันหยุดร้านเฉพาะกิจ'}</span>
+        </button>
+        <LineSendButton scope="attendance" />
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import { MutationIntent } from '@/lib/client/mutation-intent';
 import { notifyDataChanged } from '@/lib/client/data-events';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { ArrowLeft, ChartNoAxesCombined, ChevronRight, FileArchive, FileDown, Lock, LockOpen, Plus } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { formatMoney } from '@/lib/payroll/money';
 import { formatThaiDate, formatThaiMonth } from '@/lib/payroll/dates';
@@ -48,7 +49,6 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Detail View State
   const [selectedEmployeeId, setSelectedEmployeeId] = useHistoryState<string | null>('report-person', null);
   const [detailData, setDetailData] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState<boolean>(false);
@@ -81,7 +81,6 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
     finally { exportLock.current = false; setExporting(false); }
   };
 
-  // Modal States
   const [showCloseModal, setShowCloseModal] = useHistoryState<boolean>('close-month', false);
   const [closeStatus, setCloseStatus] = useState<any>(null);
   const [closeLoading, setCloseLoading] = useState<boolean>(false);
@@ -126,7 +125,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       } catch {
         if (sequence === reportFetchSequence.current && !controller.signal.aborted) {
           setReportData(null);
-          setErrorMsg('เชื่อมต่อระบบไม่ได้');
+          setErrorMsg('เชื่อมต่อไม่ได้');
         }
       } finally {
         if (sequence === reportFetchSequence.current) setLoading(false);
@@ -157,7 +156,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           setDetailError(json.error?.message || 'โหลดรายละเอียดไม่สำเร็จ');
         }
       } catch {
-        if (sequence === detailFetchSequence.current && !controller.signal.aborted && matchesReportSelection(currentSelection.current, empId, month)) setDetailError('ไม่สามารถโหลดรายละเอียดได้');
+        if (sequence === detailFetchSequence.current && !controller.signal.aborted && matchesReportSelection(currentSelection.current, empId, month)) setDetailError('โหลดรายละเอียดไม่สำเร็จ');
       } finally {
         if (sequence === detailFetchSequence.current) setDetailLoading(false);
       }
@@ -177,11 +176,9 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
   }, [active, attendanceVersion, selectedEmployeeId, selectedMonth, fetchEmployeeDetail]);
 
   const handleOpenDetail = (empId: string) => {
-    // The parent of an individual statement is the detailed report, including Android Back.
     window.history.pushState({ ...window.history.state, attendanceParent: '/reports', attendanceNavigation: {} }, '', '/reports/detailed');
     setSelectedEmployeeId(empId);
     window.history.replaceState(window.history.state, '', '/reports');
-
   };
 
   const handleBackToDetailedReports = () => {
@@ -193,7 +190,6 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
     onOpenDetailedReports();
   };
 
-  // Month Closing Workflow
   const handleStartClose = async () => {
     if (!idToken || !reportData || closeLoading) return;
     setCloseLoading(true);
@@ -214,14 +210,13 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       const json = await res.json();
       if (json.ok) {
         setCloseStatus(json.data);
-        // Continue processing
         handleContinueClose(json.data.jobId);
       } else {
-        alert(json.error?.message || 'เริ่มปิดรอบเดือนไม่สำเร็จ');
+        alert(json.error?.message || 'ปิดรอบเดือนไม่สำเร็จ');
         setCloseLoading(false);
       }
     } catch {
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+      alert('เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง');
       setCloseLoading(false);
     }
   };
@@ -237,7 +232,6 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       if (json.ok) {
         setCloseStatus(json.data);
         if (json.data.status === 'IN_PROGRESS') {
-          // Recursive continue next chunk
           handleContinueClose(jobId);
         } else if (json.data.status === 'COMPLETED') {
           setCloseLoading(false);
@@ -248,11 +242,11 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           setCloseLoading(false);
         }
       } else {
-        alert(json.error?.message || 'การปิดเดือนขัดข้อง');
+        alert(json.error?.message || 'ปิดรอบเดือนขัดข้อง');
         setCloseLoading(false);
       }
     } catch {
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+      alert('เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง');
       setCloseLoading(false);
     }
   };
@@ -266,22 +260,21 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       });
       const json = await res.json();
       if (json.ok) {
-        alert('ยกเลิกงานปิดเดือนเรียบร้อย');
+        alert('ยกเลิกการปิดเดือนแล้ว');
         setShowCloseModal(false);
         setCloseStatus(null);
         notifyDataChanged();
       } else {
-        alert(json.error?.message || 'ยกเลิกการปิดรอบเดือนไม่สำเร็จ');
+        alert(json.error?.message || 'ยกเลิกไม่สำเร็จ');
       }
     } catch {
-      alert('ยกเลิกการปิดรอบเดือนไม่สำเร็จ');
+      alert('ยกเลิกไม่สำเร็จ');
     }
   };
 
-  // Reopen Month
   const handleReopen = async () => {
     if (!idToken || !reopenReason.trim()) {
-      alert('กรุณาระบุเหตุผลที่เปิดรอบเดือนอีกครั้ง');
+      alert('ระบุเหตุผลก่อนเปิดรอบเดือน');
       return;
     }
     const requestId = crypto.randomUUID();
@@ -300,22 +293,21 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       });
       const json = await res.json();
       if (json.ok) {
-        alert('เปิดเดือนเพื่อแก้ไขเรียบร้อย');
+        alert('เปิดรอบเดือนแล้ว');
         setShowReopenModal(false);
         setReopenReason('');
         notifyDataChanged();
       } else {
-        alert(json.error?.message || 'เปิดรอบเดือนอีกครั้งไม่สำเร็จ');
+        alert(json.error?.message || 'เปิดรอบเดือนไม่สำเร็จ');
       }
     } catch {
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+      alert('เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง');
     }
   };
 
-  // Add Monthly Extra
   const handleAddMonthExtra = async () => {
     if (!idToken || !selectedEmployeeId || !newExtraLabel.trim() || !newExtraAmount.trim()) {
-      alert('กรุณาระบุชื่อรายการและจำนวนเงิน');
+      alert('กรอกชื่อรายการและจำนวนเงินให้ครบ');
       return;
     }
     const payload = { employeeId: selectedEmployeeId, label: newExtraLabel.trim(), amount: newExtraAmount.trim(), type: extraType };
@@ -335,7 +327,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       const json = await res.json();
       if (json.ok) {
         extraIntent.current.complete();
-        alert(extraType === 'DEDUCTION' ? 'บันทึกรายการหักเงินเดือนนี้เรียบร้อย' : 'บันทึกเงินพิเศษเดือนนี้เรียบร้อย');
+        alert(extraType === 'DEDUCTION' ? 'บันทึกรายการหักแล้ว' : 'บันทึกเงินพิเศษแล้ว');
         setShowExtrasModal(false);
         setNewExtraLabel('');
         setNewExtraAmount('');
@@ -345,11 +337,10 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
         alert(json.error?.message || 'บันทึกไม่สำเร็จ');
       }
     } catch {
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+      alert('เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง');
     }
   };
 
-  // Confirm Extra Review
   const handleConfirmReview = async () => {
     if (!idToken || !selectedEmployeeId) return;
     const requestId = crypto.randomUUID();
@@ -367,21 +358,37 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       });
       const json = await res.json();
       if (json.ok) {
-        alert('ยืนยันตรวจสอบเงินพิเศษเรียบร้อย');
+        alert('ยืนยันรายการแล้ว');
         notifyDataChanged();
       } else {
         alert(json.error?.message || 'ยืนยันไม่สำเร็จ');
       }
     } catch {
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+      alert('เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง');
     }
   };
 
   if (selectedEmployeeId && (!detailData || detailData.employeeId !== selectedEmployeeId || detailData.month !== selectedMonth)) {
-    if (detailError) return <div><button className={styles.backBtn} onClick={handleBackToDetailedReports}>กลับรายงานละเอียด</button><p role="alert" className={styles.notice}>{detailError}</p><button className={styles.primaryBtn} onClick={() => fetchEmployeeDetail(selectedEmployeeId, selectedMonth)}>ลองใหม่</button></div>;
+    if (detailError) {
+      return (
+        <div>
+          <button type="button" className="btn btn-secondary btn-sm" style={{ marginBottom: '1rem' }} onClick={handleBackToDetailedReports}>
+            <ArrowLeft size={18} aria-hidden="true" />
+            <span>กลับรายงานละเอียด</span>
+          </button>
+          <p role="alert" className="app-notice app-notice-danger">{detailError}</p>
+          <button type="button" className="btn btn-primary" style={{ marginTop: '0.75rem' }} onClick={() => fetchEmployeeDetail(selectedEmployeeId, selectedMonth)}>
+            ลองใหม่
+          </button>
+        </div>
+      );
+    }
     return (
       <div aria-busy="true" aria-label="กำลังโหลดรายละเอียดรายงาน">
-        <button type="button" className={styles.backBtn} onClick={handleBackToDetailedReports}>กลับรายงานละเอียด</button>
+        <button type="button" className="btn btn-secondary btn-sm" style={{ marginBottom: '1rem' }} onClick={handleBackToDetailedReports}>
+          <ArrowLeft size={18} aria-hidden="true" />
+          <span>กลับรายงานละเอียด</span>
+        </button>
         <div className="refreshStatus" role="status">กำลังโหลดรายงานรายบุคคล</div>
         <div className="loadingCard"><span className="loadingLine" /><span className="loadingLine" /></div>
         <div className={styles.reportsGrid}>
@@ -391,18 +398,24 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
     );
   }
 
-  // Detail view rendering
   if (selectedEmployeeId && detailData) {
     return (
       <div className={styles.detailContainer}>
-        {detailError && <p className={styles.notice} role="alert">{detailError}<button className={styles.backBtn} onClick={() => fetchEmployeeDetail(selectedEmployeeId, selectedMonth)}>ลองใหม่</button></p>}
-        {(detailLoading || reportPending) && <div className="refreshStatus" role="status">{reportPending || 'กำลังอัปเดตรายงานรายบุคคล'}</div>}
-        <button type="button" className={styles.backBtn} onClick={handleBackToDetailedReports}>
-          ← กลับรายงานละเอียด
+        {detailError && (
+          <div className="app-notice app-notice-danger" role="alert" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <span>{detailError}</span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => fetchEmployeeDetail(selectedEmployeeId, selectedMonth)}>ลองใหม่</button>
+          </div>
+        )}
+        {(detailLoading || reportPending) && <div className="refreshStatus" role="status">{reportPending || 'กำลังอัปเดตรายงาน'}</div>}
+
+        <button type="button" className="btn btn-secondary btn-sm" style={{ marginBottom: '1rem' }} onClick={handleBackToDetailedReports}>
+          <ArrowLeft size={18} aria-hidden="true" />
+          <span>กลับรายงานละเอียด</span>
         </button>
 
         <h2 className={styles.title}>{detailData.nickname || detailData.name}</h2>
-        <p style={{ color: 'var(--team-muted)', margin: '0 0 1rem' }}>
+        <p className={styles.detailSub}>
           {formatThaiMonth(selectedMonth)} · {detailData.position}
           {detailData.name && detailData.nickname && detailData.name !== detailData.nickname && ` · ${detailData.name}`}
         </p>
@@ -439,14 +452,15 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                 {!reportData?.isClosed && (
                   <button
                     type="button"
-                    className={styles.backBtn}
+                    className="btn btn-secondary btn-sm"
                     disabled={Boolean(reportPending)}
                     onClick={() => {
                       setExtraType('BONUS');
                       setShowExtrasModal(true);
                     }}
                   >
-                    + เพิ่มเงินพิเศษหรือรายการหัก
+                    <Plus size={18} aria-hidden="true" />
+                    <span>เพิ่มเงินพิเศษ / หักเงิน</span>
                   </button>
                 )}
               </div>
@@ -475,7 +489,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
 
               {detailData.advanceSatang > 0 && (
                 <div className={`${styles.lineItem} ${styles.deductionItem}`}>
-                  <span>หักเบิกเงินล่วงหน้ารวม</span>
+                  <span>หักเบิกล่วงหน้ารวม</span>
                   <strong>-{formatMoney(detailData.advanceSatang)} บาท</strong>
                 </div>
               )}
@@ -493,9 +507,9 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                 return null;
               })()}
 
-              <div className={styles.lineItem} style={{ borderTop: '2px solid var(--team-border)', marginTop: '0.4rem', paddingTop: '0.8rem' }}>
-                <strong>ยอดสุทธิทั้งสิ้น</strong>
-                <strong style={{ fontSize: '1.4rem', color: 'var(--team-primary-dark)' }}>
+              <div className={`${styles.lineItem} ${styles.lineItemTotal}`}>
+                <strong>ยอดสุทธิ</strong>
+                <strong className={styles.lineItemTotalValue}>
                   {formatMoney(detailData.totalSatang)} บาท
                 </strong>
               </div>
@@ -503,12 +517,12 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
               {!reportData?.isClosed && (
                 <button
                   type="button"
-                  className={styles.secondaryBtn}
+                  className="btn btn-secondary btn-block"
                   style={{ marginTop: '1rem' }}
                   onClick={() => runReportAction('กำลังยืนยันรายการเงิน', handleConfirmReview)}
                   disabled={Boolean(reportPending) || detailLoading}
                 >
-                  ยืนยันการตรวจสอบเงินพิเศษและรายการหัก
+                  ยืนยันตรวจสอบเงินพิเศษและรายการหัก
                 </button>
               )}
             </section>
@@ -538,13 +552,13 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                             </span>
                           )}
                           {d.deductionSatang > 0 && (
-                            <span style={{ color: '#dc2626', marginLeft: '0.5rem', fontWeight: 700 }}>
+                            <span style={{ color: 'var(--team-absent)', marginLeft: '0.5rem', fontWeight: 700 }}>
                               · หัก {formatMoney(d.deductionSatang)} บาท
                             </span>
                           )}
                         </span>
                       </div>
-                      <span>{d.amountSatang === null ? '—' : `${formatMoney(d.amountSatang)} บาท`}</span>
+                      <strong>{d.amountSatang === null ? '—' : `${formatMoney(d.amountSatang)} บาท`}</strong>
                     </div>
                   );
                 })}
@@ -552,38 +566,42 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
           </div>
         </div>
 
-        <button type="button" className={styles.primaryBtn} style={{ width: '100%', marginTop: '1rem' }} disabled={exporting || detailLoading} onClick={() => exportSalary(selectedEmployeeId)}>
-          {exporting ? 'กำลังสร้าง PDF' : 'ดาวน์โหลดสรุปค่าจ้าง (PDF)'}
-        </button>
-        {exporting && <div className="refreshStatus" role="status">กำลังจัดทำใบเงินเดือน</div>}
-        {exportError && <p role="alert">{exportError}</p>}
-      <div style={{ marginTop: '1rem' }}><LineSendButton scope="attendance" className={styles.secondaryBtn} /></div>
+        <div className={styles.detailActions}>
+          <button type="button" className="btn btn-primary btn-block" disabled={exporting || detailLoading} onClick={() => exportSalary(selectedEmployeeId)}>
+            <FileDown size={20} aria-hidden="true" />
+            <span>{exporting ? 'กำลังสร้าง PDF…' : 'ดาวน์โหลดใบเงินเดือน (PDF)'}</span>
+          </button>
+          <LineSendButton scope="attendance" />
+        </div>
+        {exporting && <div className="refreshStatus" role="status">กำลังสร้างใบเงินเดือน</div>}
+        {exportError && <p className="app-notice app-notice-danger" role="alert" style={{ marginTop: '0.75rem' }}>{exportError}</p>}
 
-        {/* Add Month Extra Modal */}
         {showExtrasModal && (
-          <div className={styles.modalOverlay}>
-            <div className={styles.modalCard} data-app-dialog role="dialog" aria-modal="true" aria-label="รายการรายงาน" tabIndex={-1}>
-              <h3 className={styles.modalTitle}>
+          <div className="app-modal-overlay">
+            <div className="app-modal-card" data-app-dialog role="dialog" aria-modal="true" aria-label="รายการเงินเพิ่มเติม" tabIndex={-1}>
+              <h3 className="app-modal-title">
                 {extraType === 'DEDUCTION' ? 'เพิ่มรายการหักเงินเดือนนี้' : 'เพิ่มเงินพิเศษเดือนนี้'}
               </h3>
-              <p style={{ color: 'var(--team-muted)', fontSize: 'var(--team-secondary)' }}>
-                สำหรับ {detailData.nickname || detailData.name} เฉพาะเดือน {formatThaiMonth(selectedMonth)}
+              <p className="app-modal-desc">
+                {detailData.nickname || detailData.name} · {formatThaiMonth(selectedMonth)}
               </p>
 
               <div className={styles.typeSelector}>
                 <button
                   type="button"
-                  className={`${styles.typeBtn} ${extraType === 'BONUS' ? styles.typeBtnActiveBonus : ''}`}
+                  className={`btn btn-sm ${extraType === 'BONUS' ? 'btn-primary' : 'btn-secondary'}`}
+                  aria-pressed={extraType === 'BONUS'}
                   onClick={() => setExtraType('BONUS')}
                 >
-                  เงินเพิ่มพิเศษ
+                  เงินพิเศษ
                 </button>
                 <button
                   type="button"
-                  className={`${styles.typeBtn} ${extraType === 'DEDUCTION' ? styles.typeBtnActiveDeduction : ''}`}
+                  className={`btn btn-sm ${extraType === 'DEDUCTION' ? 'btn-danger-solid' : 'btn-secondary'}`}
+                  aria-pressed={extraType === 'DEDUCTION'}
                   onClick={() => setExtraType('DEDUCTION')}
                 >
-                  รายการหักเงิน
+                  หักเงิน
                 </button>
               </div>
 
@@ -598,7 +616,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
               </label>
 
               <label className={styles.monthLabel} style={{ marginTop: '0.8rem' }}>
-                จำนวนเงิน บาท
+                จำนวนเงิน (บาท)
                 <input
                   type="text"
                   inputMode="decimal"
@@ -609,17 +627,22 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                 />
               </label>
 
-              <div className={styles.modalActions}>
-                <button type="button" className={styles.primaryBtn} disabled={Boolean(reportPending)} onClick={() => runReportAction('กำลังบันทึกรายการเงิน', handleAddMonthExtra)}>
-                  {reportPending ? <span className="busyInline">กำลังบันทึก</span> : 'บันทึกรายการ'}
-                </button>
+              <div className="app-modal-actions">
                 <button
                   type="button"
-                  className={styles.secondaryBtn}
+                  className="btn btn-secondary"
                   onClick={() => setShowExtrasModal(false)}
                   disabled={Boolean(reportPending)}
                 >
                   ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${extraType === 'DEDUCTION' ? 'btn-danger-solid' : 'btn-primary'}`}
+                  disabled={Boolean(reportPending)}
+                  onClick={() => runReportAction('กำลังบันทึกรายการเงิน', handleAddMonthExtra)}
+                >
+                  {reportPending ? <span className="busyInline">กำลังบันทึก</span> : 'บันทึกรายการ'}
                 </button>
               </div>
             </div>
@@ -629,7 +652,6 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
     );
   }
 
-  // Summary View
   return (
     <div>
       <h2 className={styles.title}>รายงาน</h2>
@@ -653,7 +675,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
         </div>
       </div>
 
-      {errorMsg && <div className={styles.notice}>{errorMsg}</div>}
+      {errorMsg && <div className="app-notice app-notice-danger" role="alert" style={{ marginBottom: '1rem' }}>{errorMsg}</div>}
       {(loading || reportPending) && <div className="refreshStatus" role="status">{reportPending || 'กำลังโหลดรายงาน'}</div>}
 
       {!loading && errorMsg && !reportData ? null : !reportData ? (
@@ -671,29 +693,22 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
             <p className={styles.summarySub}>
               ค่าแรงสะสม {formatMoney(reportData.totals.base)} บาท
               {reportData.totals.extra > 0 && ` + เงินพิเศษ ${formatMoney(reportData.totals.extra)} บาท`}
-              {reportData.totals.advance > 0 && ` - หักเบิก ${formatMoney(reportData.totals.advance)} บาท`}
-              {reportData.totals.deduction > 0 && ` - หักเงิน ${formatMoney(reportData.totals.deduction)} บาท`}
+              {reportData.totals.advance > 0 && ` - เบิก ${formatMoney(reportData.totals.advance)} บาท`}
+              {reportData.totals.deduction > 0 && ` - หัก ${formatMoney(reportData.totals.deduction)} บาท`}
             </p>
           </div>
 
           {reportData.pendingTotal > 0 && (
             <div className={styles.notice}>
-              <strong>ยังมีรายการค้างเช็กชื่อ {reportData.pendingTotal} รายการ</strong>
-              <p style={{ margin: '0.2rem 0 0' }}>
-                เช็กชื่อให้ครบก่อนปิดรอบเดือน
-              </p>
+              <strong>ค้างเช็กชื่อ {reportData.pendingTotal} รายการ</strong>
+              <p>เช็กชื่อให้ครบก่อนปิดรอบเดือน</p>
             </div>
           )}
 
           {reportData.isClosed && (
-            <div
-              className={styles.notice}
-              style={{ backgroundColor: '#f0fdf4', borderColor: '#86efac', color: '#166534' }}
-            >
+            <div className="app-notice app-notice-success" style={{ marginBottom: '1rem' }}>
               <strong>ปิดรอบเดือนแล้ว</strong>
-              <p style={{ margin: '0.2rem 0 0' }}>
-                ระบบเก็บข้อมูล ณ วันปิดรอบไว้เป็นประวัติ
-              </p>
+              <p style={{ margin: '0.2rem 0 0' }}>เก็บยอด ณ วันปิดรอบไว้เรียบร้อย</p>
             </div>
           )}
 
@@ -708,24 +723,18 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                 <div className={styles.reportRowHead}>
                   <div>
                     <h3 className={styles.rowName}>{emp.nickname || emp.name}</h3>
-                    <span style={{ fontSize: 'var(--team-secondary)', color: 'var(--team-muted)' }}>
-                      {emp.position}
-                    </span>
+                    <span className={styles.rowPosition}>{emp.position}</span>
                   </div>
-                  <span style={{ fontSize: '1.2rem', color: 'var(--team-muted)' }}>›</span>
+                  <ChevronRight size={22} color="var(--team-muted)" aria-hidden="true" />
                 </div>
 
                 <div className={styles.rowMoney}>
                   {formatMoney(emp.totalSatang)} บาท
                   {emp.advanceSatang && emp.advanceSatang > 0 ? (
-                    <span style={{ fontSize: 'var(--team-secondary)', color: 'var(--team-absent)', marginLeft: '0.6rem', fontWeight: 700 }}>
-                      · หักเบิก {formatMoney(emp.advanceSatang)} บาท
-                    </span>
+                    <span className={styles.rowDeduction}>· เบิก {formatMoney(emp.advanceSatang)}</span>
                   ) : null}
                   {emp.deductionSatang && emp.deductionSatang > 0 ? (
-                    <span style={{ fontSize: 'var(--team-secondary)', color: '#dc2626', marginLeft: '0.6rem', fontWeight: 700 }}>
-                      · หัก {formatMoney(emp.deductionSatang)} บาท
-                    </span>
+                    <span className={styles.rowDeduction}>· หัก {formatMoney(emp.deductionSatang)}</span>
                   ) : null}
                 </div>
 
@@ -736,7 +745,7 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                 </div>
 
                 {emp.pending > 0 && (
-                  <div className={styles.pendingNotice}>ยังไม่ได้เช็กชื่อ {emp.pending} วัน</div>
+                  <div className={styles.pendingNotice}>ยังไม่เช็กชื่อ {emp.pending} วัน</div>
                 )}
                 {emp.error && <div className={styles.pendingNotice}>{emp.error}</div>}
               </button>
@@ -746,65 +755,74 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
       )}
 
       <div className={styles.summaryActions}>
+        <button type="button" className={`btn btn-primary btn-block ${styles.fullWidthAction}`} onClick={onOpenDetailedReports}>
+          <ChartNoAxesCombined size={20} aria-hidden="true" />
+          <span>ดูรายงานละเอียดและกราฟ</span>
+        </button>
+
         {reportData && (
-          <div className={styles.monthAction}>
-            {!reportData.isClosed ? (
-              <button
-                type="button"
-                className={styles.primaryBtn}
-                disabled={loading}
-                onClick={() => {
-                  setShowCloseModal(true);
-                  handleStartClose();
-                }}
-              >
-                ตรวจและปิดรอบเดือน
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={styles.secondaryBtn}
-                onClick={() => setShowReopenModal(true)}
-                disabled={loading}
-              >
-                เปิดรอบเดือนอีกครั้ง
-              </button>
-            )}
-          </div>
+          !reportData.isClosed ? (
+            <button
+              type="button"
+              className="btn btn-primary btn-block"
+              disabled={loading}
+              onClick={() => {
+                setShowCloseModal(true);
+                handleStartClose();
+              }}
+            >
+              <Lock size={20} aria-hidden="true" />
+              <span>ตรวจและปิดรอบเดือน</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-warning btn-block"
+              onClick={() => setShowReopenModal(true)}
+              disabled={loading}
+            >
+              <LockOpen size={20} aria-hidden="true" />
+              <span>เปิดรอบเดือนแก้ไข</span>
+            </button>
+          )
         )}
 
-        <button type="button" className={`${styles.primaryBtn} ${styles.fullWidthAction}`} onClick={onOpenDetailedReports}>
-          ดูรายงานละเอียดและกราฟ
-        </button>
-        <div className={styles.fullWidthAction}>
-          <button type="button" className={styles.secondaryBtn} disabled={exporting || loading || !reportData?.employees?.length} onClick={() => exportSalary()}>
-            {exporting ? 'กำลังสร้างไฟล์ทุกคน' : 'ส่งออกไฟล์ทุกคน'}
+        <div>
+          <button
+            type="button"
+            className="btn btn-secondary btn-block"
+            disabled={exporting || loading || !reportData?.employees?.length}
+            onClick={() => exportSalary()}
+          >
+            <FileArchive size={20} aria-hidden="true" />
+            <span>{exporting ? 'กำลังสร้างไฟล์ทุกคน…' : 'ส่งออกใบเงินเดือนทุกคน (ZIP)'}</span>
           </button>
-          {exporting && <div className="refreshStatus" role="status">กำลังจัดทำ PDF แยกรายบุคคล</div>}
-          {exportError && <p role="alert">{exportError}</p>}
+          {exporting && <div className="refreshStatus" role="status">กำลังสร้าง PDF แยกรายบุคคล</div>}
+          {exportError && <p className="app-notice app-notice-danger" role="alert" style={{ marginTop: '0.5rem' }}>{exportError}</p>}
         </div>
-        <div className={styles.lineAction}>
-          <LineSendButton scope="attendance" className={styles.secondaryBtn} />
+
+        <div className={styles.fullWidthAction}>
+          <LineSendButton scope="attendance" />
         </div>
       </div>
 
       {showCloseModal && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.modalCard} data-app-dialog role="dialog" aria-modal="true" aria-label="รายการรายงาน" tabIndex={-1}>
-            <h3 className={styles.modalTitle}>ปิดรอบเดือน {formatThaiMonth(selectedMonth)}</h3>
+        <div className="app-modal-overlay">
+          <div className="app-modal-card" data-app-dialog role="dialog" aria-modal="true" aria-label="ปิดรอบเดือน" tabIndex={-1}>
+            <h3 className="app-modal-title">ปิดรอบเดือน {formatThaiMonth(selectedMonth)}</h3>
 
             {closeLoading ? (
               <div>
-                <p className="busyInline" role="status">กำลังประมวลผลและปิดเดือน</p>
+                <p className="busyInline" role="status">กำลังปิดรอบเดือน</p>
                 {closeStatus && (
-                  <p style={{ color: 'var(--team-muted)', fontSize: 'var(--team-secondary)' }}>
-                    ความคืบหน้า: {closeStatus.cursor} จาก {closeStatus.totalEmployees} คน
+                  <p className="app-modal-desc">
+                    ตรวจแล้ว {closeStatus.cursor} จาก {closeStatus.totalEmployees} คน
                   </p>
                 )}
               </div>
             ) : closeStatus?.errors && closeStatus.errors.length > 0 ? (
               <div>
-                <div className={styles.notice} style={{ backgroundColor: 'var(--team-absent-bg)', borderColor: '#fca5a5', color: 'var(--team-absent)' }}>
+                <div className="app-notice app-notice-danger">
                   <strong>ปิดรอบเดือนไม่สำเร็จ</strong>
                   <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.2rem' }}>
                     {closeStatus.errors.map((err: string, i: number) => (
@@ -812,10 +830,10 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                     ))}
                   </ul>
                 </div>
-                <div className={styles.modalActions}>
+                <div style={{ marginTop: '1rem' }}>
                   <button
                     type="button"
-                    className={styles.primaryBtn}
+                    className="btn btn-primary btn-block"
                     onClick={() => runReportAction('กำลังยกเลิกการปิดเดือน', () => handleCancelClose(closeStatus.jobId))}
                     disabled={Boolean(reportPending)}
                   >
@@ -824,46 +842,44 @@ export function ReportsTab({ active, attendanceVersion, initialMonth, serverToda
                 </div>
               </div>
             ) : (
-              <p className="busyInline" role="status">กำลังเตรียมการปิดเดือน</p>
+              <p className="busyInline" role="status">กำลังเตรียมปิดรอบเดือน</p>
             )}
           </div>
         </div>
       )}
 
-      {/* Reopen Month Modal */}
       {showReopenModal && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.modalCard} data-app-dialog role="dialog" aria-modal="true" aria-label="รายการรายงาน" tabIndex={-1}>
-            <h3 className={styles.modalTitle}>เปิดรอบเดือนอีกครั้ง</h3>
-            <p style={{ color: 'var(--team-muted)', fontSize: 'var(--team-secondary)' }}>
-              เมื่อเปิดรอบเดือนอีกครั้ง จะแก้ไขการเช็กชื่อและเงินพิเศษได้ชั่วคราว
-              ระบบเก็บประวัติการแก้ไขไว้
+        <div className="app-modal-overlay">
+          <div className="app-modal-card" data-app-dialog role="dialog" aria-modal="true" aria-label="เปิดรอบเดือนแก้ไข" tabIndex={-1}>
+            <h3 className="app-modal-title app-modal-title-warning">เปิดรอบเดือนแก้ไข</h3>
+            <p className="app-modal-desc">
+              เปิดรอบเพื่อแก้เช็กชื่อหรือเงินพิเศษชั่วคราว และเก็บประวัติการแก้ไขไว้
             </p>
 
-            <label className={styles.monthLabel} style={{ marginTop: '1rem' }}>
-              เหตุผลที่เปิดรอบเดือนอีกครั้ง
+            <label className={styles.monthLabel}>
+              เหตุผลที่เปิดรอบเดือน
               <textarea
                 className={styles.monthSelect}
                 style={{ minHeight: '5rem', resize: 'vertical' }}
                 value={reopenReason}
                 onChange={e => setReopenReason(e.target.value)}
-                placeholder="เช่น แก้ไขข้อมูลการเช็กชื่อ"
+                placeholder="เช่น แก้ไขวันเช็กชื่อ"
               />
             </label>
 
-            <div className={styles.modalActions}>
-              <button type="button" className={styles.primaryBtn} disabled={Boolean(reportPending)} onClick={() => runReportAction('กำลังเปิดเดือนเพื่อแก้ไข', handleReopen)}>
-                {reportPending ? <span className="busyInline">กำลังเปิดรอบเดือน</span> : 'ยืนยันเปิดรอบเดือน'}
-              </button>
+            <div className="app-modal-actions">
               <button
                 type="button"
-                className={styles.secondaryBtn}
+                className="btn btn-secondary"
                 onClick={() => {
                   setShowReopenModal(false);
                   setReopenReason('');
                 }}
               >
                 ยกเลิก
+              </button>
+              <button type="button" className="btn btn-warning-solid" disabled={Boolean(reportPending)} onClick={() => runReportAction('กำลังเปิดรอบเดือน', handleReopen)}>
+                {reportPending ? <span className="busyInline">กำลังเปิดรอบ</span> : 'ยืนยันเปิดรอบ'}
               </button>
             </div>
           </div>

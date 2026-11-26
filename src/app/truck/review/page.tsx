@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { getJson, sendJson, errMsg } from '@/components/truck/api';
 import { moneySatang, satangToDecimalString } from '@/lib/payroll/money';
 import { parseTonsToKg, formatWeightTons } from '@/lib/truck/weight';
 import { hasLegacyTripFees, legacyFeeSnapshot } from '@/lib/truck/pricing';
 import { MutationIntent } from '@/lib/client/mutation-intent';
-import styles from '@/components/settings/settings.module.css';
+import docStyles from '@/components/truck/truck-documents.module.css';
 
 type ReviewForm = Record<string, any>;
 const moneyText = (value: number | null | undefined) => value == null ? 'ยังไม่ระบุ' : `${satangToDecimalString(value)} บาท`;
@@ -64,8 +66,8 @@ export default function ReviewTrips() {
     setError('');
     try {
       const hasFees = hasLegacyTripFees(current);
-      if (hasFees && !form.confirmLegacyPricing) throw new Error('กรุณายืนยันว่าได้ตรวจเงินเพิ่มเดิมแล้ว');
-      if (hasFees && current.billable !== false && (legacyFeeSnapshot(current).billingExtraSatang ?? 0) > 0 && !form.billing.trim()) throw new Error('กรุณาระบุราคาเหมาใหม่');
+      if (hasFees && !form.confirmLegacyPricing) throw new Error('ยืนยันว่าได้ตรวจเงินเพิ่มเดิมแล้ว');
+      if (hasFees && current.billable !== false && (legacyFeeSnapshot(current).billingExtraSatang ?? 0) > 0 && !form.billing.trim()) throw new Error('ระบุราคาเหมาใหม่ก่อนบันทึก');
       const payload = {
         tripId: current.tripId,
         expectedRevision: current.revision || 0,
@@ -99,63 +101,133 @@ export default function ReviewTrips() {
   const field = (key: string, value: any) => setForm((previous: ReviewForm) => ({ ...previous, [key]: value }));
 
   return (
-    <main style={{ maxWidth: 900, margin: 'auto', padding: 24 }}>
-      <a href="/truck">กลับหน้ารถบรรทุก</a>
-      <h1>ตรวจข้อมูลเที่ยวเดิม</h1>
-      <p>ตรวจยอดเดิมและยืนยันราคาเหมาก่อนวางบิลหรือสรุปค่าเที่ยว</p>
-      {error && <p role="alert">{error}</p>}
-      {!current ? trips.length === 0 ? <p>ไม่มีเที่ยวที่ต้องตรวจ</p> : trips.map(trip => (
-        <article key={trip.tripId} style={{ padding: 12, borderBottom: '1px solid #ddd' }}>
-          <p>
-            {trip.departureDate} · {trip.legacyDriverName || trip.driverNameSnapshot || 'ไม่ระบุคนขับ'}
-          </p>
-          <p>
-            {trip.originNameSnapshot || trip.fromLocation} → {trip.destinationNameSnapshot || trip.destinationName}
-            {' · '}{tripStatusLabels[trip.status] || 'ไม่ทราบสถานะ'}
-          </p>
-          {hasLegacyTripFees(trip) && <p role="status">ต้องตรวจเงินเพิ่มเดิม: คนขับ {moneyText(legacyFeeSnapshot(trip).driverExtraSatang)} · ลูกค้า {moneyText(legacyFeeSnapshot(trip).billingExtraSatang)}</p>}
-          <button type="button" onClick={() => open(trip)} disabled={!!trip.invoiceId}>ตรวจและยืนยันราคา</button>
-        </article>
-      )) : data && (
-        <form onSubmit={save}>
-          <fieldset disabled={busy} style={{ border: 0, padding: 0 }}>
-            <h2>{current.legacyRecordId || current.recordId || current.tripId}</h2>
-            {hasLegacyTripFees(current) && (
-              <section aria-label="สรุปเงินเดิม" style={{ border: '1px solid #b45309', padding: 12, marginBottom: 16 }}>
-                <h3>ยอดเดิมที่ต้องตรวจ</h3>
-                <p>ค่าขนส่งเดิม: {moneyText(current.billingSatang)}</p>
-                <p>ค่าบริการเพิ่มเติมเดิมของลูกค้า: {moneyText(legacyFeeSnapshot(current).billingExtraSatang)}</p>
-                <p>เงินเพิ่มคนขับเดิม: {moneyText(legacyFeeSnapshot(current).driverExtraSatang)}</p>
-                <p>ระบบเก็บเงินเพิ่มคนขับตามสิทธิ์เดิมแยกจากค่าเที่ยวใหม่</p>
-                {(legacyFeeSnapshot(current).billingExtraSatang ?? 0) > 0 && <p>กรอกราคาเหมาต่อเที่ยวใหม่ด้วยตนเอง</p>}
-                <label><input type="checkbox" checked={form.confirmLegacyPricing} onChange={event => field('confirmLegacyPricing', event.target.checked)} /> ตรวจยอดเดิมและกำหนดราคาใหม่แล้ว</label>
-              </section>
-            )}
-            {[
-              ['driverId', 'คนขับ', data.truckDrivers, 'driverId'],
-              ['originId', 'ต้นทาง', data.truckLocations, 'locationId'],
-              ['destinationId', 'ปลายทาง', data.truckLocations, 'locationId'],
-              ['customerId', 'ลูกค้า', data.truckCustomers, 'customerId']
-            ].map(([key, label, items, idKey]: any) => (
-              <label key={key} style={{ display: 'block', marginBottom: 12 }}>
-                {label}
-                <select className={styles.formInput} required={key !== 'customerId' || form.billable} value={form[key]} onChange={event => field(key, event.target.value)}>
-                  <option value="">เลือก{label}</option>
-                  {items.filter((item: any) => item.status === 'ACTIVE').map((item: any) => <option key={item[idKey]} value={item[idKey]}>{item.code ? `${item.code} — ` : ''}{item.name}</option>)}
-                </select>
+    <main className={docStyles.page} data-app-theme="truck">
+      <header className={docStyles.pageHeader}>
+        <Link className="btn btn-secondary btn-sm" style={{ width: 'fit-content' }} href="/truck">
+          <ArrowLeft size={18} aria-hidden="true" />
+          <span>กลับหน้ารถสิบล้อ</span>
+        </Link>
+        <div>
+          <h1>ตรวจข้อมูลเที่ยวเดิม</h1>
+          <p className={docStyles.context}>ตรวจยอดเดิมและยืนยันราคาเหมาก่อนวางบิลหรือสรุปค่าเที่ยว</p>
+        </div>
+      </header>
+
+      {error && <p className="app-notice app-notice-danger" role="alert">{error}</p>}
+
+      {!current ? (
+        <section className={docStyles.block}>
+          {trips.length === 0 ? (
+            <p style={{ margin: 0, color: 'var(--team-muted)' }}>ไม่มีเที่ยวที่ต้องตรวจ</p>
+          ) : (
+            <div className={docStyles.invoiceList}>
+              {trips.map(trip => (
+                <article key={trip.tripId} className={docStyles.reviewCard}>
+                  <p>
+                    <strong>{trip.departureDate}</strong> · {trip.legacyDriverName || trip.driverNameSnapshot || 'ไม่ระบุคนขับ'}
+                  </p>
+                  <p>
+                    {trip.originNameSnapshot || trip.fromLocation} → {trip.destinationNameSnapshot || trip.destinationName}
+                    {' · '}{tripStatusLabels[trip.status] || 'ไม่ทราบสถานะ'}
+                  </p>
+                  {hasLegacyTripFees(trip) && (
+                    <p className="app-notice" role="status">
+                      ต้องตรวจเงินเพิ่มเดิม: คนขับ {moneyText(legacyFeeSnapshot(trip).driverExtraSatang)} · ลูกค้า {moneyText(legacyFeeSnapshot(trip).billingExtraSatang)}
+                    </p>
+                  )}
+                  <div className={docStyles.buttonRow} style={{ marginTop: '0.4rem' }}>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => open(trip)} disabled={Boolean(trip.invoiceId)}>
+                      ตรวจและยืนยันราคา
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : data && (
+        <section className={docStyles.block}>
+          <form onSubmit={save}>
+            <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: '0.95rem' }}>
+              <h2>{current.legacyRecordId || current.recordId || current.tripId}</h2>
+
+              {hasLegacyTripFees(current) && (
+                <section aria-label="สรุปเงินเดิม" className="app-notice" style={{ display: 'grid', gap: '0.4rem' }}>
+                  <h3 style={{ margin: 0 }}>ยอดเดิมที่ต้องตรวจ</h3>
+                  <p style={{ margin: 0 }}>ค่าขนส่งเดิม: {moneyText(current.billingSatang)}</p>
+                  <p style={{ margin: 0 }}>ค่าบริการเพิ่มเติมเดิมของลูกค้า: {moneyText(legacyFeeSnapshot(current).billingExtraSatang)}</p>
+                  <p style={{ margin: 0 }}>เงินเพิ่มคนขับเดิม: {moneyText(legacyFeeSnapshot(current).driverExtraSatang)}</p>
+                  <p style={{ margin: 0 }}>เงินเพิ่มคนขับตามสิทธิ์เดิมเก็บแยกจากค่าเที่ยวใหม่</p>
+                  {(legacyFeeSnapshot(current).billingExtraSatang ?? 0) > 0 && <p style={{ margin: 0, fontWeight: 700 }}>กรอกราคาเหมาต่อเที่ยวใหม่ด้วยตนเอง</p>}
+                  <label className={docStyles.reviewCheck}>
+                    <input type="checkbox" checked={form.confirmLegacyPricing} onChange={event => field('confirmLegacyPricing', event.target.checked)} />
+                    <span>ตรวจยอดเดิมและกำหนดราคาใหม่แล้ว</span>
+                  </label>
+                </section>
+              )}
+
+              <div className={docStyles.filterGrid}>
+                {[
+                  ['driverId', 'คนขับ', data.truckDrivers, 'driverId'],
+                  ['originId', 'ต้นทาง', data.truckLocations, 'locationId'],
+                  ['destinationId', 'ปลายทาง', data.truckLocations, 'locationId'],
+                  ['customerId', 'ลูกค้า', data.truckCustomers, 'customerId']
+                ].map(([key, label, items, idKey]: any) => (
+                  <label key={key}>
+                    <span>{label}</span>
+                    <select required={key !== 'customerId' || form.billable} value={form[key]} onChange={event => field(key, event.target.value)}>
+                      <option value="">เลือก{label}</option>
+                      {items.filter((item: any) => item.status === 'ACTIVE').map((item: any) => (
+                        <option key={item[idKey]} value={item[idKey]}>{item.code ? `${item.code} — ` : ''}{item.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+
+              <div className={docStyles.filterGrid}>
+                <label>
+                  <span>วันที่ออก</span>
+                  <input required type="date" value={form.departureDate} onChange={event => field('departureDate', event.target.value)} />
+                </label>
+                <label>
+                  <span>วันที่ถึง</span>
+                  <input type="date" value={form.arrivalDate} onChange={event => field('arrivalDate', event.target.value)} />
+                </label>
+                <label>
+                  <span>น้ำหนักบรรทุก (ตัน)</span>
+                  <input inputMode="decimal" value={form.weight} onChange={event => field('weight', event.target.value)} />
+                </label>
+              </div>
+
+              <p style={{ margin: 0, fontWeight: 700 }}>ค่าเที่ยวคนขับก่อนปรับราคา: {moneyText(current.driverPaySatang)}</p>
+
+              <label className={docStyles.reviewCheck}>
+                <input type="checkbox" checked={form.billable} onChange={event => field('billable', event.target.checked)} />
+                <span>เรียกเก็บลูกค้า</span>
               </label>
-            ))}
-            <label style={{ display: 'block' }}>วันที่ออก<input className={styles.formInput} required type="date" value={form.departureDate} onChange={event => field('departureDate', event.target.value)} /></label>
-            <label style={{ display: 'block' }}>วันที่ถึง<input className={styles.formInput} type="date" value={form.arrivalDate} onChange={event => field('arrivalDate', event.target.value)} /></label>
-            <label style={{ display: 'block' }}>น้ำหนักบรรทุก (ตัน)<input className={styles.formInput} inputMode="decimal" value={form.weight} onChange={event => field('weight', event.target.value)} /></label>
-            <p>ค่าเที่ยวคนขับก่อนปรับราคา: {moneyText(current.driverPaySatang)}</p>
-            <label><input type="checkbox" checked={form.billable} onChange={event => field('billable', event.target.checked)} /> เรียกเก็บลูกค้า</label>
-            <label style={{ display: 'block' }}>ราคาขนส่งเหมาต่อเที่ยว (บาท)<input className={styles.formInput} inputMode="decimal" value={form.billing} onChange={event => field('billing', event.target.value)} placeholder="ยังไม่ระบุราคา" /></label>
-            <label style={{ display: 'block' }}>เหตุผลที่ยืนยันราคา<input className={styles.formInput} required value={form.reason} onChange={event => field('reason', event.target.value)} /></label>
-            <button type="submit" disabled={busy}>{busy ? 'กำลังบันทึก…' : 'ยืนยันและบันทึกราคาเหมา'}</button>
-            <button type="button" disabled={busy} onClick={() => setCurrent(null)}>ยกเลิก</button>
-          </fieldset>
-        </form>
+
+              <label>
+                <span>ราคาขนส่งเหมาต่อเที่ยว (บาท)</span>
+                <input inputMode="decimal" value={form.billing} onChange={event => field('billing', event.target.value)} placeholder="ยังไม่ระบุราคา" />
+              </label>
+
+              <label>
+                <span>เหตุผลที่ยืนยันราคา</span>
+                <input required value={form.reason} onChange={event => field('reason', event.target.value)} />
+              </label>
+
+              <div className={docStyles.buttonRow}>
+                <button type="submit" className="btn btn-primary" disabled={busy}>
+                  {busy ? 'กำลังบันทึก…' : 'ยืนยันและบันทึกราคาเหมา'}
+                </button>
+                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setCurrent(null)}>
+                  ยกเลิก
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        </section>
       )}
     </main>
   );

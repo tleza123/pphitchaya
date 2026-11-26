@@ -6,15 +6,31 @@
   font-weight: 700;
 }
 
+.controlsBar {
+  background: var(--team-surface);
+  border: 1px solid var(--team-border);
+  border-radius: var(--team-radius-card);
+  padding: 1rem;
+  margin-bottom: 1.15rem;
+  box-shadow: var(--team-shadow-card);
+}
+
+.controlsTopRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
 .dateGroup {
-  margin-bottom: 1rem;
+  min-width: 0;
 }
 
 .dateLabel {
   display: block;
   font-size: var(--team-copy);
   font-weight: 700;
-  margin-bottom: 0.3rem;
+  color: var(--team-primary-dark);
+  margin-bottom: 0.35rem;
 }
 
 .dateRow {
@@ -25,29 +41,19 @@
 
 .dateInput {
   flex: 1;
+  min-width: 0;
   min-height: var(--team-btn-height);
-  padding: 0.6rem 0.7rem;
-  border: 1px solid var(--team-input-border);
+  padding: 0.6rem 0.8rem;
+  border: 1.5px solid var(--team-input-border);
   border-radius: var(--team-radius-small);
-  background-color: #ffffff;
+  background-color: var(--team-surface);
   color: var(--team-text);
-}
-
-.todayBtn {
-  min-height: var(--team-btn-height);
-  padding: 0.6rem 1rem;
-  border: 1px solid var(--team-border-strong);
-  border-radius: var(--team-radius-button);
-  background-color: #ffffff;
-  color: var(--team-primary);
-  font-weight: 700;
-  white-space: nowrap;
 }
 
 .thaiDateDisplay {
   color: var(--team-muted);
   font-size: var(--team-secondary);
-  margin-top: 0.3rem;
+  margin-top: 0.35rem;
 }
 
 .toolbar {
@@ -55,72 +61,31 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 0.6rem;
-  margin: 1rem 0;
+  gap: 0.65rem;
 }
 
 .checkedCount {
-  color: var(--team-muted);
-  font-size: var(--team-secondary);
-  font-variant-numeric: tabular-nums;
-  margin: 0;
-}
-
-.filterBtn {
-  min-height: var(--team-btn-height-secondary);
-  border: 1px solid var(--team-border-strong);
-  border-radius: var(--team-radius-small);
-  background: #ffffff;
-  color: var(--team-primary);
-  padding: 0.3rem 0.8rem;
+  color: var(--team-text);
   font-size: var(--team-secondary);
   font-weight: 700;
-}
-
-.filterBtnActive {
-  background-color: var(--team-primary);
-  color: #ffffff;
-  border-color: var(--team-primary);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
 }
 
 .searchInput {
   width: 100%;
   min-height: var(--team-btn-height);
-  padding: 0.6rem 0.8rem;
-  border: 1px solid var(--team-input-border);
+  padding: 0.6rem 0.85rem;
+  border: 1.5px solid var(--team-input-border);
   border-radius: var(--team-radius-small);
-  background: #ffffff;
-  margin-bottom: 1rem;
-}
-
-.notice {
-  background-color: var(--team-notice-bg);
-  border: 1px solid var(--team-notice-border);
-  border-radius: var(--team-radius-button);
-  padding: 1rem;
-  color: var(--team-notice-text);
-  margin-bottom: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.controlsBar {
-  margin-bottom: 1.2rem;
-}
-
-.controlsTopRow {
-  display: flex;
-  flex-direction: column;
+  background: var(--team-surface);
+  color: var(--team-text);
+  margin-top: 0.9rem;
 }
 
 @media (min-width: 768px) {
   .controlsBar {
-    background: #ffffff;
-    border: 1px solid var(--team-border);
-    border-radius: var(--team-radius-card);
-    padding: 1.2rem;
-    box-shadow: 0 2px 8px rgba(0, 53, 102, 0.04);
+    padding: 1.25rem;
   }
 
   .controlsTopRow {
@@ -132,15 +97,29 @@
   }
 
   .dateGroup {
-    margin-bottom: 0 !important;
     flex: 1;
     min-width: 18rem;
   }
 
   .toolbar {
-    margin: 0 !important;
-    gap: 0.8rem;
+    gap: 0.85rem;
   }
+}
+
+.notice {
+  background-color: var(--team-notice-bg);
+  border: 1px solid var(--team-notice-border);
+  border-radius: var(--team-radius-card);
+  padding: 1rem 1.1rem;
+  color: var(--team-notice-text);
+  margin-bottom: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.notice p {
+  margin: 0;
 }
 
 .cardGrid {
@@ -164,54 +143,41 @@
   }
 }
 
-.noticeBtn {
-  min-height: var(--team-btn-height);
-  background-color: var(--team-primary);
-  color: #ffffff;
-  border: none;
-  border-radius: var(--team-radius-button);
-  font-weight: 700;
-  font-size: var(--team-copy);
-  width: 100%;
-}
-
 .personCard {
   background-color: var(--team-surface);
   border: 1px solid var(--team-border);
   border-radius: var(--team-radius-card);
   padding: 1.15rem;
-  margin-bottom: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  box-shadow: 0 2px 8px rgba(0, 53, 102, 0.04);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: var(--team-shadow-card);
+  transition: border-color 150ms ease;
 }
 
 .personCard:hover {
   border-color: var(--team-border-strong);
-  box-shadow: 0 4px 14px rgba(0, 53, 102, 0.08);
 }
 
 .personHead {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.85rem;
   margin-bottom: 0.9rem;
 }
 
 .avatar {
-  flex: 0 0 3.5rem;
-  width: 3.5rem;
-  height: 4rem;
+  flex: 0 0 3.75rem;
+  width: 3.75rem;
+  height: 4.25rem;
   border-radius: var(--team-radius-small);
-  background-color: #edf2f7;
-  color: var(--team-muted);
+  background-color: var(--team-primary-soft);
+  color: var(--team-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 1.33rem;
+  font-size: 1.4rem;
   overflow: hidden;
 }
 
@@ -246,102 +212,57 @@
 .statusGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.533rem;
+  gap: 0.55rem;
 }
 
 .statusBtn {
   min-height: var(--team-btn-height);
-  border: 1px solid var(--team-border-strong);
+  border: 1.5px solid var(--team-border-strong);
   border-radius: var(--team-radius-button);
-  background: #ffffff;
+  background: var(--team-surface);
   color: var(--team-primary);
   font-size: var(--team-copy);
-  padding: 0.55rem 0.2rem;
+  font-weight: 700;
+  padding: 0.5rem 0.25rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.statusBtn:hover:not(:disabled) {
+  background: var(--team-surface-subtle);
+  border-color: var(--team-primary);
 }
 
 .statusBtn:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
 .statusBtnFullSelected {
-  background-color: var(--team-full-bg) !important;
-  color: var(--team-full) !important;
-  border-color: var(--team-full) !important;
+  background-color: var(--team-full-bg);
+  color: var(--team-full);
+  border-color: var(--team-full);
   box-shadow: inset 0 0 0 1px var(--team-full);
-  font-weight: 700 !important;
 }
 
 .statusBtnHalfSelected {
-  background-color: var(--team-half-bg) !important;
-  color: var(--team-half) !important;
-  border-color: var(--team-half) !important;
-  box-shadow: inset 0 0 0 1px var(--team-half);
-  font-weight: 700 !important;
+  background-color: var(--team-half-bg);
+  color: var(--team-half);
+  border-color: var(--team-half-solid);
+  box-shadow: inset 0 0 0 1px var(--team-half-solid);
 }
 
 .statusBtnAbsentSelected {
-  background-color: var(--team-absent-bg) !important;
-  color: var(--team-absent) !important;
-  border-color: var(--team-absent) !important;
+  background-color: var(--team-absent-bg);
+  color: var(--team-absent);
+  border-color: var(--team-absent);
   box-shadow: inset 0 0 0 1px var(--team-absent);
-  font-weight: 700 !important;
 }
 
-.cardFooter {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.8rem;
-  min-height: var(--team-btn-height-secondary);
-}
-
-.statusText {
-  font-size: var(--team-secondary);
-  color: var(--team-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.textBtn {
-  background: transparent;
-  border: none;
-  color: var(--team-primary);
-  font-size: var(--team-secondary);
-  text-decoration: underline;
-  text-underline-offset: 0.2rem;
-  min-height: var(--team-btn-height-secondary);
-  padding: 0.4rem;
-  cursor: pointer;
-}
-
-.confirmBox {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  font-size: var(--team-secondary);
-}
-
-.skeletonCard {
-  background-color: #ffffff;
-  border: 1px solid var(--team-border);
-  border-radius: var(--team-radius-card);
-  padding: 1.067rem;
-  margin-bottom: 1rem;
-  min-height: 25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.6rem;
-}
-
-.advanceSection {
-  margin-top: 0.8rem;
+.moneySection {
+  margin-top: 0.85rem;
   padding-top: 0.8rem;
   border-top: 1px dashed var(--team-border);
 }
@@ -351,117 +272,108 @@
   font-size: var(--team-secondary);
   font-weight: 700;
   color: var(--team-primary-dark);
-  margin-bottom: 0.4rem;
-}
-
-.advanceRow {
-  display: flex;
-  align-items: center;
-  gap: 0.533rem;
-}
-
-.advanceInput {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-  min-height: var(--team-btn-height);
-  padding: 0.6rem 0.8rem;
-  border: 1px solid var(--team-input-border);
-  border-radius: var(--team-radius-small);
-  background-color: #ffffff;
-  color: var(--team-text);
-  font-size: var(--team-copy);
-  font-variant-numeric: tabular-nums;
-}
-
-.advanceInput:focus {
-  outline: none;
-  border-color: var(--team-primary);
-  box-shadow: 0 0 0 2px var(--team-primary-light);
-}
-
-.advanceSaveBtn {
-  min-height: var(--team-btn-height);
-  padding: 0 1.2rem;
-  border: 1px solid var(--team-primary);
-  border-radius: var(--team-radius-button);
-  background-color: var(--team-primary);
-  color: #ffffff;
-  font-weight: 700;
-  font-size: var(--team-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: opacity 0.15s ease;
-}
-
-.advanceSaveBtn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.advanceBadge {
-  margin-top: 0.45rem;
-  font-size: var(--team-secondary);
-  color: var(--team-absent);
-  font-weight: 700;
-  background-color: var(--team-absent-bg);
-  border: 1px solid #fecaca;
-  border-radius: var(--team-radius-small);
-  padding: 0.25rem 0.6rem;
-  display: inline-block;
-  font-variant-numeric: tabular-nums;
-}
-
-.deductionSection {
-  margin-top: 0.6rem;
-  padding-top: 0.6rem;
-  border-top: 1px dashed var(--team-border);
+  margin-bottom: 0.35rem;
 }
 
 .deductionLabel {
   display: block;
   font-size: var(--team-secondary);
   font-weight: 700;
-  color: #dc2626;
-  margin-bottom: 0.4rem;
+  color: var(--team-absent);
+  margin-bottom: 0.35rem;
 }
 
-.deductionSaveBtn {
-  min-height: var(--team-btn-height);
-  padding: 0 1.2rem;
-  border: 1px solid #dc2626;
-  border-radius: var(--team-radius-button);
-  background-color: #dc2626;
-  color: #ffffff;
-  font-weight: 700;
-  font-size: var(--team-secondary);
-  cursor: pointer;
+.moneyRow {
+  display: flex;
+  align-items: stretch;
+  gap: 0.55rem;
+}
+
+.moneyInput {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--team-btn-height-secondary);
+  padding: 0.5rem 0.75rem;
+  border: 1.5px solid var(--team-input-border);
+  border-radius: var(--team-radius-small);
+  background-color: var(--team-surface);
+  color: var(--team-text);
+  font-size: var(--team-copy);
+  font-variant-numeric: tabular-nums;
+}
+
+.moneyRow > button {
+  flex-shrink: 0;
   white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: opacity 0.15s ease;
 }
 
-.deductionSaveBtn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.deductionBadge {
+.moneyBadge {
   margin-top: 0.45rem;
   font-size: var(--team-secondary);
-  color: #b91c1c;
+  color: var(--team-absent);
   font-weight: 700;
-  background-color: #fee2e2;
-  border: 1px solid #fca5a5;
+  background-color: var(--team-absent-bg);
+  border: 1px solid var(--team-absent-border);
   border-radius: var(--team-radius-small);
-  padding: 0.25rem 0.6rem;
+  padding: 0.25rem 0.65rem;
   display: inline-block;
   font-variant-numeric: tabular-nums;
 }
 
+.cardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--team-border);
+  min-height: var(--team-btn-height-secondary);
+}
 
+.statusText {
+  font-size: var(--team-secondary);
+  color: var(--team-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.confirmBox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: var(--team-secondary);
+  font-weight: 700;
+}
+
+.bottomActions {
+  margin-top: 1.5rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+@media (min-width: 640px) {
+  .bottomActions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+.emptyText {
+  text-align: center;
+  color: var(--team-muted);
+  margin: 2rem 0;
+  font-size: var(--team-copy);
+}
+
+.skeletonCard {
+  background-color: var(--team-surface);
+  border: 1px solid var(--team-border);
+  border-radius: var(--team-radius-card);
+  padding: 1.15rem;
+  min-height: 22rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+}

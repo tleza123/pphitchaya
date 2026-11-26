@@ -5,7 +5,9 @@ const nextConfig = {
   serverExternalPackages: ['firebase-admin', 'sharp', 'pdfkit'],
   outputFileTracingIncludes: {
     '/api/reports/export': ['./src/assets/fonts/*.ttf', './node_modules/pdfkit/js/data/**/*'],
-    '/api/truck/reports/export': ['./src/assets/fonts/*.ttf', './node_modules/pdfkit/js/data/**/*']
+    '/api/truck/reports/export': ['./src/assets/fonts/*.ttf', './node_modules/pdfkit/js/data/**/*'],
+    '/api/truck/billing/[id]/pdf': ['./src/assets/fonts/*.ttf', './node_modules/pdfkit/js/data/**/*'],
+    '/api/truck/payroll/pdf': ['./src/assets/fonts/*.ttf', './node_modules/pdfkit/js/data/**/*']
   },
   async headers() {
     return [

@@ -6,6 +6,12 @@ import styles from './shell.module.css';
 
 export type TabType = 'attendance' | 'reports' | 'settings';
 
+export const ATTENDANCE_NAV = [
+  { tab: 'attendance', label: 'เช็กชื่อ', Icon: ClipboardCheck },
+  { tab: 'reports', label: 'รายงาน', Icon: ChartNoAxesCombined },
+  { tab: 'settings', label: 'ตั้งค่า', Icon: SettingsIcon }
+] as const;
+
 interface BottomNavProps {
   activeTab: TabType;
   onChangeTab: (tab: TabType) => void;
@@ -15,44 +21,21 @@ interface BottomNavProps {
 export function BottomNav({ activeTab, onChangeTab, onPrepareTab }: BottomNavProps) {
   return (
     <nav className={styles.nav} aria-label="เมนูหลัก">
-      <button
-        type="button"
-        className={`${styles.navBtn} ${activeTab === 'attendance' ? styles.navBtnActive : ''}`}
-        aria-current={activeTab === 'attendance' ? 'page' : undefined}
-        onClick={() => onChangeTab('attendance')}
-        onPointerEnter={() => onPrepareTab?.('attendance')}
-        onPointerDown={() => onPrepareTab?.('attendance')}
-        onFocus={() => onPrepareTab?.('attendance')}
-      >
-        <ClipboardCheck className={styles.navIcon} aria-hidden="true" />
-        <span>เช็กชื่อ</span>
-      </button>
-
-      <button
-        type="button"
-        className={`${styles.navBtn} ${activeTab === 'reports' ? styles.navBtnActive : ''}`}
-        aria-current={activeTab === 'reports' ? 'page' : undefined}
-        onClick={() => onChangeTab('reports')}
-        onPointerEnter={() => onPrepareTab?.('reports')}
-        onPointerDown={() => onPrepareTab?.('reports')}
-        onFocus={() => onPrepareTab?.('reports')}
-      >
-        <ChartNoAxesCombined className={styles.navIcon} aria-hidden="true" />
-        <span>รายงาน</span>
-      </button>
-
-      <button
-        type="button"
-        className={`${styles.navBtn} ${activeTab === 'settings' ? styles.navBtnActive : ''}`}
-        aria-current={activeTab === 'settings' ? 'page' : undefined}
-        onClick={() => onChangeTab('settings')}
-        onPointerEnter={() => onPrepareTab?.('settings')}
-        onPointerDown={() => onPrepareTab?.('settings')}
-        onFocus={() => onPrepareTab?.('settings')}
-      >
-        <SettingsIcon className={styles.navIcon} aria-hidden="true" />
-        <span>ตั้งค่า</span>
-      </button>
+      {ATTENDANCE_NAV.map(({ tab, label, Icon }) => (
+        <button
+          key={tab}
+          type="button"
+          className={`${styles.navBtn} ${activeTab === tab ? styles.navBtnActive : ''}`}
+          aria-current={activeTab === tab ? 'page' : undefined}
+          onClick={() => onChangeTab(tab)}
+          onPointerEnter={() => onPrepareTab?.(tab)}
+          onPointerDown={() => onPrepareTab?.(tab)}
+          onFocus={() => onPrepareTab?.(tab)}
+        >
+          <Icon className={styles.navIcon} aria-hidden="true" />
+          <span>{label}</span>
+        </button>
+      ))}
     </nav>
   );
 }

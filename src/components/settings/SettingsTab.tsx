@@ -10,7 +10,7 @@ import { MutationIntent } from '@/lib/client/mutation-intent';
 import { notifyDataChanged } from '@/lib/client/data-events';
 import { LineSettings } from '@/components/shared/LineSettings';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
 import {
   Plus,
@@ -20,7 +20,8 @@ import {
   Trash2,
   Camera,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Pencil
 } from 'lucide-react';
 import styles from './settings.module.css';
 import { DEFAULT_SHOP_NAME, displayShopName } from '@/lib/shop-name';
@@ -56,7 +57,7 @@ interface Employee {
 
 interface ShopSettings {
   shopName: string;
-  workDays: number[]; // 0 = Sun, 1 = Mon ...
+  workDays: number[];
   revision: number;
 }
 
@@ -75,15 +76,12 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // View state: 'list' | 'add' | 'edit'
   const [view, setView] = useHistoryState<'list' | 'add' | 'edit'>('settings-view', 'list', true);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
-  // Collapsible sections
   const [calendarOpen, setCalendarOpen] = useState<boolean>(false);
   const [shopNameOpen, setShopNameOpen] = useState<boolean>(false);
 
-  // Shop settings
   const [shopSettings, setShopSettings] = useState<ShopSettings>({
     shopName: DEFAULT_SHOP_NAME,
     workDays: [1, 2, 3, 4, 5, 6],
@@ -92,7 +90,6 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
   const [shopNameInput, setShopNameInput] = useState<string>(DEFAULT_SHOP_NAME);
   const [selectedWorkDays, setSelectedWorkDays] = useState<number[]>([1, 2, 3, 4, 5, 6]);
 
-  // Form states
   const [formName, setFormName] = useState<string>('');
   const [formNickname, setFormNickname] = useState<string>('');
   const [formPosition, setFormPosition] = useState<string>('');
@@ -107,7 +104,6 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
   const [photoPending, setPhotoPending] = useState(false);
   const { pending: settingsPending, run: runSettingsAction } = usePendingAction();
 
-  // End employment modal
   const [showEndModal, setShowEndModal] = useHistoryState<boolean>('end-employment', false);
   const [endDateInput, setEndDateInput] = useState<string>('');
   useModalInteraction(active && showEndModal, () => setShowEndModal(false));
@@ -131,13 +127,12 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     setLoading(true);
     setError(null);
     try {
-      // Fetch employees
       const [res, bootRes] = await Promise.all([
         fetch('/api/employees', { signal: controller.signal, headers: { Authorization: `Bearer ${idToken}` } }),
         fetch('/api/settings?calendar=1', { signal: controller.signal, headers: { Authorization: `Bearer ${idToken}` } })
       ]);
-      if (!res.ok) throw new Error('ไม่สามารถโหลดข้อมูลพนักงานได้');
-      if (!bootRes.ok) throw new Error('ไม่สามารถโหลดการตั้งค่าได้');
+      if (!res.ok) throw new Error('โหลดรายชื่อพนักงานไม่สำเร็จ');
+      if (!bootRes.ok) throw new Error('โหลดการตั้งค่าไม่สำเร็จ');
       const data = await res.json();
       const rawList = Array.isArray(data.data)
         ? data.data
@@ -173,7 +168,6 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
       setEmployees(mappedList);
       setHasLoaded(true);
 
-      // Fetch bootstrap/settings
       if (bootRes.ok) {
         const bootJson = await bootRes.json();
         if (sequence !== loadSequence.current) return;
@@ -197,7 +191,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
       }
     } catch (err: any) {
       if (sequence === loadSequence.current && !controller.signal.aborted) {
-        setError(err.message || 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
+        setError(err.message || 'โหลดข้อมูลไม่สำเร็จ');
       }
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
@@ -216,7 +210,6 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
-  // Open add form
   const handleOpenAdd = () => {
     if (submitLock.current || photoPending) return;
     setSelectedEmployee(null);
@@ -234,7 +227,6 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     setView('add');
   };
 
-  // Open edit form
   const handleOpenEdit = (emp: Employee) => {
     if (loading || submitLock.current || photoPending) return;
     setSelectedEmployee(emp);
@@ -259,20 +251,19 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     setView('edit');
   };
 
-  // Resize photo client-side via canvas before saving
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (photoPending) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('กรุณาเลือกไฟล์รูปภาพ');
+      alert('เลือกไฟล์รูปภาพเท่านั้น');
       return;
     }
 
     setPhotoPending(true);
     const sequence = ++photoSequence.current;
-    const photoError = () => { if (sequence !== photoSequence.current) return; setPhotoPending(false); alert('ไม่สามารถเปิดรูปภาพนี้ได้'); };
+    const photoError = () => { if (sequence !== photoSequence.current) return; setPhotoPending(false); alert('เปิดรูปภาพนี้ไม่ได้'); };
     const reader = new FileReader();
     reader.onerror = photoError;
     reader.onload = (event) => {
@@ -321,7 +312,6 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     reader.readAsDataURL(file);
   };
 
-  // Extra template rows
   const handleAddExtraTemplate = () => {
     setFormExtraTemplates([...formExtraTemplates, { name: '', amount: '' }]);
   };
@@ -342,22 +332,21 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     setFormExtraTemplates(next);
   };
 
-  // Submit Add / Edit
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!idToken || submitLock.current || photoPending) return;
     const effectiveNick = formNickname.trim();
     const effectiveName = formName.trim() || effectiveNick;
     if (!effectiveNick && !formName.trim()) {
-      alert('กรุณาระบุชื่อเล่นหรือชื่อ-นามสกุล');
+      alert('ระบุชื่อเล่นหรือชื่อ-นามสกุล');
       return;
     }
     let rateSatang: number;
     try { rateSatang = moneySatang(formDailyRate.trim()); }
-    catch { alert('กรุณากรอกค่าแรงให้ถูกต้อง ใช้ทศนิยมไม่เกิน 2 ตำแหน่ง'); return; }
+    catch { alert('กรอกค่าแรงเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง'); return; }
     const rateNum = rateSatang / 100;
     if (rateSatang <= 0) {
-      alert('กรุณากรอกค่าแรงรายวันให้ถูกต้อง');
+      alert('กรอกค่าแรงรายวันให้ถูกต้อง');
       return;
     }
 
@@ -370,7 +359,6 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
         writeStarted = true;
         const payload = { name: effectiveName, nickname: effectiveNick, position: formPosition.trim(), notes: formNotes.trim(),
           startDate: formStartDate, dailyRate: rateNum.toString(), dailyRateSatang: rateSatang, rateSatang, extraTemplates: extraTemplatesFormatted };
-        // Create employee
         const res = await fetch('/api/employees', {
           method: 'POST',
           headers: {
@@ -385,7 +373,7 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error?.message || errData.message || 'ไม่สามารถบันทึกพนักงานใหม่ได้');
+          throw new Error(errData.error?.message || errData.message || 'บันทึกพนักงานใหม่ไม่สำเร็จ');
         }
 
         const newEmpData = await res.json();
@@ -397,7 +385,6 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
           newEmpData.id ||
           newEmpData.employeeId;
 
-        // Upload photo if selected
         if (formPhotoFile && createdEmpId) {
           const photoFormData = new FormData();
           photoFormData.append('file', formPhotoFile);
@@ -415,10 +402,9 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
           }
         }
 
-        notifyDataChanged(); showNotification('เพิ่มพนักงานสำเร็จ');
+        notifyDataChanged(); showNotification('เพิ่มพนักงานแล้ว');
       } else if (view === 'edit' && selectedEmployee) {
         writeStarted = true;
-        // Update basic info
         const patchRes = await fetch(`/api/employees/${selectedEmployee.id}`, {
           method: 'PATCH',
           headers: {
@@ -438,13 +424,12 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
         if (!patchRes.ok) {
           const errData = await patchRes.json().catch(() => ({}));
-          throw new Error(errData.error?.message || errData.message || 'ไม่สามารถแก้ไขข้อมูลพนักงานได้');
+          throw new Error(errData.error?.message || errData.message || 'แก้ไขข้อมูลพนักงานไม่สำเร็จ');
         }
-        const patched = await mutationData(patchRes, 'ไม่สามารถแก้ไขข้อมูลพนักงานได้');
+        const patched = await mutationData(patchRes, 'แก้ไขข้อมูลพนักงานไม่สำเร็จ');
         let updatedRevision = patched.revision;
         setSelectedEmployee(previous => previous?.id === selectedEmployee.id ? { ...previous, revision: updatedRevision } : previous);
 
-        // Check if rate changed
         const currentRateSatang = selectedEmployee.dailyRateSatang;
         const newRateSatang = Math.round(rateNum * 100);
         if (currentRateSatang !== newRateSatang) {
@@ -468,7 +453,6 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
           setSelectedEmployee(previous => previous?.id === selectedEmployee.id ? { ...previous, revision: updatedRevision, dailyRateSatang: newRateSatang } : previous);
         }
 
-        // Update extra templates
         await mutationData(await fetch(`/api/employees/${selectedEmployee.id}/extra-templates`, {
           method: 'POST',
           headers: {
@@ -479,9 +463,8 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
             extraTemplates: extraTemplatesFormatted,
             requestId: `extra_tmpl_${selectedEmployee.id}_${Date.now()}`
           })
-        }), 'บันทึกรายการเงินพิเศษไม่สำเร็จ');
+        }), 'บันทึกเงินพิเศษประจำไม่สำเร็จ');
 
-        // Upload photo if new photo selected
         if (formPhotoFile) {
           const photoFormData = new FormData();
           photoFormData.append('file', formPhotoFile);
@@ -494,21 +477,20 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
           }), 'บันทึกรูปภาพไม่สำเร็จ');
         }
 
-        notifyDataChanged(); showNotification('แก้ไขข้อมูลพนักงานสำเร็จ');
+        notifyDataChanged(); showNotification('บันทึกการแก้ไขแล้ว');
       }
 
       await loadData();
       setView('list');
     } catch (err: any) {
       if (writeStarted) notifyDataChanged();
-      alert(err.message || 'เกิดข้อผิดพลาดในการบันทึก');
+      alert(err.message || 'บันทึกไม่สำเร็จ');
     } finally {
       submitLock.current = false;
       setSubmitting(false);
     }
   };
 
-  // End employment
   const handleConfirmEndEmployment = async () => {
     if (!selectedEmployee || !idToken || !endDateInput || submitLock.current) return;
     submitLock.current = true; setSubmitting(true);
@@ -528,12 +510,12 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error?.message || errData.message || 'ไม่สามารถบันทึกการสิ้นสุดการจ้างได้');
+        throw new Error(errData.error?.message || errData.message || 'บันทึกสิ้นสุดการจ้างไม่สำเร็จ');
       }
 
       setShowEndModal(false);
       notifyDataChanged();
-      showNotification('บันทึกการสิ้นสุดการจ้างเรียบร้อย');
+      showNotification('บันทึกสิ้นสุดการจ้างแล้ว');
       await loadData();
       setView('list');
     } catch (err: any) {
@@ -544,7 +526,6 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     }
   };
 
-  // Suspend / Resume employment
   const handleConfirmToggleSuspend = async () => {
     if (!selectedEmployee || !idToken || submitLock.current) return;
     submitLock.current = true;
@@ -565,12 +546,12 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error?.message || errData.message || 'ไม่สามารถเปลี่ยนสถานะการทำงานได้');
+        throw new Error(errData.error?.message || errData.message || 'เปลี่ยนสถานะไม่สำเร็จ');
       }
 
       setShowSuspendModal(false);
       notifyDataChanged();
-      showNotification(suspendTargetState ? 'บันทึกพักการทำงานเรียบร้อย' : 'บันทึกให้พนักงานทำงานต่อเรียบร้อย');
+      showNotification(suspendTargetState ? 'พักการทำงานแล้ว' : 'เปลี่ยนสถานะกลับมาทำงานแล้ว');
       await loadData();
       setView('list');
     } catch (err: any) {
@@ -581,7 +562,6 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     }
   };
 
-  // Save Shop Name
   const handleSaveShopName = async () => {
     if (!idToken || !shopNameInput.trim()) return;
     try {
@@ -600,14 +580,14 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
       if (!res.ok) {
         const errJson = await res.json();
-        throw new Error(errJson.error?.message || errJson.message || 'ไม่สามารถบันทึกชื่อร้านได้');
+        throw new Error(errJson.error?.message || errJson.message || 'บันทึกชื่อร้านไม่สำเร็จ');
       }
       const resJson = await res.json();
       const updatedData = resJson.data || resJson;
       const newName = displayShopName(updatedData.shopName || updatedData.displayName || shopNameInput);
       const newRev = typeof updatedData.revision === 'number' ? updatedData.revision : (shopSettings.revision + 1);
 
-      showNotification('บันทึกชื่อร้านเรียบร้อย');
+      showNotification('บันทึกชื่อร้านแล้ว');
       setShopSettings(prev => ({ ...prev, shopName: newName, revision: newRev }));
       setShopNameInput(newName);
       onUpdateShopName?.(newName);
@@ -617,11 +597,10 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
     }
   };
 
-  // Save Work Days Calendar
   const handleToggleWorkDay = (dayIndex: number) => {
     if (selectedWorkDays.includes(dayIndex)) {
       if (selectedWorkDays.length === 1) {
-        alert('ต้องมีวันทำงานอย่างน้อย 1 วัน');
+        alert('ต้องเลือกวันทำงานอย่างน้อย 1 วัน');
         return;
       }
       setSelectedWorkDays(selectedWorkDays.filter((d) => d !== dayIndex));
@@ -652,396 +631,345 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error?.message || errData.message || 'ไม่สามารถบันทึกวันทำงานได้');
+        throw new Error(errData.error?.message || errData.message || 'บันทึกวันทำงานไม่สำเร็จ');
       }
 
       setShopSettings(prev => ({ ...prev, workDays: selectedWorkDays }));
       notifyDataChanged();
-      showNotification('บันทึกวันทำงานเรียบร้อย');
+      showNotification('บันทึกวันทำงานแล้ว');
       setCalendarOpen(false);
     } catch (err: any) {
       alert(err.message || 'เกิดข้อผิดพลาด');
     }
   };
 
-  const filteredEmployees = employees.filter((emp) => {
-    if (filterStatus === 'active') return !emp.endDate && !emp.suspended;
-    if (filterStatus === 'suspended') return !emp.endDate && Boolean(emp.suspended);
-    if (filterStatus === 'ended') return Boolean(emp.endDate);
-    return true;
-  });
+  const counts = useMemo(() => {
+    let activeCount = 0, suspendedCount = 0, endedCount = 0;
+    for (const emp of employees) {
+      if (emp.endDate) endedCount++;
+      else if (emp.suspended) suspendedCount++;
+      else activeCount++;
+    }
+    return { activeCount, suspendedCount, endedCount };
+  }, [employees]);
+
+  const filteredEmployees = useMemo(() => {
+    return employees.filter((emp) => {
+      if (filterStatus === 'active') return !emp.endDate && !emp.suspended;
+      if (filterStatus === 'suspended') return !emp.endDate && Boolean(emp.suspended);
+      return Boolean(emp.endDate);
+    });
+  }, [employees, filterStatus]);
 
   return (
     <div>
       <h1 className={styles.title}>ตั้งค่า</h1>
 
       {successMessage && (
-        <div
-          style={{
-            backgroundColor: 'var(--team-present-bg)',
-            border: '1px solid var(--team-present)',
-            color: 'var(--team-present)',
-            padding: '0.8rem',
-            borderRadius: 'var(--team-radius-small)',
-            marginBottom: '1rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            fontWeight: 700
-          }}
-        >
-          <CheckCircle2 size={20} />
-          {successMessage}
+        <div className="app-notice app-notice-success" role="status" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}>
+          <CheckCircle2 size={20} aria-hidden="true" />
+          <span>{successMessage}</span>
         </div>
       )}
 
       {error && (
-        <div
-          style={{
-            backgroundColor: 'var(--team-absent-bg)',
-            border: '1px solid var(--team-absent)',
-            color: 'var(--team-absent)',
-            padding: '0.8rem',
-            borderRadius: 'var(--team-radius-small)',
-            marginBottom: '1rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}
-        >
-          <AlertCircle size={20} />
-          {error}
+        <div className="app-notice app-notice-danger" role="alert" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}>
+          <AlertCircle size={20} aria-hidden="true" />
+          <span>{error}</span>
         </div>
       )}
 
-      {/* VIEW: ADD OR EDIT FORM */}
       {(view === 'add' || view === 'edit') && (
         <div className={styles.formContainer}>
-          <h2
-            style={{
-              fontSize: 'var(--team-name)',
-              color: 'var(--team-primary-dark)',
-              margin: '0 0 1rem',
-              fontWeight: 700
-            }}
-          >
+          <h2 className={styles.formHeading}>
             {view === 'add' ? 'เพิ่มพนักงานใหม่' : 'แก้ไขข้อมูลพนักงาน'}
           </h2>
 
           <form onSubmit={handleSubmitForm}>
             <fieldset disabled={submitting || photoPending} className={styles.formFields}>
-            {/* Photo Section */}
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel}>รูปถ่ายพนักงาน</label>
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept="image/*"
-                onChange={handlePhotoSelect}
-                style={{ display: 'none' }}
-              />
-              {formPhotoPreview ? (
-                <img
-                  loading="lazy"
-                  decoding="async"
-                  src={formPhotoPreview}
-                  alt="รูปถ่าย"
-                  className={styles.photoPreview}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: '6rem',
-                    height: '7rem',
-                    backgroundColor: '#e2e8f0',
-                    borderRadius: 'var(--team-radius-small)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    margin: '0.5rem 0'
-                  }}
-                >
-                  <User size={36} color="var(--team-muted)" />
-                </div>
-              )}
-              <button
-                type="button"
-                className={styles.secondaryBtn}
-                onClick={() => fileInputRef.current?.click()}
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-              >
-                <Camera size={18} />
-                เลือกรูปถ่าย
-              </button>
-            </div>
-
-            {/* Nickname & Position */}
-            <div className={styles.formPair}>
               <div className={styles.formGroup}>
-                <label className={styles.formLabel} htmlFor="employee-nickname">ชื่อเล่น *</label>
+                <label className={styles.formLabel}>รูปถ่ายพนักงาน</label>
                 <input
-                  id="employee-nickname"
-                  type="text"
-                  className={styles.formInput}
-                  value={formNickname}
-                  onChange={(e) => setFormNickname(e.target.value)}
-                  placeholder="เช่น บอย, ตาล, เก่ง"
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*"
+                  onChange={handlePhotoSelect}
+                  style={{ display: 'none' }}
                 />
-              </div>
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel} htmlFor="employee-position">ตำแหน่ง *</label>
-                <input
-                  id="employee-position"
-                  type="text"
-                  className={styles.formInput}
-                  value={formPosition}
-                  onChange={(e) => setFormPosition(e.target.value)}
-                  placeholder="เช่น ช่างเทคนิค"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Name */}
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel} htmlFor="employee-name">ชื่อจริง นามสกุล</label>
-              <input
-                  id="employee-name"
-                  type="text"
-                className={styles.formInput}
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                placeholder="ระบุหรือไม่ก็ได้ เช่น สมศักดิ์ มีชัย"
-              />
-            </div>
-
-            {/* Start Date */}
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel} htmlFor="employee-start">วันที่เริ่มงาน *</label>
-              <input
-                  id="employee-start"
-                  type="date"
-                className={styles.formInput}
-                value={formStartDate}
-                onChange={(e) => setFormStartDate(e.target.value)}
-                required
-              />
-            </div>
-
-            {/* Daily Rate */}
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel} htmlFor="employee-rate">ค่าแรงรายวัน บาท *</label>
-              <input
-                  id="employee-rate"
-                  type="number"
-                step="0.01"
-                min="0"
-                className={styles.formInput}
-                value={formDailyRate}
-                onChange={(e) => setFormDailyRate(e.target.value)}
-                required
-              />
-              {view === 'edit' && (
-                <div style={{ marginTop: '0.6rem' }}>
-                  <label className={styles.formLabel} style={{ fontSize: 'var(--team-secondary)', color: 'var(--team-muted)' }}>
-                    วันที่มีผลบังคับใช้อัตราใหม่นี้
-                  </label>
-                  <input
-                    type="date"
-                    className={styles.formInput}
-                    value={formRateEffectiveDate}
-                    onChange={(e) => setFormRateEffectiveDate(e.target.value)}
+                {formPhotoPreview ? (
+                  <img
+                    loading="lazy"
+                    decoding="async"
+                    src={formPhotoPreview}
+                    alt="รูปถ่าย"
+                    className={styles.photoPreview}
                   />
-                </div>
-              )}
-            </div>
-
-            {/* Notes */}
-            <div className={styles.formGroup}>
-              <label className={styles.formLabel} htmlFor="employee-notes">บันทึกเพิ่มเติม</label>
-              <textarea
-                  id="employee-notes"
-                  className={styles.formTextarea}
-                value={formNotes}
-                onChange={(e) => setFormNotes(e.target.value)}
-                placeholder="ข้อมูลติดต่อ หรือเงื่อนไขเพิ่มเติม"
-              />
-            </div>
-
-            {/* Extra Allowance Templates */}
-            <div className={styles.formGroup}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-                <label className={styles.formLabel} style={{ margin: 0 }}>
-                  เงินพิเศษประจำ
-                </label>
+                ) : (
+                  <div className={styles.photoPlaceholder}>
+                    <User size={36} color="var(--team-muted)" aria-hidden="true" />
+                  </div>
+                )}
                 <button
                   type="button"
-                  onClick={handleAddExtraTemplate}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--team-primary)',
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.3rem',
-                    cursor: 'pointer'
-                  }}
+                  className="btn btn-secondary btn-block"
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  <Plus size={16} />
-                  เพิ่มรายการ
+                  <Camera size={20} aria-hidden="true" />
+                  <span>เลือกรูปถ่าย</span>
                 </button>
               </div>
 
-              {formExtraTemplates.length === 0 ? (
-                <div style={{ color: 'var(--team-muted)', fontSize: 'var(--team-secondary)', padding: '0.6rem 0' }}>
-                  ไม่มีรายการเงินพิเศษประจำ
+              <div className={styles.formPair}>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel} htmlFor="employee-nickname">ชื่อเล่น *</label>
+                  <input
+                    id="employee-nickname"
+                    type="text"
+                    className={styles.formInput}
+                    value={formNickname}
+                    onChange={(e) => setFormNickname(e.target.value)}
+                    placeholder="เช่น บอย, ตาล, เก่ง"
+                  />
                 </div>
-              ) : (
-                formExtraTemplates.map((item, idx) => (
-                  <div key={idx} className={styles.extraItemRow}>
-                    <div className={styles.extraFields}>
-                      <input
-                        type="text"
-                        className={styles.formInput}
-                        value={item.name}
-                        onChange={(e) => handleUpdateExtraTemplate(idx, 'name', e.target.value)}
-                        placeholder="ชื่อรายการ เช่น ค่าเดินทาง"
-                      />
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        className={styles.formInput}
-                        value={item.amount}
-                        onChange={(e) => handleUpdateExtraTemplate(idx, 'amount', e.target.value)}
-                        placeholder="บาท"
-                      />
-                      <button
-                        aria-label={`ลบรายการเงินพิเศษ ${idx + 1}`}
-                        type="button"
-                        onClick={() => handleRemoveExtraTemplate(idx)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--team-absent)',
-                          cursor: 'pointer',
-                          padding: '0.4rem'
-                        }}
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    </div>
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel} htmlFor="employee-position">ตำแหน่ง *</label>
+                  <input
+                    id="employee-position"
+                    type="text"
+                    className={styles.formInput}
+                    value={formPosition}
+                    onChange={(e) => setFormPosition(e.target.value)}
+                    placeholder="เช่น ช่างเทคนิค"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel} htmlFor="employee-name">ชื่อจริง-นามสกุล</label>
+                <input
+                  id="employee-name"
+                  type="text"
+                  className={styles.formInput}
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="ระบุหรือไม่ก็ได้ เช่น สมศักดิ์ มีชัย"
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel} htmlFor="employee-start">วันที่เริ่มงาน *</label>
+                <input
+                  id="employee-start"
+                  type="date"
+                  className={styles.formInput}
+                  value={formStartDate}
+                  onChange={(e) => setFormStartDate(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel} htmlFor="employee-rate">ค่าแรงรายวัน (บาท) *</label>
+                <input
+                  id="employee-rate"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={styles.formInput}
+                  value={formDailyRate}
+                  onChange={(e) => setFormDailyRate(e.target.value)}
+                  required
+                />
+                {view === 'edit' && (
+                  <div style={{ marginTop: '0.65rem' }}>
+                    <label className={styles.formLabel} style={{ fontSize: 'var(--team-secondary)', color: 'var(--team-muted)' }}>
+                      วันที่เริ่มใช้อัตราใหม่
+                    </label>
+                    <input
+                      type="date"
+                      className={styles.formInput}
+                      value={formRateEffectiveDate}
+                      onChange={(e) => setFormRateEffectiveDate(e.target.value)}
+                    />
                   </div>
-                ))
-              )}
-            </div>
+                )}
+              </div>
 
-            {/* Action Buttons */}
-            <div className={styles.formActions}>
-              <button
-                type="submit"
-                className={styles.primaryBtn}
-                disabled={submitting || photoPending}
-              >
-                {submitting ? <span className="busyInline">กำลังบันทึก</span> : 'บันทึกข้อมูล'}
-              </button>
-              <button
-                type="button"
-                className={styles.secondaryBtn}
-                onClick={() => setView('list')}
-                disabled={submitting}
-              >
-                ยกเลิก
-              </button>
-            </div>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel} htmlFor="employee-notes">บันทึกเพิ่มเติม</label>
+                <textarea
+                  id="employee-notes"
+                  className={styles.formTextarea}
+                  value={formNotes}
+                  onChange={(e) => setFormNotes(e.target.value)}
+                  placeholder="เบอร์โทร หรือหมายเหตุ"
+                />
+              </div>
 
-            {/* Suspend or End Employment Buttons (Edit view only) */}
-            {view === 'edit' && selectedEmployee && !selectedEmployee.endDate && (
-              <div style={{ marginTop: '1.2rem', display: 'grid', gap: '0.8rem' }}>
-                {selectedEmployee.suspended ? (
-                  <>
-                    <div className={styles.suspendedAlertBox}>
-                      <AlertCircle size={20} color="#b45309" />
-                      <div>
-                        <strong>พนักงานคนนี้อยู่ในสถานะพักการทำงาน</strong>
-                        <p style={{ margin: '0.2rem 0 0', fontSize: 'var(--team-secondary)', color: 'var(--team-text)' }}>
-                          ระบบเก็บประวัติไว้และซ่อนชื่อจากรายการเช็กชื่อจนกว่าจะกลับมาทำงาน
-                        </p>
+              <div className={styles.formGroup}>
+                <div className={styles.extraHeader}>
+                  <label className={styles.formLabel} style={{ margin: 0 }}>
+                    เงินพิเศษประจำ
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleAddExtraTemplate}
+                  >
+                    <Plus size={18} aria-hidden="true" />
+                    <span>เพิ่มรายการ</span>
+                  </button>
+                </div>
+
+                {formExtraTemplates.length === 0 ? (
+                  <p style={{ color: 'var(--team-muted)', fontSize: 'var(--team-secondary)', margin: '0.4rem 0' }}>
+                    ยังไม่มีรายการเงินพิเศษประจำ
+                  </p>
+                ) : (
+                  formExtraTemplates.map((item, idx) => (
+                    <div key={idx} className={styles.extraItemRow}>
+                      <div className={styles.extraFields}>
+                        <input
+                          type="text"
+                          className={styles.formInput}
+                          value={item.name}
+                          onChange={(e) => handleUpdateExtraTemplate(idx, 'name', e.target.value)}
+                          placeholder="ชื่อรายการ เช่น ค่าเดินทาง"
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className={styles.formInput}
+                          value={item.amount}
+                          onChange={(e) => handleUpdateExtraTemplate(idx, 'amount', e.target.value)}
+                          placeholder="บาท"
+                        />
+                        <button
+                          aria-label={`ลบรายการเงินพิเศษ ${idx + 1}`}
+                          type="button"
+                          className="btn btn-danger btn-icon"
+                          onClick={() => handleRemoveExtraTemplate(idx)}
+                        >
+                          <Trash2 size={18} aria-hidden="true" />
+                        </button>
                       </div>
                     </div>
+                  ))
+                )}
+              </div>
+
+              <div className={styles.formActions}>
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-block"
+                  disabled={submitting || photoPending}
+                >
+                  {submitting ? <span className="busyInline">กำลังบันทึก</span> : 'บันทึกข้อมูล'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-block"
+                  onClick={() => setView('list')}
+                  disabled={submitting}
+                >
+                  ยกเลิก
+                </button>
+              </div>
+
+              {view === 'edit' && selectedEmployee && !selectedEmployee.endDate && (
+                <div className={styles.dangerZone}>
+                  {selectedEmployee.suspended ? (
+                    <>
+                      <div className={styles.suspendedAlertBox}>
+                        <AlertCircle size={20} style={{ flexShrink: 0, marginTop: '0.15rem' }} aria-hidden="true" />
+                        <div>
+                          <strong>พนักงานพักการทำงานอยู่</strong>
+                          <p style={{ margin: '0.2rem 0 0', fontSize: 'var(--team-secondary)' }}>
+                            เก็บประวัติไว้และซ่อนชื่อจากหน้าเช็กชื่อจนกว่าจะกลับมาทำงาน
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-success btn-block"
+                        onClick={() => {
+                          setSuspendTargetState(false);
+                          setShowSuspendModal(true);
+                        }}
+                      >
+                        กลับมาทำงานต่อ
+                      </button>
+                    </>
+                  ) : (
                     <button
                       type="button"
-                      className={styles.resumeWorkBtn}
-                      style={{ marginTop: 0 }}
+                      className="btn btn-warning btn-block"
                       onClick={() => {
-                        setSuspendTargetState(false);
+                        setSuspendTargetState(true);
                         setShowSuspendModal(true);
                       }}
                     >
-                      ทำงานต่อ
+                      พักการทำงาน
                     </button>
-                  </>
-                ) : (
+                  )}
+
                   <button
                     type="button"
-                    className={styles.suspendWorkBtn}
-                    style={{ marginTop: 0 }}
+                    className="btn btn-danger btn-block"
                     onClick={() => {
-                      setSuspendTargetState(true);
-                      setShowSuspendModal(true);
+                      setEndDateInput(getBangkokToday());
+                      setShowEndModal(true);
                     }}
                   >
-                    พักการทำงานพนักงานคนนี้
+                    สิ้นสุดการจ้าง
                   </button>
-                )}
-
-                <button
-                type="button"
-                className={styles.endWorkBtn}
-                onClick={() => {
-                  setEndDateInput(new Date().toISOString().split('T')[0]);
-                  setShowEndModal(true);
-                }}
-              >
-                สิ้นสุดการจ้างพนักงานคนนี้
-              </button>
-              </div>
-            )}
+                </div>
+              )}
             </fieldset>
           </form>
         </div>
       )}
 
-      {(loading || settingsPending || submitting || photoPending) && <div className="refreshStatus" role="status">{settingsPending || (photoPending ? 'กำลังเตรียมรูปภาพ' : submitting ? 'กำลังบันทึกข้อมูล' : 'กำลังโหลดข้อมูลตั้งค่า')}</div>}
+      {(loading || settingsPending || submitting || photoPending) && (
+        <div className="refreshStatus" role="status">
+          {settingsPending || (photoPending ? 'กำลังเตรียมรูปภาพ' : submitting ? 'กำลังบันทึกข้อมูล' : 'กำลังโหลดข้อมูล')}
+        </div>
+      )}
 
-      {/* VIEW: LIST */}
       {view === 'list' && (
         <div>
           <div className={styles.listControlsBar}>
-            <button className={styles.addBtn} onClick={handleOpenAdd} disabled={submitting || photoPending}>
-              เพิ่มพนักงานใหม่
+            <button type="button" className={`btn btn-primary ${styles.addAction}`} onClick={handleOpenAdd} disabled={submitting || photoPending}>
+              <Plus size={20} aria-hidden="true" />
+              <span>เพิ่มพนักงานใหม่</span>
             </button>
 
-            {/* Filter Active / Inactive */}
-            <div className={styles.filterRow}>
+            <div className={styles.filterRow} role="group" aria-label="กรองสถานะพนักงาน">
               <button
-                className={`${styles.filterBtn} ${filterStatus === 'active' ? styles.filterBtnActive : ''}`}
+                type="button"
+                className={`btn btn-sm ${filterStatus === 'active' ? 'btn-primary' : 'btn-secondary'}`}
+                aria-pressed={filterStatus === 'active'}
                 onClick={() => setFilterStatus('active')}
               >
-                ทำงานอยู่ {employees.filter((e) => !e.endDate && !e.suspended).length} คน
+                ทำงานอยู่ ({counts.activeCount})
               </button>
               <button
-                className={`${styles.filterBtn} ${filterStatus === 'suspended' ? styles.filterBtnActive : ''}`}
+                type="button"
+                className={`btn btn-sm ${filterStatus === 'suspended' ? 'btn-primary' : 'btn-secondary'}`}
+                aria-pressed={filterStatus === 'suspended'}
                 onClick={() => setFilterStatus('suspended')}
               >
-                พักการทำงาน {employees.filter((e) => !e.endDate && !!e.suspended).length} คน
+                พักงาน ({counts.suspendedCount})
               </button>
               <button
-                className={`${styles.filterBtn} ${filterStatus === 'ended' ? styles.filterBtnActive : ''}`}
+                type="button"
+                className={`btn btn-sm ${filterStatus === 'ended' ? 'btn-primary' : 'btn-secondary'}`}
+                aria-pressed={filterStatus === 'ended'}
                 onClick={() => setFilterStatus('ended')}
               >
-                สิ้นสุดการจ้าง {employees.filter((e) => !!e.endDate).length} คน
+                สิ้นสุด ({counts.endedCount})
               </button>
             </div>
           </div>
@@ -1051,90 +979,69 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
               {[0, 1, 2].map(index => <div className="loadingCard" key={index}><span className="loadingLine" /><span className="loadingLine" /></div>)}
             </div>
           ) : filteredEmployees.length === 0 ? (
-            <div
-              style={{
-                backgroundColor: 'var(--team-surface)',
-                border: '1px solid var(--team-border)',
-                borderRadius: 'var(--team-radius-card)',
-                padding: '2rem',
-                textAlign: 'center',
-                color: 'var(--team-muted)',
-                marginBottom: '1.5rem'
-              }}
-            >
-              ไม่พบรายชื่อพนักงาน
-            </div>
+            <div className={styles.emptyCard}>ไม่พบรายชื่อพนักงาน</div>
           ) : (
             <div className={styles.employeeGrid}>
               {filteredEmployees.map((emp) => (
                 <div key={emp.id} className={styles.personCard}>
-                  <div className={styles.personHead}>
-                    <div className={styles.avatar}>
-                      {emp.photoPath ? (
-                        <img
-                          loading="lazy"
-                          decoding="async"
-                          src={`/api/employees/${emp.id}/photo?v=${emp.photoVersion || 1}`}
-                          alt={emp.nickname || emp.name}
-                        />
-                      ) : (
-                        (emp.nickname || emp.name).charAt(0)
-                      )}
+                  <div>
+                    <div className={styles.personHead}>
+                      <div className={styles.avatar}>
+                        {emp.photoPath ? (
+                          <img
+                            loading="lazy"
+                            decoding="async"
+                            src={`/api/employees/${emp.id}/photo?v=${emp.photoVersion || 1}`}
+                            alt={emp.nickname || emp.name}
+                          />
+                        ) : (
+                          (emp.nickname || emp.name).charAt(0)
+                        )}
+                      </div>
+                      <div className={styles.personInfo}>
+                        <h3 className={styles.personName}>{emp.nickname || emp.name}</h3>
+                        <div className={styles.personPosition}>
+                          {emp.position || 'พนักงาน'}
+                          {emp.name && emp.nickname && emp.name !== emp.nickname && ` · ${emp.name}`}
+                        </div>
+                      </div>
                     </div>
-                    <div className={styles.personInfo}>
-                      <h3 className={styles.personName}>
-                        {emp.nickname ? emp.nickname : emp.name}
-                      </h3>
-                      <div className={styles.personPosition}>
-                        {emp.position || 'พนักงาน'}
-                        {emp.name && emp.nickname && emp.name !== emp.nickname && ` · ${emp.name}`}
+
+                    <div className={styles.personMeta}>
+                      <div>
+                        ค่าแรงวันละ{' '}
+                        <strong>
+                          {((emp.dailyRateSatang || 0) / 100).toLocaleString('th-TH', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                          })}{' '}
+                          บาท
+                        </strong>
+                      </div>
+                      <div>เงินพิเศษประจำ {emp.extraTemplates?.length || 0} รายการ</div>
+                      {emp.suspended && <div><span className={styles.statusBadgeSuspended}>พักการทำงาน</span></div>}
+                      {emp.endDate && <div><span className={styles.statusBadgeEnded}>สิ้นสุดการจ้าง</span></div>}
+                      <div className={styles.personDate}>
+                        เริ่มงาน {emp.startDate}
+                        {emp.endDate && ` · สิ้นสุด ${emp.endDate}`}
                       </div>
                     </div>
                   </div>
 
-                  <div className={styles.personMeta}>
-                    <div>
-                      ค่าแรงวันละ:{' '}
-                      <strong>
-                        {((emp.dailyRateSatang || 0) / 100).toLocaleString('th-TH', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2
-                        })}{' '}
-                        บาท
-                      </strong>
-                    </div>
-                    <div>
-                      เงินพิเศษประจำ: {emp.extraTemplates?.length || 0} รายการ
-                    </div>
-                    {emp.suspended && (
-                      <div>
-                        <span className={styles.statusBadgeSuspended}>พักการทำงาน</span>
-                      </div>
-                    )}
-                    {emp.endDate && (
-                      <div>
-                        <span className={styles.statusBadgeEnded}>สิ้นสุดการจ้าง</span>
-                      </div>
-                    )}
-                    <div style={{ fontSize: 'var(--team-secondary)', color: 'var(--team-muted)' }}>
-                      เริ่มงาน: {emp.startDate}
-                      {emp.endDate && ` สิ้นสุดงาน: ${emp.endDate}`}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
+                  <div className={styles.cardActions}>
                     <button
-                    className={styles.editBtn}
-                    style={{ marginTop: 0, flex: 1 }}
-                    onClick={() => handleOpenEdit(emp)}
-                    disabled={loading || submitting || photoPending}
-                  >
-                    แก้ไขข้อมูล
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => handleOpenEdit(emp)}
+                      disabled={loading || submitting || photoPending}
+                    >
+                      <Pencil size={18} aria-hidden="true" />
+                      <span>แก้ไขข้อมูล</span>
                     </button>
                     {emp.suspended && (
                       <button
                         type="button"
-                        className={styles.resumeWorkCardBtn}
+                        className="btn btn-success btn-sm"
                         onClick={() => {
                           setSelectedEmployee(emp);
                           setSuspendTargetState(false);
@@ -1151,20 +1058,14 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
             </div>
           )}
 
-          {/* Collapsible: Work Schedule */}
           <div className={styles.collapsibleSection}>
-            <button type="button" aria-expanded={calendarOpen}
-              className={styles.sectionHeader}
-              onClick={() => setCalendarOpen(!calendarOpen)}
-            >
+            <button type="button" aria-expanded={calendarOpen} className={styles.sectionHeader} onClick={() => setCalendarOpen(!calendarOpen)}>
               <span>วันทำงานของร้าน</span>
-              {calendarOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              {calendarOpen ? <ChevronUp size={22} aria-hidden="true" /> : <ChevronDown size={22} aria-hidden="true" />}
             </button>
             {calendarOpen && (
               <div className={styles.sectionBody}>
-                <div style={{ margin: '0.8rem 0' }}>
-                  เลือกวันทำงานปกติของร้านในแต่ละสัปดาห์:
-                </div>
+                <p style={{ margin: '0 0 0.85rem' }}>เลือกวันทำงานปกติของร้านในแต่ละสัปดาห์</p>
                 <div className={styles.workDays}>
                   {DAY_NAMES.map((dayName, idx) => {
                     const isSelected = selectedWorkDays.includes(idx);
@@ -1172,19 +1073,10 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                       <button
                         key={idx}
                         type="button"
+                        className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => handleToggleWorkDay(idx)}
                         aria-pressed={isSelected}
                         disabled={Boolean(settingsPending)}
-                        style={{
-                          minHeight: '3rem',
-                          border: `1px solid ${isSelected ? 'var(--team-primary)' : 'var(--team-border)'}`,
-                          backgroundColor: isSelected ? 'var(--team-primary)' : '#ffffff',
-                          color: isSelected ? '#ffffff' : 'var(--team-text)',
-                          borderRadius: 'var(--team-radius-small)',
-                          fontWeight: 700,
-                          fontSize: 'var(--team-secondary)',
-                          cursor: 'pointer'
-                        }}
                       >
                         {dayName}
                       </button>
@@ -1192,7 +1084,8 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                   })}
                 </div>
                 <button
-                  className={styles.primaryBtn}
+                  type="button"
+                  className="btn btn-primary btn-block"
                   onClick={() => runSettingsAction('กำลังบันทึกวันทำงาน', handleSaveWorkDays)}
                   disabled={Boolean(settingsPending)}
                   aria-busy={Boolean(settingsPending)}
@@ -1203,22 +1096,18 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
             )}
           </div>
 
-          {/* Collapsible: Shop Name */}
           <div className={styles.collapsibleSection}>
-            <button type="button" aria-expanded={shopNameOpen}
-              className={styles.sectionHeader}
-              onClick={() => setShopNameOpen(!shopNameOpen)}
-            >
+            <button type="button" aria-expanded={shopNameOpen} className={styles.sectionHeader} onClick={() => setShopNameOpen(!shopNameOpen)}>
               <span>ชื่อร้าน</span>
-              {shopNameOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              {shopNameOpen ? <ChevronUp size={22} aria-hidden="true" /> : <ChevronDown size={22} aria-hidden="true" />}
             </button>
             {shopNameOpen && (
               <div className={styles.sectionBody}>
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel} htmlFor="shop-name">ชื่อร้าน</label>
                   <input
-                  id="shop-name"
-                  type="text"
+                    id="shop-name"
+                    type="text"
                     className={styles.formInput}
                     value={shopNameInput}
                     disabled={Boolean(settingsPending)}
@@ -1226,7 +1115,8 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
                   />
                 </div>
                 <button
-                  className={styles.primaryBtn}
+                  type="button"
+                  className="btn btn-primary btn-block"
                   onClick={() => runSettingsAction('กำลังบันทึกชื่อร้าน', handleSaveShopName)}
                   disabled={Boolean(settingsPending)}
                   aria-busy={Boolean(settingsPending)}
@@ -1240,182 +1130,80 @@ export default function SettingsTab({ active, onUpdateShopName }: SettingsTabPro
         </div>
       )}
 
-      {/* End Employment Confirmation Modal */}
       {showEndModal && selectedEmployee && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.65)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1rem',
-            zIndex: 100
-          }}
-        >
-          <div data-app-dialog role="dialog" aria-modal="true" aria-label="ยืนยันการสิ้นสุดการจ้าง" tabIndex={-1}
-            style={{
-              maxHeight: 'calc(100dvh - 2rem)',
-              overflowY: 'auto',
-              backgroundColor: '#ffffff',
-              borderRadius: 'var(--team-radius-card)',
-              padding: '1.5rem',
-              maxWidth: '24rem',
-              width: '100%',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-            }}
-          >
-            <h3
-              style={{
-                fontSize: 'var(--team-name)',
-                color: 'var(--team-absent)',
-                margin: '0 0 0.8rem',
-                fontWeight: 700
-              }}
-            >
-              ยืนยันการสิ้นสุดการจ้าง
-            </h3>
-            <p style={{ color: 'var(--team-text)', margin: '0 0 1rem', fontSize: 'var(--team-copy)' }}>
-              คุณต้องการบันทึกการสิ้นสุดการจ้างของ <strong>{selectedEmployee.name}</strong> หรือไม่
+        <div className="app-modal-overlay">
+          <div className="app-modal-card" data-app-dialog role="dialog" aria-modal="true" aria-label="ยืนยันการสิ้นสุดการจ้าง" tabIndex={-1}>
+            <h3 className="app-modal-title app-modal-title-danger">ยืนยันสิ้นสุดการจ้าง</h3>
+            <p className="app-modal-desc">
+              บันทึกสิ้นสุดการจ้างของ <strong>{selectedEmployee.name}</strong>
             </p>
             <div className={styles.formGroup}>
               <label className={styles.formLabel} htmlFor="employee-end">วันทำงานวันสุดท้าย</label>
               <input
-                  id="employee-end"
-                  type="date"
+                id="employee-end"
+                type="date"
                 className={styles.formInput}
                 value={endDateInput}
                 onChange={(e) => setEndDateInput(e.target.value)}
                 required
               />
             </div>
-            <div style={{ display: 'grid', gap: '0.6rem' }}>
-              <button
-                type="button"
-                className={styles.endWorkBtn}
-                onClick={handleConfirmEndEmployment}
-                disabled={submitting}
-                style={{ margin: 0 }}
-              >
-                {submitting ? <span className="busyInline">กำลังบันทึก</span> : 'ยืนยันการสิ้นสุดการจ้าง'}
-              </button>
-              <button
-                type="button"
-                className={styles.secondaryBtn}
-                onClick={() => setShowEndModal(false)}
-                disabled={submitting}
-              >
+            <div className="app-modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setShowEndModal(false)} disabled={submitting}>
                 ยกเลิก
+              </button>
+              <button type="button" className="btn btn-danger-solid" onClick={handleConfirmEndEmployment} disabled={submitting}>
+                {submitting ? <span className="busyInline">กำลังบันทึก</span> : 'ยืนยันสิ้นสุด'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Suspend / Resume Employment Confirmation Modal */}
       {showSuspendModal && selectedEmployee && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.65)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1rem',
-            zIndex: 100
-          }}
-        >
+        <div className="app-modal-overlay">
           <div
+            className="app-modal-card"
             data-app-dialog
             role="dialog"
             aria-modal="true"
-            aria-label={suspendTargetState ? 'ยืนยันการพักการทำงาน' : 'ยืนยันการให้ทำงานต่อ'}
+            aria-label={suspendTargetState ? 'ยืนยันการพักการทำงาน' : 'ยืนยันให้ทำงานต่อ'}
             tabIndex={-1}
-            style={{
-              maxHeight: 'calc(100dvh - 2rem)',
-              overflowY: 'auto',
-              backgroundColor: '#ffffff',
-              borderRadius: 'var(--team-radius-card)',
-              padding: '1.5rem',
-              maxWidth: '26rem',
-              width: '100%',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-            }}
           >
-            <h3
-              style={{
-                fontSize: 'var(--team-name)',
-                color: suspendTargetState ? 'var(--team-accent, #d97706)' : 'var(--team-present, #16a34a)',
-                margin: '0 0 0.8rem',
-                fontWeight: 700
-              }}
-            >
-              {suspendTargetState ? 'ยืนยันการพักการทำงาน' : 'ยืนยันให้ทำงานต่อ'}
+            <h3 className={`app-modal-title ${suspendTargetState ? 'app-modal-title-warning' : 'app-modal-title-success'}`}>
+              {suspendTargetState ? 'ยืนยันพักการทำงาน' : 'ยืนยันให้ทำงานต่อ'}
             </h3>
-            <p style={{ color: 'var(--team-text)', margin: '0 0 1rem', fontSize: 'var(--team-copy)' }}>
+            <p className="app-modal-desc">
               {suspendTargetState ? (
-                <>
-                  คุณต้องการพักการทำงานของ <strong>{selectedEmployee.nickname || selectedEmployee.name}</strong> หรือไม่
-                </>
+                <>พักการทำงานของ <strong>{selectedEmployee.nickname || selectedEmployee.name}</strong> หรือไม่</>
               ) : (
-                <>
-                  คุณต้องการให้ <strong>{selectedEmployee.nickname || selectedEmployee.name}</strong> กลับมาทำงานต่อหรือไม่
-                </>
+                <>ให้ <strong>{selectedEmployee.nickname || selectedEmployee.name}</strong> กลับมาทำงานต่อหรือไม่</>
               )}
             </p>
-            <div
-              style={{
-                backgroundColor: suspendTargetState ? '#fffbeb' : '#f0fdf4',
-                border: `1px solid ${suspendTargetState ? '#fde68a' : '#bbf7d0'}`,
-                borderRadius: 'var(--team-radius-small)',
-                padding: '0.8rem',
-                marginBottom: '1.2rem',
-                fontSize: 'var(--team-secondary)',
-                color: suspendTargetState ? '#92400e' : '#166534',
-                lineHeight: 1.5
-              }}
-            >
+            <div className={`app-notice ${suspendTargetState ? '' : 'app-notice-success'}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
               {suspendTargetState ? (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-                  <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '0.15rem' }} aria-hidden="true" />
-                  <span>
-                    ระบบเก็บประวัติ ค่าแรง และเงินพิเศษไว้ และซ่อนชื่อจากรายการเช็กชื่อจนกว่าจะกลับมาทำงาน
-                  </span>
-                </div>
+                <>
+                  <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '0.2rem' }} aria-hidden="true" />
+                  <span>เก็บประวัติ ค่าแรง และเงินพิเศษไว้ โดยซ่อนชื่อจากหน้าเช็กชื่อจนกว่าจะกลับมาทำงาน</span>
+                </>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-                  <CheckCircle2 size={18} style={{ flexShrink: 0, marginTop: '0.15rem' }} aria-hidden="true" />
-                  <span>
-                    ชื่อพนักงานจะแสดงในรายการเช็กชื่ออีกครั้ง
-                  </span>
-                </div>
+                <>
+                  <CheckCircle2 size={18} style={{ flexShrink: 0, marginTop: '0.2rem' }} aria-hidden="true" />
+                  <span>ชื่อพนักงานจะกลับมาแสดงในหน้าเช็กชื่ออีกครั้ง</span>
+                </>
               )}
             </div>
-            <div style={{ display: 'grid', gap: '0.6rem' }}>
-              <button
-                type="button"
-                className={suspendTargetState ? styles.suspendWorkConfirmBtn : styles.resumeWorkConfirmBtn}
-                onClick={handleConfirmToggleSuspend}
-                disabled={submitting}
-                style={{ margin: 0 }}
-              >
-                {submitting ? (
-                  <span className="busyInline">กำลังบันทึก</span>
-                ) : suspendTargetState ? (
-                  'ยืนยันพักการทำงาน'
-                ) : (
-                  'ยืนยันให้ทำงานต่อ'
-                )}
+            <div className="app-modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setShowSuspendModal(false)} disabled={submitting}>
+                ยกเลิก
               </button>
               <button
                 type="button"
-                className={styles.secondaryBtn}
-                onClick={() => setShowSuspendModal(false)}
+                className={`btn ${suspendTargetState ? 'btn-warning-solid' : 'btn-success-solid'}`}
+                onClick={handleConfirmToggleSuspend}
                 disabled={submitting}
               >
-                ยกเลิก
+                {submitting ? <span className="busyInline">กำลังบันทึก</span> : suspendTargetState ? 'ยืนยันพักงาน' : 'ยืนยันทำงานต่อ'}
               </button>
             </div>
           </div>

@@ -9,16 +9,16 @@
 @media print {
   .appContainer { min-height: auto !important; background: white !important; }
   .header { position: static !important; background: white !important; color: black !important; border-bottom: 1px solid #ccc !important; }
-  .headerInner { max-width: none !important; padding: 0 0 .5rem !important; }
+  .headerInner { max-width: none !important; padding: 0 0 0.5rem !important; }
   .shopName { color: black !important; }
-  .mainContent { max-width: none !important; width: 100% !important; padding: .5rem 0 0 !important; }
+  .mainContent { max-width: none !important; width: 100% !important; padding: 0.5rem 0 0 !important; }
 }
 
 .header {
   background-color: var(--team-primary);
   color: #ffffff;
   width: 100%;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
   position: sticky;
   top: 0;
   z-index: 40;
@@ -27,27 +27,40 @@
 .headerInner {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 0.9rem 1rem;
+  padding: 0.85rem 1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
 
+@media (min-width: 768px) {
+  .headerInner {
+    padding: 0.8rem 1.5rem;
+  }
+}
+
 .headerLeft {
   display: flex;
-  align-items: baseline;
-  gap: 0.8rem;
+  align-items: center;
+  gap: 0.75rem;
   min-width: 0;
 }
 
 .shopName {
-  font-size: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.25rem;
   font-weight: 700;
   color: #ffffff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.shopName svg {
+  flex-shrink: 0;
 }
 
 /* Desktop Navigation inside header */
@@ -59,34 +72,34 @@
   .desktopNav {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.45rem;
   }
 
   .desktopNavBtn {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.5rem 0.9rem;
+    gap: 0.45rem;
+    min-height: var(--team-btn-height-secondary);
+    padding: 0.5rem 1rem;
     border: 1px solid transparent;
     border-radius: var(--team-radius-small);
     background: transparent;
-    color: #cbd5e1;
-    font-size: var(--team-secondary);
+    color: #dbe6f2;
+    font-size: var(--team-copy);
     font-weight: 700;
     cursor: pointer;
-    transition: background-color 0.15s ease, color 0.15s ease;
+    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
   }
 
   .desktopNavBtn:hover {
     color: #ffffff;
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.12);
   }
 
   .desktopNavBtnActive {
     color: #ffffff;
     background-color: var(--team-primary-dark);
-    border-color: rgba(255, 255, 255, 0.2);
-    box-shadow: inset 0 -2px 0 var(--team-accent);
+    border-color: var(--team-accent);
   }
 
   .desktopNavIcon {
@@ -101,7 +114,7 @@
   width: 100%;
   max-width: 100%;
   margin: 0 auto;
-  padding: 0.8rem 0.8rem calc(5.5rem + env(safe-area-inset-bottom));
+  padding: 1rem 0.9rem calc(6rem + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 
@@ -120,15 +133,15 @@
   right: 0;
   margin-inline: auto;
   width: 100%;
-  max-width: 32rem;
+  max-width: 34rem;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 0.45rem 0.6rem calc(0.45rem + env(safe-area-inset-bottom));
-  gap: 0.4rem;
+  gap: 0.45rem;
   border-top: 1px solid var(--team-border);
   background-color: var(--team-surface);
   z-index: 50;
-  box-shadow: 0 -2px 8px rgba(0, 29, 61, 0.05);
+  box-shadow: 0 -4px 12px rgba(16, 32, 51, 0.08);
 }
 
 @media (min-width: 768px) {
@@ -148,24 +161,24 @@
   border-radius: var(--team-radius-small);
   color: var(--team-muted);
   font-size: var(--team-secondary);
-  padding: 0.5rem 0.2rem;
-  min-height: var(--team-btn-height);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  font-weight: 700;
+  padding: 0.45rem 0.25rem;
+  min-height: 3.5rem;
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .navBtn:hover {
   color: var(--team-primary);
-  background-color: #f3f6fa;
+  background-color: var(--team-primary-soft);
 }
 
 .navBtnActive {
   color: var(--team-primary);
-  background-color: #e9f1f9;
-  box-shadow: inset 0 -3px 0 var(--team-accent);
-  font-weight: 700;
+  background-color: var(--team-primary-soft);
+  border-color: var(--team-primary);
 }
 
 .navIcon {
-  width: 1.4rem;
-  height: 1.4rem;
+  width: 1.45rem;
+  height: 1.45rem;
 }

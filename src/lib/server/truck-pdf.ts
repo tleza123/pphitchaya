@@ -1,9 +1,8 @@
 import 'server-only';
-import PDFDocument from 'pdfkit';
-import path from 'node:path';
 import { formatMoney } from '../payroll/money';
 import { formatThaiMonth, formatThaiDate } from '../payroll/dates';
 import { TruckMonthlyReport, TruckMonthlyRow, TruckDailyRecordDoc } from '../truck/types';
+import { createThaiPdfDoc } from './pdf-base';
 
 /**
  * Generates an A4 PDF monthly report for the truck operations.
@@ -13,9 +12,6 @@ export async function createTruckReportPdf(
   companyName = 'ระบบบันทึกงานรถสิบล้อ',
   truckFilter?: string
 ): Promise<Buffer> {
-  const fontRegular = path.join(process.cwd(), 'src/assets/fonts/THSarabunNew.ttf');
-  const fontBold = path.join(process.cwd(), 'src/assets/fonts/THSarabunNew-Bold.ttf');
-
   const filteredTruck = truckFilter
     ? report.perTruck.find(t => t.truckId === truckFilter)
     : undefined;
@@ -31,35 +27,19 @@ export async function createTruckReportPdf(
   const totalTrips = records.reduce((sum, r) => sum + r.tripCount, 0);
   const totalDriverPaySatang = records.reduce((sum, r) => sum + r.totalDriverPaySatang, 0);
 
-  const doc = new PDFDocument({
-    size: 'A4',
-    margin: 0,
-    bufferPages: true,
-    font: fontRegular,
-    info: {
-      Title: `รายงานรถสิบล้อ ${report.monthKey}`
-    }
-  });
+  const { doc, finish } = createThaiPdfDoc(`รายงานรถสิบล้อ ${report.monthKey}`);
 
-  doc.registerFont('Regular', fontRegular);
-  doc.registerFont('Bold', fontBold);
-
-  const chunks: Buffer[] = [];
-  const done = new Promise<Buffer>((resolve, reject) => {
-    doc.on('data', chunk => chunks.push(chunk));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-  });
-
-  const left = 45;
-  const right = 550;
-  const width = right - left;
-  const pale = '#f3f6fa';
+  const left = 42;
+  const right = 553;
+  const width = right - left; // 511pt full usable A4 width
+  const pale = '#f1f5f9';
+  const stripe = '#f8fafc';
   const ink = '#0f2942';
-  const muted = '#617084';
-  const borderCol = '#d7e0ea';
+  const bodyInk = '#102033';
+  const muted = '#475569';
+  const borderCol = '#cbd5e1';
 
-  let y = 35;
+  let y = 30;
   let repeatTableHeader: (() => void) | undefined;
 
   const text = (
@@ -70,166 +50,191 @@ export async function createTruckReportPdf(
     size = 14,
     bold = false,
     align: 'left' | 'right' | 'center' = 'left',
-    color = ink
+    color = bodyInk
   ) => {
     doc
       .font(bold ? 'Bold' : 'Regular')
       .fontSize(size)
       .fillColor(color)
-      .text(value, x, yPos, { width: w, align, lineGap: 1 });
+      .text(value, x, yPos, { width: w, align, lineGap: 1.5 });
   };
 
-  const line = (yPos: number) => {
-    doc.strokeColor(borderCol).lineWidth(0.5).moveTo(left, yPos).lineTo(right, yPos).stroke();
+  const line = (yPos: number, color = borderCol, weight = 0.5) => {
+    doc.strokeColor(color).lineWidth(weight).moveTo(left, yPos).lineTo(right, yPos).stroke();
   };
 
   const drawHeader = (isContinuation = false) => {
-    text(companyName, left, y, 320, 20, true, 'left', ink);
+    doc.rect(left, 26, width, 3).fill(ink);
+    y = 35;
+    text(companyName, left, y, 310, 21, true, 'left', ink);
     const monthText = `ประจำเดือน ${formatThaiMonth(report.monthKey)}`;
-    text(monthText, right - 220, y + 2, 220, 16, true, 'right', muted);
-    y += 24;
+    text(monthText, right - 200, y + 3, 200, 16, true, 'right', muted);
+    y += 26;
 
     const sub = isContinuation
       ? '(ต่อ)'
       : filteredTruck
-      ? `สรุปเฉพาะคัน: ${filteredTruck.plateNumber} (คนขับ: ${filteredTruck.driverName})`
-      : 'สรุปภาพรวมการวิ่งงานทุกคัน';
-    text(sub, left, y, width, 13, false, 'left', muted);
-    y += 18;
-    line(y);
+      ? `เฉพาะรถทะเบียน ${filteredTruck.plateNumber} (คนขับ: ${filteredTruck.driverName})`
+      : 'สรุปการวิ่งงานทุกคัน';
+    text(sub, left, y, width, 14, false, 'left', muted);
+    y += 20;
+    line(y, borderCol, 0.8);
     y += 10;
   };
 
   const ensureSpace = (neededHeight: number) => {
     if (y + neededHeight > 770) {
       doc.addPage();
-      y = 35;
       drawHeader(true);
       repeatTableHeader?.();
     }
   };
 
-  // Draw initial header
   drawHeader(false);
 
-  // KPI Summary Strip (4 cards)
-  const cardGap = 8;
+  // KPI Summary Strip (2 spacious cards)
+  const cardGap = 10;
   const cardWidth = (width - cardGap) / 2;
-  const cardHeight = 48;
-
+  const cardHeight = 54;
   const kpis = [
     { label: 'เที่ยววิ่งทั้งหมด', value: `${totalTrips.toLocaleString('th-TH')} เที่ยว` },
-    { label: 'ค่าเที่ยวคนขับรวม', value: `${formatMoney(totalDriverPaySatang)} บ.` },
+    { label: 'ค่าเที่ยวคนขับรวม', value: `${formatMoney(totalDriverPaySatang)} บาท` }
   ];
 
   kpis.forEach((kpi, idx) => {
     const cardX = left + idx * (cardWidth + cardGap);
     doc.roundedRect(cardX, y, cardWidth, cardHeight, 4).fillAndStroke(pale, borderCol);
-    text(kpi.label, cardX + 6, y + 6, cardWidth - 12, 11, false, 'left', muted);
-    text(kpi.value, cardX + 6, y + 24, cardWidth - 12, 13.5, true, 'left', ink);
+    text(kpi.label, cardX + 10, y + 7, cardWidth - 20, 13, false, 'left', muted);
+    text(kpi.value, cardX + 10, y + 25, cardWidth - 20, 17.5, true, 'left', ink);
   });
 
-  y += cardHeight + 14;
+  y += cardHeight + 16;
 
-  // Section 1: Per-truck summary (only if multiple trucks / not filtered to single truck)
+  // Section 1: Per-truck summary (full 511pt width)
   if (!filteredTruck && perTruckRows.length > 0) {
-    ensureSpace(60);
-    text('สรุปผลงานแยกตามคันรถ', left, y, width, 15, true, 'left', ink);
-    y += 20;
+    ensureSpace(64);
+    text('สรุปแยกตามคันรถ', left, y, width, 16.5, true, 'left', ink);
+    y += 22;
 
     const summaryHeader = () => {
-    doc.rect(left, y, width, 22).fill(pale);
-    text('ทะเบียนรถ', left + 8, y + 4, 90, 12, true, 'left', muted);
-    text('คนขับประจำ', left + 105, y + 4, 120, 12, true, 'left', muted);
-    text('เที่ยววิ่ง', left + 230, y + 4, 55, 12, true, 'right', muted);
-    text('ค่าเที่ยว (บาท)', left + 295, y + 4, 100, 12, true, 'right', muted);
-    y += 22;
+      doc.rect(left, y, width, 25).fill(pale);
+      text('ทะเบียนรถ', left + 8, y + 5, 115, 13.5, true, 'left', ink);
+      text('คนขับประจำ', left + 128, y + 5, 195, 13.5, true, 'left', ink);
+      text('เที่ยววิ่ง', left + 328, y + 5, 65, 13.5, true, 'right', ink);
+      text('ค่าเที่ยว (บาท)', left + 398, y + 5, 105, 13.5, true, 'right', ink);
+      y += 25;
+      line(y, ink, 0.9);
     };
     summaryHeader();
     repeatTableHeader = summaryHeader;
 
-    for (const tr of perTruckRows) {
-      const rowHeight = Math.max(18, doc.font('Regular').fontSize(12).heightOfString(tr.driverName, { width: 120, lineGap: 1 }) + 6,
-        doc.font('Bold').fontSize(12).heightOfString(tr.plateNumber, { width: 90, lineGap: 1 }) + 6);
+    perTruckRows.forEach((tr, idx) => {
+      const rowHeight = Math.max(
+        22,
+        doc.font('Regular').fontSize(14).heightOfString(tr.driverName, { width: 195, lineGap: 1.5 }) + 8,
+        doc.font('Bold').fontSize(14).heightOfString(tr.plateNumber, { width: 115, lineGap: 1.5 }) + 8
+      );
       ensureSpace(rowHeight);
-      text(tr.plateNumber, left + 8, y + 3, 90, 12, true);
-      text(tr.driverName, left + 105, y + 3, 120, 12, false);
-      text(`${tr.tripCount}`, left + 230, y + 3, 55, 12, false, 'right');
-      text(formatMoney(tr.totalDriverPaySatang), left + 295, y + 3, 100, 12, false, 'right');
+      if (idx % 2 === 1) doc.rect(left, y, width, rowHeight).fill(stripe);
+      text(tr.plateNumber, left + 8, y + 4, 115, 14, true);
+      text(tr.driverName, left + 128, y + 4, 195, 14, false);
+      text(`${tr.tripCount}`, left + 328, y + 4, 65, 14, false, 'right');
+      text(formatMoney(tr.totalDriverPaySatang), left + 398, y + 4, 105, 14, true, 'right', ink);
       y += rowHeight;
-      line(y);
-    }
+      line(y, '#e2e8f0', 0.5);
+    });
 
-    y += 14;
+    y += 16;
     repeatTableHeader = undefined;
   }
 
-  // Section 2: Detailed Daily Records
-  ensureSpace(60);
-  text('ประวัติการวิ่งงานรายวัน', left, y, width, 15, true, 'left', ink);
-  y += 20;
+  // Section 2: Detailed Daily Records (full 511pt width)
+  ensureSpace(64);
+  text('ประวัติการวิ่งงานรายวัน', left, y, width, 16.5, true, 'left', ink);
+  y += 22;
+
+  const colDateX = left + 8;
+  const colDateW = 72;
+  const colTruckX = left + 84;
+  const colTruckW = 115;
+  const colRouteX = left + 205;
+  const colRouteW = 205;
+  const colPayX = left + 415;
+  const colPayW = 88;
 
   const detailHeader = () => {
-  doc.rect(left, y, width, 22).fill(pale);
-  text('วันที่', left + 8, y + 4, 75, 12, true, 'left', muted);
-  text('ทะเบียนรถ / คนขับ', left + 88, y + 4, 115, 12, true, 'left', muted);
-  text('เส้นทาง / หมายเหตุ', left + 208, y + 4, 140, 12, true, 'left', muted);
-  text('ค่าเที่ยว (บาท)', left + 352, y + 4, 75, 12, true, 'right', muted);
-  y += 22;
+    doc.rect(left, y, width, 25).fill(pale);
+    text('วันที่', colDateX, y + 5, colDateW, 13.5, true, 'left', ink);
+    text('ทะเบียนรถ / คนขับ', colTruckX, y + 5, colTruckW, 13.5, true, 'left', ink);
+    text('เส้นทาง / หมายเหตุ', colRouteX, y + 5, colRouteW, 13.5, true, 'left', ink);
+    text('ค่าเที่ยว (บาท)', colPayX, y + 5, colPayW, 13.5, true, 'right', ink);
+    y += 25;
+    line(y, ink, 0.9);
   };
   detailHeader();
   repeatTableHeader = detailHeader;
 
   if (records.length === 0) {
-    ensureSpace(30);
-    text('ไม่มีรายการวิ่งงานในเดือนนี้', left, y + 8, width, 13, false, 'center', muted);
-    y += 30;
+    ensureSpace(32);
+    text('ไม่มีรายการวิ่งงานในเดือนนี้', left, y + 8, width, 14.5, false, 'center', muted);
+    y += 32;
   } else {
-    for (const rec of records) {
+    const segmenter = new Intl.Segmenter('th', { granularity: 'grapheme' });
+    records.forEach((rec, recIdx) => {
       const tripsSummary = rec.trips.length > 0
-        ? rec.trips.map(t => `${t.fromLocation} -> ${t.destinationName}${t.note ? ` (${t.note})` : ''}`).join('\n')
+        ? rec.trips.map(t => `${t.fromLocation} - ${t.destinationName}${t.note ? ` (${t.note})` : ''}`).join('\n')
         : '-';
 
-      // Split exceptionally long records across explicit pages. PDFKit's implicit
-      // pagination would otherwise lose our table header and overlap the footer.
       let remaining = [`${rec.plateNumberSnapshot}\n${rec.driverNameSnapshot}`, tripsSummary];
       let first = true;
-      const segmenter = new Intl.Segmenter('th', { granularity: 'grapheme' });
+      const shade = recIdx % 2 === 1;
+
       do {
-        ensureSpace(35);
+        ensureSpace(38);
         const available = 770 - y - 10;
         const parts = remaining.map((value, index) => {
+          const w = index === 0 ? colTruckW : colRouteW;
           const pieces = [...segmenter.segment(value)].map(s => s.segment);
           let lo = 0, hi = pieces.length;
           while (lo < hi) {
             const mid = Math.ceil((lo + hi) / 2);
-            const h = doc.font('Regular').fontSize(11).heightOfString(pieces.slice(0, mid).join(''), { width: index === 0 ? 115 : 140, lineGap: 1 });
-            if (h <= available) lo = mid; else hi = mid - 1;
+            const h = doc.font('Regular').fontSize(13.5).heightOfString(pieces.slice(0, mid).join(''), { width: w, lineGap: 1.5 });
+            if (h <= available) lo = mid;
+            else hi = mid - 1;
           }
           return [pieces.slice(0, lo).join(''), pieces.slice(lo).join('')];
         });
-        const rowHeight = Math.max(18, ...parts.map(([value], index) => doc.font('Regular').fontSize(11).heightOfString(value, { width: index === 0 ? 115 : 140, lineGap: 1 }))) + 10;
-        text(first ? formatThaiDate(rec.dateKey, { day: 'numeric', month: 'short' }) : '(ต่อ)', left + 8, y + 4, 75, 12);
-        text(parts[0][0], left + 88, y + 4, 115, 11);
-        text(parts[1][0], left + 208, y + 4, 140, 11);
-        if (first) text(formatMoney(rec.totalDriverPaySatang), left + 352, y + 4, 75, 12, false, 'right');
-        y += rowHeight; line(y);
+        const rowHeight = Math.max(
+          22,
+          ...parts.map(([value], index) =>
+            doc.font('Regular').fontSize(13.5).heightOfString(value, { width: index === 0 ? colTruckW : colRouteW, lineGap: 1.5 })
+          )
+        ) + 10;
+        if (shade) doc.rect(left, y, width, rowHeight).fill(stripe);
+        text(first ? formatThaiDate(rec.dateKey, { day: 'numeric', month: 'short' }) : '(ต่อ)', colDateX, y + 4, colDateW, 13.5);
+        text(parts[0][0], colTruckX, y + 4, colTruckW, 13.5);
+        text(parts[1][0], colRouteX, y + 4, colRouteW, 13.5);
+        if (first) text(formatMoney(rec.totalDriverPaySatang), colPayX, y + 4, colPayW, 13.5, true, 'right', ink);
+        y += rowHeight;
+        line(y, '#e2e8f0', 0.5);
         remaining = parts.map(([, rest]) => rest);
         first = false;
-        if (remaining.some(Boolean)) { doc.addPage(); y = 35; drawHeader(true); detailHeader(); }
+        if (remaining.some(Boolean)) {
+          doc.addPage();
+          drawHeader(true);
+          detailHeader();
+        }
       } while (remaining.some(Boolean));
-    }
+    });
   }
 
-  // Draw Page numbers
   const pages = doc.bufferedPageRange();
   for (let i = 0; i < pages.count; i++) {
     doc.switchToPage(i);
-    line(794);
-    text('ระบบบันทึกงานรถสิบล้อ • พี.พิชญา', left, 802, 300, 11, false, 'left', muted);
-    text(`หน้า ${i + 1} / ${pages.count}`, right - 100, 802, 100, 11, false, 'right', muted);
+    line(794, borderCol, 0.6);
+    text('ระบบบันทึกงานรถสิบล้อ · พี.พิชญา', left, 802, 320, 12.5, false, 'left', muted);
+    text(`หน้า ${i + 1} / ${pages.count}`, right - 100, 802, 100, 12.5, false, 'right', muted);
   }
 
-  doc.end();
-  return done;
+  return finish();
 }
